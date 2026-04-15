@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Termin-Abstimmung</title>
+    <meta
+      name="description"
+      content="Moderne Termin-Abstimmung mit Heatmap, Teilnahmelink und mobiler Übersicht."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="/">
+          <span class="brand-mark"><i class="fa-regular fa-calendar-check"></i></span>
+          <span>
+            <strong>Termin-Abstimmung</strong>
+            <small>Scheduling ohne Login</small>
+          </span>
+        </a>
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Theme wechseln">
+          <i class="fa-regular fa-moon"></i>
+        </button>
+      </header>
+
+      <main id="app"></main>
+    </div>
+
+    <template id="home-template">
+      <section class="hero-card">
+        <div class="hero-copy">
+          <p class="eyebrow">Bessere Abstimmungen</p>
+          <h1>Finde den besten Termin mit klarer Übersicht.</h1>
+          <p class="hero-text">
+            Erstelle einen Poll, teile einen Link und sieh sofort, an welchem Tag die meisten
+            Zusagen zusammenkommen.
+          </p>
+        </div>
+        <div class="hero-stats">
+          <article>
+            <strong>Ja / Vielleicht / Nein</strong>
+            <span>Fein abgestufte Verfügbarkeiten statt nur binärer Antworten.</span>
+          </article>
+          <article>
+            <strong>Heatmap-Auswertung</strong>
+            <span>Die beste Option springt sofort ins Auge.</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Neuer Poll</p>
+            <h2>Termin-Abstimmung anlegen</h2>
+          </div>
+        </div>
+
+        <form id="create-poll-form" class="stack-form">
+          <label>
+            <span>Titel</span>
+            <input id="poll-title" name="title" maxlength="120" required placeholder="Team-Offsite Mai" />
+          </label>
+
+          <label>
+            <span>Beschreibung</span>
+            <textarea
+              id="poll-description"
+              name="description"
+              maxlength="1000"
+              rows="4"
+              required
+              placeholder="Kurzer Kontext, Ort oder Hinweise zur Terminwahl"
+            ></textarea>
+          </label>
+
+          <div class="calendar-section">
+            <div class="calendar-header">
+              <div>
+                <span class="eyebrow">Kalender-Grid</span>
+                <h3 id="calendar-label"></h3>
+              </div>
+              <div class="calendar-actions">
+                <button id="prev-month" class="ghost-button" type="button">
+                  <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <button id="next-month" class="ghost-button" type="button">
+                  <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </div>
+            </div>
+
+            <div id="calendar-grid" class="calendar-grid" aria-live="polite"></div>
+            <div class="selected-dates-box">
+              <div class="selected-header">
+                <span>Ausgewählte Termine</span>
+                <button id="clear-dates" class="text-button" type="button">Leeren</button>
+              </div>
+              <div id="selected-dates" class="selected-dates"></div>
+            </div>
+          </div>
+
+          <div id="form-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+          <button class="primary-button" type="submit">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            Poll erstellen
+          </button>
+        </form>
+      </section>
+    </template>
+
+    <template id="poll-template">
+      <section class="poll-layout">
+        <article class="panel poll-summary">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Teilnahmelink</p>
+              <h1 id="poll-title-view"></h1>
+            </div>
+            <button id="share-button" class="icon-button" type="button" aria-label="Link teilen">
+              <i class="fa-solid fa-share-nodes"></i>
+            </button>
+          </div>
+
+          <p id="poll-description-view" class="description"></p>
+
+          <div class="info-pills">
+            <span class="pill"><i class="fa-regular fa-calendar"></i> <span id="poll-date-count"></span></span>
+            <span class="pill"><i class="fa-regular fa-user"></i> <span id="poll-response-count"></span></span>
+          </div>
+
+          <div class="best-date-card">
+            <div>
+              <p class="eyebrow">Beste Termine</p>
+              <h2 id="best-date-label">Noch keine Antworten</h2>
+            </div>
+            <div id="best-date-meta" class="best-date-meta"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Deine Verfügbarkeit</p>
+              <h2>Antwort eintragen</h2>
+            </div>
+          </div>
+
+          <form id="response-form" class="stack-form">
+            <label>
+              <span>Name</span>
+              <input id="participant-name" name="name" maxlength="80" required placeholder="Dein Name" />
+            </label>
+
+            <div id="availability-grid" class="availability-grid"></div>
+            <div class="legend">
+              <span class="legend-item yes">Ja</span>
+              <span class="legend-item maybe">Vielleicht</span>
+              <span class="legend-item no">Nein</span>
+            </div>
+
+            <div id="response-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+            <button class="primary-button" type="submit">
+              <i class="fa-regular fa-paper-plane"></i>
+              Antwort speichern
+            </button>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Heatmap</p>
+              <h2>Beste Überschneidungen</h2>
+            </div>
+          </div>
+          <div id="heatmap-grid" class="heatmap-grid"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Übersicht</p>
+              <h2>Wer wann kann</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="results-table">
+              <thead id="results-head"></thead>
+              <tbody id="results-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </template>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
