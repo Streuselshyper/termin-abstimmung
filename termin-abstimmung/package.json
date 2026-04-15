@@ -1,0 +1,22 @@
+{
+  "name": "termin-abstimmung",
+  "version": "1.0.0",
+  "description": "Coole Termin-Abstimmungs-Website mit Express und SQLite",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node -e \"console.log('Keine automatisierten Tests konfiguriert.')\""
+  },
+  "keywords": [
+    "terminplanung",
+    "express",
+    "sqlite"
+  ],
+  "author": "Codex",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "express": "^5.2.1"
+  }
+}
