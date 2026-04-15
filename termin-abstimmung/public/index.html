@@ -27,9 +27,9 @@
       <header class="topbar">
         <a class="brand" href="/">
           <span class="brand-mark"><i class="fa-regular fa-calendar-check"></i></span>
-          <span>
+          <span class="brand-copy">
             <strong>Termin-Abstimmung</strong>
-            <small>Scheduling ohne Login</small>
+            <small>Ohne Login</small>
           </span>
         </a>
         <button id="theme-toggle" class="icon-button" type="button" aria-label="Theme wechseln">
@@ -43,21 +43,19 @@
     <template id="home-template">
       <section class="hero-card">
         <div class="hero-copy">
-          <p class="eyebrow">Bessere Abstimmungen</p>
-          <h1>Finde den besten Termin mit klarer Übersicht.</h1>
+          <h1>Finde den besten Termin</h1>
           <p class="hero-text">
-            Erstelle einen Poll, teile einen Link und sieh sofort, an welchem Tag die meisten
-            Zusagen zusammenkommen.
+            Poll erstellen, Link teilen und sofort sehen, welcher Termin am besten passt.
           </p>
         </div>
         <div class="hero-stats">
-          <article>
-            <strong>Ja / Vielleicht / Nein</strong>
-            <span>Fein abgestufte Verfügbarkeiten statt nur binärer Antworten.</span>
+          <article class="hero-stat">
+            <strong>3 Antworten</strong>
+            <span>Ja, Vielleicht, Nein</span>
           </article>
-          <article>
-            <strong>Heatmap-Auswertung</strong>
-            <span>Die beste Option springt sofort ins Auge.</span>
+          <article class="hero-stat">
+            <strong>Heatmap</strong>
+            <span>Beste Option sofort sichtbar</span>
           </article>
         </div>
       </section>
@@ -91,14 +89,14 @@
           <div class="calendar-section">
             <div class="calendar-header">
               <div>
-                <span class="eyebrow">Kalender-Grid</span>
-                <h3 id="calendar-label"></h3>
+                <h3>Wähle Termine</h3>
+                <p id="calendar-label" class="calendar-meta"></p>
               </div>
               <div class="calendar-actions">
-                <button id="prev-month" class="ghost-button" type="button">
+                <button id="prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
                   <i class="fa-solid fa-chevron-left"></i>
                 </button>
-                <button id="next-month" class="ghost-button" type="button">
+                <button id="next-month" class="ghost-button compact-button" type="button" aria-label="Nächster Monat">
                   <i class="fa-solid fa-chevron-right"></i>
                 </button>
               </div>
@@ -164,7 +162,14 @@
           <form id="response-form" class="stack-form">
             <label>
               <span>Name</span>
-              <input id="participant-name" name="name" maxlength="80" required placeholder="Dein Name" />
+              <input
+                id="participant-name"
+                class="prominent-input"
+                name="name"
+                maxlength="80"
+                required
+                placeholder="Dein Name"
+              />
             </label>
 
             <div id="availability-grid" class="availability-grid"></div>
