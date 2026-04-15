@@ -12,7 +12,7 @@ const state = {
   currentMonth: startOfMonth(new Date()),
   pollData: null,
   responseDraft: {},
-  freeTextDraft: [""],
+  suggestedDateDraft: [""],
   createMode: "fixed",
 };
 
@@ -263,7 +263,7 @@ async function renderPollPage(pollId) {
 function initializeDraftFromPoll(poll) {
   if (poll.mode === "free") {
     state.responseDraft = {};
-    state.freeTextDraft = [""];
+    state.suggestedDateDraft = [""];
     return;
   }
 
@@ -273,7 +273,7 @@ function initializeDraftFromPoll(poll) {
   }
 
   state.responseDraft = defaultDraft;
-  state.freeTextDraft = [""];
+  state.suggestedDateDraft = [""];
 }
 
 function fillPollSummary() {
@@ -298,11 +298,23 @@ function fillPollSummary() {
   bestDateMeta.innerHTML = "";
 
   if (!isFixed) {
-    bestDateEyebrow.textContent = "Zeitraum";
-    bestDateLabel.textContent = poll.timeRangeText || "Freie Wahl";
-    bestDateMeta.innerHTML = '<span class="pill">Keine automatische Berechnung</span>';
-    resultsPanelEyebrow.textContent = "Freitext";
-    resultsPanelTitle.textContent = "Eingetragene Verfügbarkeiten";
+    bestDateEyebrow.textContent = "Am häufigsten genannt";
+    resultsPanelEyebrow.textContent = "Ranking";
+    resultsPanelTitle.textContent = "Beliebteste Tage";
+
+    if (results.bestDates.length === 0) {
+      bestDateLabel.textContent = poll.timeRangeText || "Freie Wahl";
+      bestDateMeta.innerHTML = '<span class="pill">Noch keine Vorschläge eingegangen</span>';
+      return;
+    }
+
+    bestDateLabel.textContent = results.bestDates.map((entry) => entry.label).join(" · ");
+    for (const entry of results.bestDates) {
+      const meta = document.createElement("span");
+      meta.className = "pill";
+      meta.textContent = `${entry.count} Personen`;
+      bestDateMeta.appendChild(meta);
+    }
     return;
   }
 
@@ -369,10 +381,17 @@ function renderAvailabilityForm() {
 }
 
 function renderFreeTextForm(grid) {
+  const intro = document.createElement("div");
+  intro.className = "free-mode-intro";
+  intro.innerHTML = `
+    <strong>Eigene mögliche Tage eintragen</strong>
+    <p class="description">Erlaube Texte wie "20. Mai", "Dienstag, 20.5." oder "20.5. ab 18 Uhr".</p>
+  `;
+
   const wrapper = document.createElement("div");
   wrapper.className = "free-text-list";
 
-  state.freeTextDraft.forEach((entry, index) => {
+  state.suggestedDateDraft.forEach((entry, index) => {
     const card = document.createElement("div");
     card.className = "free-text-card";
 
@@ -384,39 +403,40 @@ function renderFreeTextForm(grid) {
     removeButton.type = "button";
     removeButton.className = "text-button";
     removeButton.textContent = "Löschen";
-    removeButton.disabled = state.freeTextDraft.length === 1;
+    removeButton.disabled = state.suggestedDateDraft.length === 1;
     removeButton.addEventListener("click", () => {
-      state.freeTextDraft = state.freeTextDraft.filter((_, itemIndex) => itemIndex !== index);
-      if (state.freeTextDraft.length === 0) {
-        state.freeTextDraft = [""];
+      state.suggestedDateDraft = state.suggestedDateDraft.filter((_, itemIndex) => itemIndex !== index);
+      if (state.suggestedDateDraft.length === 0) {
+        state.suggestedDateDraft = [""];
       }
       renderAvailabilityForm();
     });
 
-    const textarea = document.createElement("textarea");
-    textarea.rows = 3;
-    textarea.maxLength = 200;
-    textarea.placeholder = 'z. B. "Dienstags ab 18 Uhr" oder "Wochenende bevorzugt"';
-    textarea.value = entry;
-    textarea.addEventListener("input", (event) => {
-      state.freeTextDraft[index] = event.target.value;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 200;
+    input.placeholder = 'z. B. "20. Mai" oder "20.5. ab 18 Uhr"';
+    input.value = entry;
+    input.addEventListener("input", (event) => {
+      state.suggestedDateDraft[index] = event.target.value;
     });
 
     header.appendChild(removeButton);
     card.appendChild(header);
-    card.appendChild(textarea);
+    card.appendChild(input);
     wrapper.appendChild(card);
   });
 
   const addButton = document.createElement("button");
   addButton.type = "button";
   addButton.className = "ghost-button add-entry-button";
-  addButton.innerHTML = '<i class="fa-solid fa-plus"></i><span>Weiteren Eintrag hinzufügen</span>';
+  addButton.innerHTML = '<i class="fa-solid fa-plus"></i><span>Weiteren Tag hinzufügen</span>';
   addButton.addEventListener("click", () => {
-    state.freeTextDraft.push("");
+    state.suggestedDateDraft.push("");
     renderAvailabilityForm();
   });
 
+  grid.appendChild(intro);
   grid.appendChild(wrapper);
   grid.appendChild(addButton);
 }
@@ -427,20 +447,19 @@ function renderHeatmap() {
   grid.innerHTML = "";
 
   if (poll.mode === "free") {
-    if (responses.length === 0) {
-      grid.innerHTML = '<p class="description">Noch keine Freitext-Antworten vorhanden.</p>';
+    if (results.summary.length === 0) {
+      grid.innerHTML = '<p class="description">Noch keine Tagesvorschläge vorhanden.</p>';
       return;
     }
 
-    for (const response of responses) {
+    for (const entry of results.summary) {
       const card = document.createElement("article");
-      card.className = "heatmap-cell free-response-card";
-      const entries = response.freeTextAvailabilities
-        .map((entry) => `<li>${escapeHtml(entry)}</li>`)
-        .join("");
+      card.className = "heatmap-cell high free-ranking-card";
+      const participantLabel =
+        entry.count === 1 ? "1 Person" : `${entry.count} Personen`;
       card.innerHTML = `
-        <strong>${escapeHtml(response.name)}</strong>
-        <ul class="free-response-list">${entries || "<li>Keine Einträge</li>"}</ul>
+        <strong>${escapeHtml(entry.label)}</strong>
+        <span>${participantLabel}</span>
       `;
       grid.appendChild(card);
     }
@@ -479,7 +498,7 @@ function renderResultsTable() {
     head.innerHTML = `
       <tr>
         <th>Name</th>
-        <th>Verfügbarkeiten</th>
+        <th>Vorgeschlagene Tage</th>
       </tr>
     `;
 
@@ -494,14 +513,14 @@ function renderResultsTable() {
 
     body.innerHTML = responses
       .map((response) => {
-        const items = response.freeTextAvailabilities
+        const items = response.suggestedDates
           .map((entry) => `<li>${escapeHtml(entry)}</li>`)
           .join("");
 
         return `
           <tr>
             <td>${escapeHtml(response.name)}</td>
-            <td><ul class="result-list">${items}</ul></td>
+            <td><ul class="result-list">${items || "<li>Keine Tage eingetragen</li>"}</ul></td>
           </tr>
         `;
       })
@@ -550,7 +569,7 @@ async function handleResponseSubmit(event) {
   if (isFixed) {
     payload.availabilities = state.responseDraft;
   } else {
-    payload.freeTextAvailabilities = state.freeTextDraft
+    payload.suggestedDates = state.suggestedDateDraft
       .map((entry) => entry.trim())
       .filter(Boolean);
   }
@@ -570,7 +589,7 @@ async function handleResponseSubmit(event) {
 
     state.pollData = data;
     if (!isFixed) {
-      state.freeTextDraft = [""];
+      state.suggestedDateDraft = [""];
     }
     fillPollSummary();
     renderAvailabilityForm();

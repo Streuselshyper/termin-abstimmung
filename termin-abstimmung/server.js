@@ -30,6 +30,7 @@ db.exec(`
     poll_id TEXT NOT NULL,
     name TEXT NOT NULL,
     availabilities TEXT NOT NULL,
+    suggested_dates TEXT NOT NULL DEFAULT '[]',
     free_text_availabilities TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -40,6 +41,7 @@ db.exec(`
 
 ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
 ensureColumn("polls", "time_range_text", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("responses", "suggested_dates", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("responses", "free_text_availabilities", "TEXT NOT NULL DEFAULT '[]'");
 
 app.use(express.json({ limit: "1mb" }));
@@ -86,20 +88,23 @@ function normalizeMode(mode) {
   return VALID_POLL_MODES.has(mode) ? mode : "fixed";
 }
 
-function normalizeFreeTextAvailabilities(entries) {
+function normalizeSuggestedDates(entries) {
   if (!Array.isArray(entries)) {
     return [];
   }
 
   const normalized = [];
+  const seen = new Set();
 
   for (const entry of entries) {
     if (typeof entry !== "string") {
       continue;
     }
 
-    const value = normalizeText(entry, 200);
-    if (value.length > 0) {
+    const value = normalizeText(entry.replace(/\s+/g, " "), 200);
+    const key = value.toLocaleLowerCase("de-DE");
+    if (value.length > 0 && !seen.has(key)) {
+      seen.add(key);
       normalized.push(value);
     }
   }
@@ -125,13 +130,22 @@ function validateAvailabilities(dates, availabilities) {
   return { ok: true, value: normalized };
 }
 
-function validateFreeTextAvailabilities(entries) {
-  const normalized = normalizeFreeTextAvailabilities(entries);
+function validateSuggestedDates(entries) {
+  const normalized = normalizeSuggestedDates(entries);
   if (normalized.length === 0) {
-    return { ok: false, message: "Bitte trage mindestens eine Verfügbarkeit ein." };
+    return { ok: false, message: "Bitte trage mindestens einen möglichen Tag ein." };
   }
 
   return { ok: true, value: normalized };
+}
+
+function parseJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
 }
 
 function mapPollRow(row) {
@@ -143,7 +157,7 @@ function mapPollRow(row) {
     id: row.id,
     title: row.title,
     description: row.description,
-    dates: JSON.parse(row.dates),
+    dates: parseJsonArray(row.dates),
     mode: normalizeMode(row.mode),
     timeRangeText: row.time_range_text || "",
     createdAt: row.created_at,
@@ -151,12 +165,14 @@ function mapPollRow(row) {
 }
 
 function mapResponseRow(row) {
+  const suggestedDates = parseJsonArray(row.suggested_dates);
+  const legacySuggestedDates = parseJsonArray(row.free_text_availabilities);
   return {
     id: row.id,
     pollId: row.poll_id,
     name: row.name,
     availabilities: JSON.parse(row.availabilities),
-    freeTextAvailabilities: JSON.parse(row.free_text_availabilities || "[]"),
+    suggestedDates: suggestedDates.length > 0 ? suggestedDates : legacySuggestedDates,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -208,6 +224,36 @@ function calculateBestDates(dates, responses) {
   return { summary, bestDates };
 }
 
+function calculateSuggestedDatesRanking(responses) {
+  const counts = new Map();
+
+  for (const response of responses) {
+    for (const entry of normalizeSuggestedDates(response.suggestedDates)) {
+      const current = counts.get(entry) || {
+        label: entry,
+        count: 0,
+        participants: [],
+      };
+
+      current.count += 1;
+      current.participants.push(response.name);
+      counts.set(entry, current);
+    }
+  }
+
+  const summary = Array.from(counts.values()).sort((left, right) => {
+    if (right.count !== left.count) {
+      return right.count - left.count;
+    }
+    return left.label.localeCompare(right.label, "de-DE");
+  });
+
+  const bestCount = summary[0]?.count ?? 0;
+  const bestDates = summary.filter((entry) => entry.count === bestCount);
+
+  return { summary, bestDates };
+}
+
 function loadPollWithResponses(pollId) {
   const pollRow = db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId);
   if (!pollRow) {
@@ -223,7 +269,7 @@ function loadPollWithResponses(pollId) {
   const results =
     poll.mode === "fixed"
       ? calculateBestDates(poll.dates, responses)
-      : { summary: [], bestDates: [] };
+      : calculateSuggestedDatesRanking(responses);
 
   return { poll, responses, results };
 }
@@ -310,7 +356,7 @@ app.post("/api/polls/:pollId/responses", (req, res) => {
     }
 
     let availabilities = {};
-    let freeTextAvailabilities = [];
+    let suggestedDates = [];
 
     if (data.poll.mode === "fixed") {
       const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
@@ -319,27 +365,27 @@ app.post("/api/polls/:pollId/responses", (req, res) => {
       }
       availabilities = availabilityCheck.value;
     } else {
-      const freeTextCheck = validateFreeTextAvailabilities(req.body?.freeTextAvailabilities);
-      if (!freeTextCheck.ok) {
-        return res.status(400).json({ error: freeTextCheck.message });
+      const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates);
+      if (!suggestedDatesCheck.ok) {
+        return res.status(400).json({ error: suggestedDatesCheck.message });
       }
-      freeTextAvailabilities = freeTextCheck.value;
+      suggestedDates = suggestedDatesCheck.value;
     }
 
     const timestamp = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO responses (poll_id, name, availabilities, free_text_availabilities, created_at, updated_at)
+      INSERT INTO responses (poll_id, name, availabilities, suggested_dates, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(poll_id, name) DO UPDATE SET
         availabilities = excluded.availabilities,
-        free_text_availabilities = excluded.free_text_availabilities,
+        suggested_dates = excluded.suggested_dates,
         updated_at = excluded.updated_at
     `).run(
       data.poll.id,
       name,
       JSON.stringify(availabilities),
-      JSON.stringify(freeTextAvailabilities),
+      JSON.stringify(suggestedDates),
       timestamp,
       timestamp
     );

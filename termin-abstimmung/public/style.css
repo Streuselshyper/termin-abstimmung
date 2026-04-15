@@ -515,6 +515,12 @@ textarea:focus {
   gap: 0.7rem;
 }
 
+.free-mode-intro {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.2rem 0 0.1rem;
+}
+
 .free-response-list,
 .result-list {
   margin: 0;
@@ -543,6 +549,10 @@ textarea:focus {
 }
 
 .free-response-card {
+  align-content: start;
+}
+
+.free-ranking-card {
   align-content: start;
 }
 
