@@ -45,17 +45,17 @@
         <div class="hero-copy">
           <h1>Finde den besten Termin</h1>
           <p class="hero-text">
-            Poll erstellen, teilen, besten Termin sehen.
+            Poll erstellen, teilen und je nach Modus festen Termin finden oder freie Verfügbarkeiten sammeln.
           </p>
         </div>
         <div class="hero-stats">
           <article class="hero-stat">
-            <strong>3 Status</strong>
-            <span>Ja, Vielleicht, Nein</span>
+            <strong>2 Modi</strong>
+            <span>Festgelegt oder freie Wahl</span>
           </article>
           <article class="hero-stat">
-            <strong>Heatmap</strong>
-            <span>Beste Option direkt sichtbar</span>
+            <strong>Auswertung</strong>
+            <span>Heatmap oder Freitext-Übersicht</span>
           </article>
         </div>
       </section>
@@ -86,7 +86,25 @@
             ></textarea>
           </label>
 
-          <div class="calendar-section">
+          <fieldset class="mode-fieldset">
+            <legend>Modus</legend>
+            <label class="mode-option">
+              <input type="radio" name="mode" value="fixed" checked />
+              <div>
+                <strong>Festgelegte Termine</strong>
+                <p>Du wählst konkrete Tage im Kalender. Teilnehmende stimmen mit Ja, Vielleicht oder Nein ab.</p>
+              </div>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="mode" value="free" />
+              <div>
+                <strong>Freie Wahl</strong>
+                <p>Du beschreibst nur den Zeitraum. Teilnehmende tragen freie Texte wie "Dienstags abends" ein.</p>
+              </div>
+            </label>
+          </fieldset>
+
+          <div id="fixed-mode-fields" class="calendar-section">
             <div class="calendar-header">
               <div>
                 <h3>Wähle Termine</h3>
@@ -112,6 +130,17 @@
             </div>
           </div>
 
+          <label id="free-mode-fields" class="mode-textarea is-hidden">
+            <span>Zeitraum beschreiben</span>
+            <textarea
+              id="poll-time-range"
+              name="timeRangeText"
+              maxlength="300"
+              rows="4"
+              placeholder="z. B. nächste 2 Wochen, Mai 2026, Kalenderwoche 20 bis 22"
+            ></textarea>
+          </label>
+
           <div id="form-feedback" class="feedback" role="status" aria-live="polite"></div>
 
           <button class="primary-button" type="submit">
@@ -136,15 +165,17 @@
           </div>
 
           <p id="poll-description-view" class="description"></p>
+          <p id="poll-mode-description" class="description"></p>
 
           <div class="info-pills">
             <span class="pill"><i class="fa-regular fa-calendar"></i> <span id="poll-date-count"></span></span>
             <span class="pill"><i class="fa-regular fa-user"></i> <span id="poll-response-count"></span></span>
+            <span class="pill"><i class="fa-regular fa-compass"></i> <span id="poll-mode-pill"></span></span>
           </div>
 
           <div class="best-date-card">
             <div>
-              <p class="eyebrow">Beste Termine</p>
+              <p id="best-date-eyebrow" class="eyebrow">Beste Termine</p>
               <h2 id="best-date-label">Noch keine Antworten</h2>
             </div>
             <div id="best-date-meta" class="best-date-meta"></div>
@@ -173,7 +204,7 @@
             </label>
 
             <div id="availability-grid" class="availability-grid"></div>
-            <div class="legend">
+            <div id="availability-legend" class="legend">
               <span class="legend-item yes">Ja</span>
               <span class="legend-item maybe">Vielleicht</span>
               <span class="legend-item no">Nein</span>
@@ -191,8 +222,8 @@
         <article class="panel">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Heatmap</p>
-              <h2>Beste Überschneidungen</h2>
+              <p id="results-panel-eyebrow" class="eyebrow">Heatmap</p>
+              <h2 id="results-panel-title">Beste Überschneidungen</h2>
             </div>
           </div>
           <div id="heatmap-grid" class="heatmap-grid"></div>

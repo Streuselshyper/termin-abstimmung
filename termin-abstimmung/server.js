@@ -7,6 +7,7 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const DB_PATH = path.join(__dirname, "data", "terminabstimmung.db");
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
+const VALID_POLL_MODES = new Set(["fixed", "free"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
 
 const db = new Database(DB_PATH);
@@ -19,6 +20,8 @@ db.exec(`
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     dates TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'fixed',
+    time_range_text TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
   );
 
@@ -27,12 +30,17 @@ db.exec(`
     poll_id TEXT NOT NULL,
     name TEXT NOT NULL,
     availabilities TEXT NOT NULL,
+    free_text_availabilities TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE(poll_id, name COLLATE NOCASE),
     FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
   );
 `);
+
+ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
+ensureColumn("polls", "time_range_text", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("responses", "free_text_availabilities", "TEXT NOT NULL DEFAULT '[]'");
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -43,6 +51,14 @@ function normalizeText(value, maxLength) {
   }
 
   return value.trim().slice(0, maxLength);
+}
+
+function ensureColumn(tableName, columnName, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  const exists = columns.some((column) => column.name === columnName);
+  if (!exists) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
 }
 
 function normalizeDates(dates) {
@@ -66,6 +82,31 @@ function normalizeDates(dates) {
   return Array.from(uniqueDates).sort();
 }
 
+function normalizeMode(mode) {
+  return VALID_POLL_MODES.has(mode) ? mode : "fixed";
+}
+
+function normalizeFreeTextAvailabilities(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  const normalized = [];
+
+  for (const entry of entries) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+
+    const value = normalizeText(entry, 200);
+    if (value.length > 0) {
+      normalized.push(value);
+    }
+  }
+
+  return normalized.slice(0, 20);
+}
+
 function validateAvailabilities(dates, availabilities) {
   if (!availabilities || typeof availabilities !== "object" || Array.isArray(availabilities)) {
     return { ok: false, message: "Ungültige Verfügbarkeiten." };
@@ -84,6 +125,15 @@ function validateAvailabilities(dates, availabilities) {
   return { ok: true, value: normalized };
 }
 
+function validateFreeTextAvailabilities(entries) {
+  const normalized = normalizeFreeTextAvailabilities(entries);
+  if (normalized.length === 0) {
+    return { ok: false, message: "Bitte trage mindestens eine Verfügbarkeit ein." };
+  }
+
+  return { ok: true, value: normalized };
+}
+
 function mapPollRow(row) {
   if (!row) {
     return null;
@@ -94,6 +144,8 @@ function mapPollRow(row) {
     title: row.title,
     description: row.description,
     dates: JSON.parse(row.dates),
+    mode: normalizeMode(row.mode),
+    timeRangeText: row.time_range_text || "",
     createdAt: row.created_at,
   };
 }
@@ -104,6 +156,7 @@ function mapResponseRow(row) {
     pollId: row.poll_id,
     name: row.name,
     availabilities: JSON.parse(row.availabilities),
+    freeTextAvailabilities: JSON.parse(row.free_text_availabilities || "[]"),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -167,7 +220,10 @@ function loadPollWithResponses(pollId) {
 
   const poll = mapPollRow(pollRow);
   const responses = responseRows.map(mapResponseRow);
-  const results = calculateBestDates(poll.dates, responses);
+  const results =
+    poll.mode === "fixed"
+      ? calculateBestDates(poll.dates, responses)
+      : { summary: [], bestDates: [] };
 
   return { poll, responses, results };
 }
@@ -180,7 +236,9 @@ app.post("/api/polls", (req, res) => {
   try {
     const title = normalizeText(req.body?.title, 120);
     const description = normalizeText(req.body?.description, 1000);
-    const dates = normalizeDates(req.body?.dates);
+    const mode = normalizeMode(req.body?.mode);
+    const dates = mode === "fixed" ? normalizeDates(req.body?.dates) : [];
+    const timeRangeText = mode === "free" ? normalizeText(req.body?.timeRangeText, 300) : "";
 
     if (title.length < 3) {
       return res.status(400).json({ error: "Der Titel muss mindestens 3 Zeichen lang sein." });
@@ -190,16 +248,22 @@ app.post("/api/polls", (req, res) => {
       return res.status(400).json({ error: "Die Beschreibung muss mindestens 3 Zeichen lang sein." });
     }
 
-    if (dates.length === 0) {
+    if (mode === "fixed" && dates.length === 0) {
       return res.status(400).json({ error: "Bitte wähle mindestens ein Datum aus." });
+    }
+
+    if (mode === "free" && timeRangeText.length < 3) {
+      return res
+        .status(400)
+        .json({ error: "Bitte beschreibe den allgemeinen Zeitraum mit mindestens 3 Zeichen." });
     }
 
     const pollId = crypto.randomBytes(6).toString("hex");
     const createdAt = new Date().toISOString();
 
     db.prepare(
-      "INSERT INTO polls (id, title, description, dates, created_at) VALUES (?, ?, ?, ?, ?)"
-    ).run(pollId, title, description, JSON.stringify(dates), createdAt);
+      "INSERT INTO polls (id, title, description, dates, mode, time_range_text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(pollId, title, description, JSON.stringify(dates), mode, timeRangeText, createdAt);
 
     return res.status(201).json({
       poll: {
@@ -207,6 +271,8 @@ app.post("/api/polls", (req, res) => {
         title,
         description,
         dates,
+        mode,
+        timeRangeText,
         createdAt,
         shareUrl: `/poll/${pollId}`,
       },
@@ -243,23 +309,37 @@ app.post("/api/polls/:pollId/responses", (req, res) => {
       return res.status(400).json({ error: "Bitte gib einen Namen mit mindestens 2 Zeichen ein." });
     }
 
-    const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
-    if (!availabilityCheck.ok) {
-      return res.status(400).json({ error: availabilityCheck.message });
+    let availabilities = {};
+    let freeTextAvailabilities = [];
+
+    if (data.poll.mode === "fixed") {
+      const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
+      if (!availabilityCheck.ok) {
+        return res.status(400).json({ error: availabilityCheck.message });
+      }
+      availabilities = availabilityCheck.value;
+    } else {
+      const freeTextCheck = validateFreeTextAvailabilities(req.body?.freeTextAvailabilities);
+      if (!freeTextCheck.ok) {
+        return res.status(400).json({ error: freeTextCheck.message });
+      }
+      freeTextAvailabilities = freeTextCheck.value;
     }
 
     const timestamp = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO responses (poll_id, name, availabilities, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO responses (poll_id, name, availabilities, free_text_availabilities, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(poll_id, name) DO UPDATE SET
         availabilities = excluded.availabilities,
+        free_text_availabilities = excluded.free_text_availabilities,
         updated_at = excluded.updated_at
     `).run(
       data.poll.id,
       name,
-      JSON.stringify(availabilityCheck.value),
+      JSON.stringify(availabilities),
+      JSON.stringify(freeTextAvailabilities),
       timestamp,
       timestamp
     );

@@ -300,7 +300,52 @@ h3 {
   gap: 0.55rem;
 }
 
-input,
+.mode-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.mode-fieldset legend {
+  margin-bottom: 0.4rem;
+  font-weight: 700;
+}
+
+.mode-option,
+.mode-textarea,
+.free-text-card {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 1.2rem;
+  padding: 1rem;
+}
+
+.mode-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.mode-option input {
+  width: 1.1rem;
+  min-height: 1.1rem;
+  margin-top: 0.2rem;
+}
+
+.mode-option p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+input:not([type="radio"]),
 textarea {
   width: 100%;
   border: 1px solid var(--border);
@@ -322,7 +367,7 @@ textarea {
   min-height: 3.25rem;
 }
 
-input:focus,
+input:not([type="radio"]):focus,
 textarea:focus {
   border-color: rgba(45, 212, 191, 0.55);
   background: rgba(148, 163, 184, 0.12);
@@ -461,6 +506,44 @@ textarea:focus {
 
 .availability-grid {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.free-text-list,
+.free-response-list,
+.result-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.free-response-list,
+.result-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.free-text-card {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.free-text-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.add-entry-button {
+  width: 100%;
+  min-height: 3rem;
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.free-response-card {
+  align-content: start;
 }
 
 .status-row {

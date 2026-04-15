@@ -12,11 +12,14 @@ const state = {
   currentMonth: startOfMonth(new Date()),
   pollData: null,
   responseDraft: {},
+  freeTextDraft: [""],
+  createMode: "fixed",
 };
 
 initializeApp().catch((error) => {
   console.error(error);
-  appElement.innerHTML = `<section class="panel"><h1>Fehler</h1><p>Die Ansicht konnte nicht geladen werden.</p></section>`;
+  appElement.innerHTML =
+    '<section class="panel"><h1>Fehler</h1><p>Die Ansicht konnte nicht geladen werden.</p></section>';
 });
 
 themeToggle.addEventListener("click", toggleTheme);
@@ -66,6 +69,7 @@ function renderHomePage() {
 
   renderCalendar();
   renderSelectedDates();
+  syncCreateModeUi();
 
   document.querySelector("#prev-month").addEventListener("click", () => {
     state.currentMonth = addMonths(state.currentMonth, -1);
@@ -83,7 +87,28 @@ function renderHomePage() {
     renderSelectedDates();
   });
 
+  document.querySelectorAll('input[name="mode"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      state.createMode = input.value;
+      syncCreateModeUi();
+    });
+  });
+
   document.querySelector("#create-poll-form").addEventListener("submit", handleCreatePoll);
+}
+
+function syncCreateModeUi() {
+  const fixedFields = document.querySelector("#fixed-mode-fields");
+  const freeFields = document.querySelector("#free-mode-fields");
+  const timeRangeInput = document.querySelector("#poll-time-range");
+  if (!fixedFields || !freeFields || !timeRangeInput) {
+    return;
+  }
+
+  const isFixed = state.createMode === "fixed";
+  fixedFields.classList.toggle("is-hidden", !isFixed);
+  freeFields.classList.toggle("is-hidden", isFixed);
+  timeRangeInput.required = !isFixed;
 }
 
 function renderCalendar() {
@@ -169,10 +194,16 @@ async function handleCreatePoll(event) {
   const feedback = document.querySelector("#form-feedback");
   const title = document.querySelector("#poll-title").value.trim();
   const description = document.querySelector("#poll-description").value.trim();
+  const timeRangeText = document.querySelector("#poll-time-range").value.trim();
   const dates = Array.from(state.selectedDates).sort();
 
-  if (dates.length === 0) {
+  if (state.createMode === "fixed" && dates.length === 0) {
     setFeedback(feedback, "Bitte wähle mindestens ein Datum aus.", "error");
+    return;
+  }
+
+  if (state.createMode === "free" && timeRangeText.length < 3) {
+    setFeedback(feedback, "Bitte beschreibe den Zeitraum etwas genauer.", "error");
     return;
   }
 
@@ -181,7 +212,13 @@ async function handleCreatePoll(event) {
     const response = await fetch("/api/polls", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, description, dates }),
+      body: JSON.stringify({
+        title,
+        description,
+        mode: state.createMode,
+        dates,
+        timeRangeText,
+      }),
     });
 
     const data = await response.json();
@@ -197,12 +234,15 @@ async function handleCreatePoll(event) {
 
 async function renderPollPage(pollId) {
   const template = document.querySelector("#poll-template");
-  appElement.innerHTML = '<section class="panel"><p class="description">Poll wird geladen ...</p></section>';
+  appElement.innerHTML =
+    '<section class="panel"><p class="description">Poll wird geladen ...</p></section>';
 
   const response = await fetch(`/api/polls/${pollId}`);
   const data = await response.json();
   if (!response.ok) {
-    appElement.innerHTML = `<section class="panel"><h1>Nicht gefunden</h1><p>${escapeHtml(data.error || "Der Poll existiert nicht.")}</p></section>`;
+    appElement.innerHTML = `<section class="panel"><h1>Nicht gefunden</h1><p>${escapeHtml(
+      data.error || "Der Poll existiert nicht."
+    )}</p></section>`;
     return;
   }
 
@@ -221,24 +261,54 @@ async function renderPollPage(pollId) {
 }
 
 function initializeDraftFromPoll(poll) {
+  if (poll.mode === "free") {
+    state.responseDraft = {};
+    state.freeTextDraft = [""];
+    return;
+  }
+
   const defaultDraft = {};
   for (const date of poll.dates) {
     defaultDraft[date] = "maybe";
   }
 
   state.responseDraft = defaultDraft;
+  state.freeTextDraft = [""];
 }
 
 function fillPollSummary() {
   const { poll, responses, results } = state.pollData;
+  const isFixed = poll.mode === "fixed";
   document.querySelector("#poll-title-view").textContent = poll.title;
   document.querySelector("#poll-description-view").textContent = poll.description;
-  document.querySelector("#poll-date-count").textContent = `${poll.dates.length} Termine`;
+  document.querySelector("#poll-mode-pill").textContent = isFixed ? "Festgelegte Termine" : "Freie Wahl";
+  document.querySelector("#poll-date-count").textContent = isFixed
+    ? `${poll.dates.length} Termine`
+    : poll.timeRangeText || "Freier Zeitraum";
   document.querySelector("#poll-response-count").textContent = `${responses.length} Antworten`;
+  document.querySelector("#poll-mode-description").textContent = isFixed
+    ? "Teilnehmende stimmen pro festem Termin mit Ja, Vielleicht oder Nein ab."
+    : `Zeitraum: ${poll.timeRangeText}`;
 
+  const bestDateEyebrow = document.querySelector("#best-date-eyebrow");
   const bestDateLabel = document.querySelector("#best-date-label");
   const bestDateMeta = document.querySelector("#best-date-meta");
+  const resultsPanelEyebrow = document.querySelector("#results-panel-eyebrow");
+  const resultsPanelTitle = document.querySelector("#results-panel-title");
   bestDateMeta.innerHTML = "";
+
+  if (!isFixed) {
+    bestDateEyebrow.textContent = "Zeitraum";
+    bestDateLabel.textContent = poll.timeRangeText || "Freie Wahl";
+    bestDateMeta.innerHTML = '<span class="pill">Keine automatische Berechnung</span>';
+    resultsPanelEyebrow.textContent = "Freitext";
+    resultsPanelTitle.textContent = "Eingetragene Verfügbarkeiten";
+    return;
+  }
+
+  bestDateEyebrow.textContent = "Beste Termine";
+  resultsPanelEyebrow.textContent = "Heatmap";
+  resultsPanelTitle.textContent = "Beste Überschneidungen";
 
   if (results.bestDates.length === 0 || responses.length === 0) {
     bestDateLabel.textContent = "Noch keine Antworten";
@@ -257,7 +327,16 @@ function fillPollSummary() {
 
 function renderAvailabilityForm() {
   const grid = document.querySelector("#availability-grid");
+  const legend = document.querySelector("#availability-legend");
   grid.innerHTML = "";
+
+  if (state.pollData.poll.mode === "free") {
+    legend.classList.add("is-hidden");
+    renderFreeTextForm(grid);
+    return;
+  }
+
+  legend.classList.remove("is-hidden");
 
   for (const date of state.pollData.poll.dates) {
     const card = document.createElement("div");
@@ -289,11 +368,86 @@ function renderAvailabilityForm() {
   }
 }
 
+function renderFreeTextForm(grid) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "free-text-list";
+
+  state.freeTextDraft.forEach((entry, index) => {
+    const card = document.createElement("div");
+    card.className = "free-text-card";
+
+    const header = document.createElement("div");
+    header.className = "free-text-header";
+    header.innerHTML = `<strong>Eintrag ${index + 1}</strong>`;
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "text-button";
+    removeButton.textContent = "Löschen";
+    removeButton.disabled = state.freeTextDraft.length === 1;
+    removeButton.addEventListener("click", () => {
+      state.freeTextDraft = state.freeTextDraft.filter((_, itemIndex) => itemIndex !== index);
+      if (state.freeTextDraft.length === 0) {
+        state.freeTextDraft = [""];
+      }
+      renderAvailabilityForm();
+    });
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 3;
+    textarea.maxLength = 200;
+    textarea.placeholder = 'z. B. "Dienstags ab 18 Uhr" oder "Wochenende bevorzugt"';
+    textarea.value = entry;
+    textarea.addEventListener("input", (event) => {
+      state.freeTextDraft[index] = event.target.value;
+    });
+
+    header.appendChild(removeButton);
+    card.appendChild(header);
+    card.appendChild(textarea);
+    wrapper.appendChild(card);
+  });
+
+  const addButton = document.createElement("button");
+  addButton.type = "button";
+  addButton.className = "ghost-button add-entry-button";
+  addButton.innerHTML = '<i class="fa-solid fa-plus"></i><span>Weiteren Eintrag hinzufügen</span>';
+  addButton.addEventListener("click", () => {
+    state.freeTextDraft.push("");
+    renderAvailabilityForm();
+  });
+
+  grid.appendChild(wrapper);
+  grid.appendChild(addButton);
+}
+
 function renderHeatmap() {
   const grid = document.querySelector("#heatmap-grid");
-  const summary = state.pollData.results.summary;
+  const { poll, responses, results } = state.pollData;
   grid.innerHTML = "";
 
+  if (poll.mode === "free") {
+    if (responses.length === 0) {
+      grid.innerHTML = '<p class="description">Noch keine Freitext-Antworten vorhanden.</p>';
+      return;
+    }
+
+    for (const response of responses) {
+      const card = document.createElement("article");
+      card.className = "heatmap-cell free-response-card";
+      const entries = response.freeTextAvailabilities
+        .map((entry) => `<li>${escapeHtml(entry)}</li>`)
+        .join("");
+      card.innerHTML = `
+        <strong>${escapeHtml(response.name)}</strong>
+        <ul class="free-response-list">${entries || "<li>Keine Einträge</li>"}</ul>
+      `;
+      grid.appendChild(card);
+    }
+    return;
+  }
+
+  const summary = results.summary;
   if (summary.length === 0) {
     grid.innerHTML = '<p class="description">Noch keine Daten vorhanden.</p>';
     return;
@@ -320,6 +474,40 @@ function renderResultsTable() {
   const { poll, responses } = state.pollData;
   const head = document.querySelector("#results-head");
   const body = document.querySelector("#results-body");
+
+  if (poll.mode === "free") {
+    head.innerHTML = `
+      <tr>
+        <th>Name</th>
+        <th>Verfügbarkeiten</th>
+      </tr>
+    `;
+
+    if (responses.length === 0) {
+      body.innerHTML = `
+        <tr>
+          <td colspan="2" class="description">Noch keine Antworten eingetragen.</td>
+        </tr>
+      `;
+      return;
+    }
+
+    body.innerHTML = responses
+      .map((response) => {
+        const items = response.freeTextAvailabilities
+          .map((entry) => `<li>${escapeHtml(entry)}</li>`)
+          .join("");
+
+        return `
+          <tr>
+            <td>${escapeHtml(response.name)}</td>
+            <td><ul class="result-list">${items}</ul></td>
+          </tr>
+        `;
+      })
+      .join("");
+    return;
+  }
 
   head.innerHTML = `
     <tr>
@@ -356,13 +544,23 @@ async function handleResponseSubmit(event) {
 
   const feedback = document.querySelector("#response-feedback");
   const name = document.querySelector("#participant-name").value.trim();
+  const isFixed = state.pollData.poll.mode === "fixed";
+  const payload = { name };
+
+  if (isFixed) {
+    payload.availabilities = state.responseDraft;
+  } else {
+    payload.freeTextAvailabilities = state.freeTextDraft
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
 
   try {
     setFeedback(feedback, "Antwort wird gespeichert ...");
     const response = await fetch(`/api/polls/${state.pollData.poll.id}/responses`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, availabilities: state.responseDraft }),
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();
@@ -371,6 +569,9 @@ async function handleResponseSubmit(event) {
     }
 
     state.pollData = data;
+    if (!isFixed) {
+      state.freeTextDraft = [""];
+    }
     fillPollSummary();
     renderAvailabilityForm();
     renderHeatmap();
