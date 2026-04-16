@@ -66,68 +66,45 @@
         gap: 1.5rem;
       }
 
-      .dashboard-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
-        gap: 1.5rem;
-      }
-
-      .dashboard-hero {
-        position: relative;
-        overflow: hidden;
-      }
-
-      .dashboard-hero::after {
-        content: "";
-        position: absolute;
-        inset: auto -10% -30% auto;
-        width: 18rem;
-        aspect-ratio: 1;
-        background: radial-gradient(circle, rgba(45, 212, 191, 0.3), transparent 70%);
-        pointer-events: none;
-      }
-
-      .hero-copy.compact-copy {
-        max-width: 42rem;
-      }
-
-      .dashboard-stats-grid,
+      .dashboard-actions-grid,
       .poll-list {
         display: grid;
         gap: 1rem;
       }
 
-      .dashboard-stats-grid {
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      .topbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
       }
 
-      .dashboard-stat,
+      .topbar-actions {
+        justify-content: flex-end;
+      }
+
+      .topbar-primary {
+        display: flex;
+        justify-content: center;
+      }
+
+      .dashboard-actions-grid {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+
       .poll-card,
-      .quick-action-card,
-      .email-preferences-card {
+      .create-mode-card,
+      .poll-list-row {
         border-radius: 1.1rem;
         border: 1px solid var(--border-soft);
         background: var(--surface-soft);
       }
 
-      .dashboard-stat {
-        padding: 1rem 1.1rem;
-      }
-
-      .dashboard-stat strong {
-        display: block;
-        font-size: 1.6rem;
-        margin-bottom: 0.3rem;
-      }
-
-      .dashboard-stat span,
       .muted-copy {
         color: var(--text-soft);
       }
 
       .dashboard-section-head,
       .poll-card-head,
-      .quick-action-head,
       .inline-action-row {
         display: flex;
         align-items: flex-start;
@@ -135,57 +112,58 @@
         gap: 1rem;
       }
 
-      .poll-card {
-        padding: 1.1rem;
+      .create-mode-card {
+        display: grid;
+        gap: 1rem;
+        padding: 1.4rem;
+        transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
       }
 
-      .poll-card-meta,
+      .create-mode-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(15, 118, 110, 0.28);
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .create-mode-icon {
+        width: 3rem;
+        height: 3rem;
+        display: grid;
+        place-items: center;
+        border-radius: 1rem;
+        background: rgba(15, 118, 110, 0.12);
+        color: var(--accent-strong);
+        font-size: 1.1rem;
+      }
+
+      .create-mode-copy h3,
+      .poll-list-row h3 {
+        margin-bottom: 0.35rem;
+      }
+
+      .poll-list-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.7fr) auto auto;
+        gap: 1rem;
+        align-items: center;
+        padding: 1rem 1.1rem;
+      }
+
       .poll-card-actions,
-      .action-cluster,
-      .owner-action-grid {
+      .owner-action-grid,
+      .poll-list-meta {
         display: flex;
         flex-wrap: wrap;
         gap: 0.75rem;
       }
 
-      .poll-card-meta {
-        margin: 0.9rem 0 0.4rem;
-      }
-
-      .poll-card-actions {
-        margin-top: 1rem;
-      }
-
-      .poll-card-actions > * {
-        flex: 0 0 auto;
+      .poll-list-meta {
+        justify-content: flex-end;
       }
 
       .poll-empty-state {
         padding: 1.4rem;
         text-align: center;
-      }
-
-      .editor-side-stack {
-        display: grid;
-        gap: 1rem;
-      }
-
-      .quick-action-card,
-      .email-preferences-card {
-        padding: 1.1rem;
-      }
-
-      .quick-action-card ul {
-        margin: 0.8rem 0 0;
-        padding-left: 1.1rem;
-        color: var(--text-soft);
-      }
-
-      .inline-input-row {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 0.75rem;
-        align-items: end;
       }
 
       .owner-actions {
@@ -234,15 +212,25 @@
       }
 
       @media (max-width: 920px) {
-        .dashboard-grid {
+        .topbar {
           grid-template-columns: 1fr;
+          gap: 1rem;
+        }
+
+        .topbar-primary,
+        .topbar-actions {
+          justify-content: flex-start;
         }
       }
 
       @media (max-width: 640px) {
-        .inline-input-row,
-        .share-link-row {
+        .share-link-row,
+        .poll-list-row {
           grid-template-columns: 1fr;
+        }
+
+        .poll-list-meta {
+          justify-content: flex-start;
         }
       }
     </style>
@@ -260,6 +248,8 @@
             <small>Einladungen, Export, Dashboard</small>
           </span>
         </a>
+
+        <div id="topbar-primary" class="topbar-primary"></div>
 
         <div class="topbar-actions">
           <nav id="topbar-nav" class="topbar-nav"></nav>
@@ -506,182 +496,49 @@
 
     <template id="dashboard-template">
       <section class="dashboard-shell">
-        <section class="hero-card dashboard-hero">
-          <div class="hero-copy compact-copy">
-            <p class="eyebrow">Dashboard</p>
-            <h1>Umfragen verwalten, teilen und sofort weitergeben</h1>
-            <p class="hero-text">
-              Erstelle neue Abstimmungen, behalte Antworten im Blick und verteile Share-Links oder Kalenderexporte ohne
-              Umwege aus einer kompakten Admin-Ansicht.
-            </p>
+        <article class="panel" id="dashboard-create">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Umfrage erstellen</p>
+              <h1>Schnell starten</h1>
+            </div>
           </div>
-          <div id="dashboard-stats" class="dashboard-stats-grid"></div>
-        </section>
-
-        <section class="dashboard-grid">
-          <article class="panel">
-            <div class="panel-header">
-              <div>
-                <p class="eyebrow">Eigene Umfragen</p>
-                <h2>Uebersicht</h2>
+          <p class="description">Waehle zuerst den Typ deiner Umfrage. Der Editor wird im naechsten Schritt geoeffnet.</p>
+          <div class="dashboard-actions-grid">
+            <a class="create-mode-card" href="/dashboard#create">
+              <div class="create-mode-icon"><i class="fa-regular fa-calendar"></i></div>
+              <div class="create-mode-copy">
+                <h3>Feste Termine</h3>
+                <p class="description">Du legst konkrete Tage fest und sammelst Ja-, Vielleicht- oder Nein-Antworten.</p>
               </div>
-              <button id="refresh-dashboard" class="ghost-button compact-button" type="button" aria-label="Aktualisieren">
-                <i class="fa-solid fa-rotate"></i>
-              </button>
+            </a>
+            <a class="create-mode-card" href="/dashboard#create">
+              <div class="create-mode-icon"><i class="fa-regular fa-pen-to-square"></i></div>
+              <div class="create-mode-copy">
+                <h3>Freie Wahl</h3>
+                <p class="description">Teilnehmende schlagen selbst passende Tage im Kalender vor.</p>
+              </div>
+            </a>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Meine Umfragen</p>
+              <h2>Zuletzt aktualisiert</h2>
             </div>
-            <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
-            <div class="dashboard-section-head">
-              <p class="muted-copy">Hier verwaltest du Freigabe, Duplikate, Export und Loeschungen.</p>
-              <span id="dashboard-list-summary" class="pill">0 Umfragen</span>
-            </div>
-            <div id="dashboard-polls" class="poll-list"></div>
-          </article>
-
-          <article class="panel editor-side-stack">
-            <div class="panel-header">
-              <div>
-                <p class="eyebrow">Umfrage-Editor</p>
-                <h2 id="editor-title">Neue Umfrage</h2>
-              </div>
-              <button id="cancel-edit-button" class="text-button is-hidden" type="button">Bearbeitung abbrechen</button>
-            </div>
-
-            <form id="create-poll-form" class="stack-form">
-              <label>
-                <span>Titel</span>
-                <input id="poll-title" name="title" maxlength="120" required placeholder="Team-Offsite Mai" />
-              </label>
-
-              <label>
-                <span>Beschreibung</span>
-                <textarea
-                  id="poll-description"
-                  name="description"
-                  maxlength="1200"
-                  rows="4"
-                  required
-                  placeholder="Kontext, Ort, Zweck oder Moderationshinweise"
-                ></textarea>
-              </label>
-
-              <fieldset class="mode-fieldset">
-                <legend>Modus</legend>
-                <label class="mode-option">
-                  <input type="radio" name="mode" value="fixed" checked />
-                  <div>
-                    <strong>Feste Termine</strong>
-                    <p>Du gibst konkrete Tage vor, Teilnehmende stimmen mit Ja, Vielleicht oder Nein ab.</p>
-                  </div>
-                </label>
-                <label class="mode-option">
-                  <input type="radio" name="mode" value="free" />
-                  <div>
-                    <strong>Freie Wahl</strong>
-                    <p>Teilnehmende markieren danach beliebige Tage selbst im Kalender.</p>
-                  </div>
-                </label>
-              </fieldset>
-
-              <div id="fixed-mode-fields" class="calendar-section">
-                <div class="calendar-header">
-                  <div>
-                    <h3>Termine auswaehlen</h3>
-                    <p id="calendar-label" class="calendar-meta"></p>
-                  </div>
-                  <div class="calendar-actions">
-                    <button id="prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
-                      <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <button id="next-month" class="ghost-button compact-button" type="button" aria-label="Naechster Monat">
-                      <i class="fa-solid fa-chevron-right"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <div id="calendar-grid" class="calendar-grid" aria-live="polite"></div>
-                <div class="selected-dates-box">
-                  <div class="selected-header">
-                    <span>Ausgewaehlte Termine</span>
-                    <button id="clear-dates" class="text-button" type="button">Leeren</button>
-                  </div>
-                  <div id="selected-dates" class="selected-dates"></div>
-                </div>
-              </div>
-
-              <label>
-                <span>Einladungsnachricht</span>
-                <textarea
-                  id="poll-invite-message"
-                  name="inviteMessage"
-                  maxlength="500"
-                  rows="3"
-                  placeholder="Optionaler Zusatztext fuer Einladungen"
-                ></textarea>
-              </label>
-
-              <label>
-                <span>Einladungs-E-Mails</span>
-                <textarea
-                  id="poll-invite-emails"
-                  name="inviteEmails"
-                  rows="3"
-                  placeholder="anna@firma.de, max@firma.de"
-                ></textarea>
-              </label>
-
-              <label class="check-row">
-                <input id="poll-send-invites" type="checkbox" />
-                <span>Einladungen nach dem Speichern protokollieren</span>
-              </label>
-
-              <label class="check-row">
-                <input id="poll-notify-responses" type="checkbox" checked />
-                <span>Mich bei neuen Antworten per E-Mail benachrichtigen</span>
-              </label>
-
-              <label class="check-row">
-                <input id="poll-allow-invite-emails" type="checkbox" checked />
-                <span>E-Mail-Einladungen fuer diese Umfrage aktivieren</span>
-              </label>
-
-              <div id="poll-form-feedback" class="feedback" role="status" aria-live="polite"></div>
-
-              <button id="submit-poll-button" class="primary-button" type="submit">
-                <i class="fa-solid fa-wand-magic-sparkles"></i>
-                Umfrage erstellen
-              </button>
-            </form>
-
-            <section class="quick-action-card">
-              <div class="quick-action-head">
-                <div>
-                  <p class="eyebrow">Schnellstart</p>
-                  <h3>Was nach dem Erstellen bereitsteht</h3>
-                </div>
-                <span class="pill">Live</span>
-              </div>
-              <ul>
-                <li>Direkter Share-Link fuer Teilnehmende</li>
-                <li>Duplikat-Funktion fuer wiederkehrende Abstimmungen</li>
-                <li>ICS-Export fuer den besten oder ausgewaehlten Termin</li>
-              </ul>
-            </section>
-
-            <section class="email-preferences-card">
-              <div class="quick-action-head">
-                <div>
-                  <p class="eyebrow">E-Mail-Optionen</p>
-                  <h3>Vorbereitung fuer Einladungen</h3>
-                </div>
-                <span class="pill">UI</span>
-              </div>
-              <p class="description">
-                Lege beim Erstellen optional Einladungstext, Empfaenger und Benachrichtigungslogik fest. Der Versand
-                bleibt in dieser Umgebung protokolliert.
-              </p>
-            </section>
-          </article>
-        </section>
+            <button id="refresh-dashboard" class="ghost-button compact-button" type="button" aria-label="Aktualisieren">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
+          <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
+          <div class="dashboard-section-head">
+            <p class="muted-copy">Nur die wichtigsten Infos und schnelle Aktionen direkt im Dashboard.</p>
+            <span id="dashboard-list-summary" class="pill">0 Umfragen</span>
+          </div>
+          <div id="dashboard-polls" class="poll-list"></div>
+        </article>
       </section>
     </template>
 

@@ -1,4 +1,5 @@
 const navElement = document.querySelector("#topbar-nav");
+const topbarPrimaryElement = document.querySelector("#topbar-primary");
 const themeToggle = document.querySelector("#theme-toggle");
 const dynamicViewElement = document.querySelector("#dynamic-view");
 const staticViewIds = ["landing-view", "login-view", "register-view", "forgot-password-view", "dynamic-view"];
@@ -209,6 +210,7 @@ async function apiFetch(url, options = {}) {
 
 function renderTopbarNav() {
   navElement.innerHTML = "";
+  topbarPrimaryElement.innerHTML = "";
 
   if (!state.auth.user) {
     navElement.innerHTML = `
@@ -218,8 +220,14 @@ function renderTopbarNav() {
     return;
   }
 
+  topbarPrimaryElement.innerHTML = `
+    <a class="primary-link" href="/dashboard#create">
+      <i class="fa-solid fa-plus"></i>
+      Neue Umfrage
+    </a>
+  `;
+
   navElement.innerHTML = `
-    <a class="ghost-link" href="/dashboard">Dashboard</a>
     <a class="ghost-link" href="/account"><i class="fa-regular fa-user"></i> Konto</a>
     <span class="nav-user">${escapeHtml(state.auth.user.email)}</span>
     <button id="logout-button" class="ghost-button wide-button" type="button">Logout</button>
@@ -337,38 +345,9 @@ async function renderDashboardPage() {
   showDynamicView();
   dynamicViewElement.appendChild(template.content.cloneNode(true));
 
-  hydrateCreateModeInputs();
-  renderCalendar();
-  renderSelectedDates();
-  syncCreateModeUi();
-
-  document.querySelector("#prev-month").addEventListener("click", () => {
-    state.currentMonth = addMonths(state.currentMonth, -1);
-    renderCalendar();
-  });
-
-  document.querySelector("#next-month").addEventListener("click", () => {
-    state.currentMonth = addMonths(state.currentMonth, 1);
-    renderCalendar();
-  });
-
-  document.querySelector("#clear-dates").addEventListener("click", () => {
-    state.selectedDates.clear();
-    renderCalendar();
-    renderSelectedDates();
-  });
-
-  document.querySelectorAll('input[name="mode"]').forEach((input) => {
-    input.addEventListener("change", () => {
-      state.createMode = input.value;
-      syncCreateModeUi();
-    });
-  });
-
   document.querySelector("#refresh-dashboard").addEventListener("click", () => {
     loadDashboardPolls().catch(handleRenderError);
   });
-  document.querySelector("#create-poll-form").addEventListener("submit", handleCreatePoll);
 
   await loadDashboardPolls();
 }
@@ -541,14 +520,13 @@ async function loadDashboardPolls() {
     const data = await apiFetch("/api/user/dashboard");
     state.dashboardPolls = data.polls;
     state.dashboardStats = data.stats;
-    renderDashboardStats(data.stats);
     summary.textContent = `${data.polls.length} Umfragen`;
 
     if (data.polls.length === 0) {
       list.innerHTML = `
         <article class="poll-card poll-empty-state">
           <strong>Noch keine Umfragen</strong>
-          <p class="description">Lege unten deine erste Termin-Abstimmung an.</p>
+          <p class="description">Erstelle oben deine erste Termin-Abstimmung.</p>
         </article>
       `;
       return;
@@ -568,81 +546,33 @@ async function loadDashboardPolls() {
   }
 }
 
-function renderDashboardStats(stats) {
-  const container = document.querySelector("#dashboard-stats");
-  if (!container) {
-    return;
-  }
-
-  const items = [
-    { value: stats?.totalPolls ?? 0, label: "Umfragen gesamt" },
-    { value: stats?.totalResponses ?? 0, label: "Antworten" },
-    { value: stats?.activePolls ?? 0, label: "Mit Aktivitaet" },
-    { value: stats?.inviteEnabledPolls ?? 0, label: "E-Mail aktiv" },
-  ];
-
-  container.innerHTML = items
-    .map(
-      (item) => `
-        <article class="dashboard-stat">
-          <strong>${escapeHtml(String(item.value))}</strong>
-          <span>${escapeHtml(item.label)}</span>
-        </article>
-      `
-    )
-    .join("");
-}
-
 function renderDashboardPollCard(poll) {
   const absoluteShareUrl = poll.absoluteShareUrl || `${window.location.origin}${poll.shareUrl}`;
-  const exportDates = getPollExportDates(poll);
-  const latestActivity = poll.latestResponseAt || poll.updatedAt || poll.createdAt;
-  const topDates = poll.bestDates?.length
-    ? poll.bestDates.slice(0, 2).map((entry) => formatDateLong(entry.date)).join(" · ")
-    : "Noch keine Favoriten";
+  const lastUpdated = poll.latestResponseAt || poll.updatedAt || poll.createdAt;
+  const status = poll.responseCount > 0 ? "Aktiv" : "Neu";
 
   return `
-    <article class="poll-card">
-      <div class="poll-card-head">
-        <div>
-          <p class="eyebrow">${poll.mode === "fixed" ? "Festgelegte Termine" : "Freie Wahl"}</p>
-          <h3>${escapeHtml(poll.title)}</h3>
-        </div>
-        <span class="pill">${escapeHtml(formatDateTime(latestActivity))}</span>
+    <article class="poll-list-row">
+      <div>
+        <h3>${escapeHtml(poll.title)}</h3>
+        <p class="description">${escapeHtml(formatDateShort(lastUpdated.slice(0, 10)))} · ${escapeHtml(
+          poll.mode === "fixed" ? "Feste Termine" : "Freie Wahl"
+        )}</p>
       </div>
-      <p class="description">${escapeHtml(poll.description)}</p>
-      <div class="poll-card-meta">
+      <div class="poll-list-meta">
+        <span class="pill">${escapeHtml(status)}</span>
         <span class="pill">${poll.responseCount} Antworten</span>
-        <span class="pill">${poll.mode === "fixed" ? `${poll.dates.length} Termine` : "Flexible Tage"}</span>
-        <span class="pill">${poll.allowEmailInvites ? "E-Mail aktiv" : "E-Mail aus"}</span>
       </div>
-      <p class="muted-copy">Top-Auswahl: ${escapeHtml(topDates)}</p>
       <div class="poll-card-actions">
         <a class="ghost-link" href="${poll.shareUrl}">Oeffnen</a>
-        <button class="ghost-button compact-button" type="button" data-dashboard-action="copy" data-share-url="${escapeHtml(
+        <button class="ghost-button wide-button" type="button" data-dashboard-action="copy" data-share-url="${escapeHtml(
           absoluteShareUrl
         )}">
           Link kopieren
         </button>
-        <button class="ghost-button compact-button" type="button" data-dashboard-action="duplicate" data-poll-id="${poll.id}">
-          Duplizieren
-        </button>
-        <button
-          class="ghost-button compact-button"
-          type="button"
-          data-dashboard-action="ics"
-          data-poll-id="${poll.id}"
-          ${exportDates.length === 0 ? "disabled" : ""}
-        >
-          ICS
-        </button>
-        <button class="ghost-button compact-button" type="button" data-dashboard-action="delete" data-poll-id="${poll.id}">
+        <button class="ghost-button wide-button" type="button" data-dashboard-action="delete" data-poll-id="${poll.id}">
           Loeschen
         </button>
-      </div>
-      <div class="inline-action-row">
-        <small class="muted-copy">${escapeHtml(absoluteShareUrl)}</small>
-        <small class="muted-copy">${poll.allowEmailInvites ? "Einladungen vorbereitet" : "Nur Linkfreigabe"}</small>
       </div>
     </article>
   `;
@@ -661,23 +591,6 @@ async function handleDashboardAction(event) {
       return;
     }
 
-    if (action === "duplicate") {
-      setFeedback(feedback, "Umfrage wird dupliziert ...");
-      await apiFetch(`/api/polls/${pollId}/duplicate`, { method: "POST" });
-      await loadDashboardPolls();
-      setFeedback(feedback, "Umfrage dupliziert.", "success");
-      return;
-    }
-
-    if (action === "ics") {
-      const poll = state.dashboardPolls.find((entry) => entry.id === pollId);
-      const exportDate = getPollExportDates(poll)[0] || "";
-      const query = exportDate ? `?date=${encodeURIComponent(exportDate)}` : "";
-      window.open(`/api/polls/${pollId}/ics${query}`, "_blank", "noopener");
-      setFeedback(feedback, "ICS-Export wurde geoeffnet.", "success");
-      return;
-    }
-
     if (action === "delete") {
       if (!confirm("Umfrage loeschen?")) {
         return;
@@ -690,100 +603,6 @@ async function handleDashboardAction(event) {
     }
   } catch (error) {
     setFeedback(feedback, error.message, "error");
-  }
-}
-
-function syncCreateModeUi() {
-  const fixedFields = document.querySelector("#fixed-mode-fields");
-  if (!fixedFields) {
-    return;
-  }
-
-  fixedFields.classList.toggle("is-hidden", state.createMode !== "fixed");
-}
-
-function hydrateCreateModeInputs() {
-  const validMode = state.createMode === "free" ? "free" : "fixed";
-  state.createMode = validMode;
-  document.querySelectorAll('input[name="mode"]').forEach((input) => {
-    input.checked = input.value === validMode;
-  });
-}
-
-function renderCalendar() {
-  const calendarGrid = document.querySelector("#calendar-grid");
-  const calendarLabel = document.querySelector("#calendar-label");
-  if (!calendarGrid || !calendarLabel) {
-    return;
-  }
-
-  const year = state.currentMonth.getFullYear();
-  const month = state.currentMonth.getMonth();
-  calendarLabel.textContent = formatMonthYear(state.currentMonth);
-  calendarGrid.innerHTML = "";
-
-  for (const weekday of weekdayLabels) {
-    const cell = document.createElement("div");
-    cell.className = "calendar-weekday";
-    cell.textContent = weekday;
-    calendarGrid.appendChild(cell);
-  }
-
-  const days = buildCalendarDays(year, month);
-  for (const day of days) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "calendar-day";
-    if (!day.inCurrentMonth) {
-      button.classList.add("muted");
-    }
-    if (state.selectedDates.has(day.isoDate)) {
-      button.classList.add("selected");
-    }
-
-    button.innerHTML = `<span>${day.date.getDate()}</span>`;
-    button.addEventListener("click", () => {
-      if (state.selectedDates.has(day.isoDate)) {
-        state.selectedDates.delete(day.isoDate);
-      } else {
-        state.selectedDates.add(day.isoDate);
-      }
-      renderCalendar();
-      renderSelectedDates();
-    });
-
-    calendarGrid.appendChild(button);
-  }
-}
-
-function renderSelectedDates() {
-  const container = document.querySelector("#selected-dates");
-  if (!container) {
-    return;
-  }
-
-  const dates = Array.from(state.selectedDates).sort();
-  if (dates.length === 0) {
-    container.innerHTML = '<p class="description">Noch keine Termine ausgewaehlt.</p>';
-    return;
-  }
-
-  container.innerHTML = "";
-  for (const date of dates) {
-    const pill = document.createElement("div");
-    pill.className = "selected-date-pill";
-    pill.innerHTML = `
-      <span>${formatDateLong(date)}</span>
-      <button type="button" aria-label="Datum entfernen">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
-    `;
-    pill.querySelector("button").addEventListener("click", () => {
-      state.selectedDates.delete(date);
-      renderCalendar();
-      renderSelectedDates();
-    });
-    container.appendChild(pill);
   }
 }
 
@@ -984,59 +803,6 @@ async function handleAccountDelete() {
     renderTopbarNav();
     await navigateTo("/", { replace: true });
   } catch (error) {
-    setFeedback(feedback, error.message, "error");
-  }
-}
-
-async function handleCreatePoll(event) {
-  event.preventDefault();
-
-  const feedback = document.querySelector("#dashboard-feedback");
-  const title = document.querySelector("#poll-title").value.trim();
-  const description = document.querySelector("#poll-description").value.trim();
-  const dates = Array.from(state.selectedDates).sort();
-  const inviteMessage = document.querySelector("#poll-invite-message").value.trim();
-  const inviteEmails = document.querySelector("#poll-invite-emails").value.trim();
-  const sendInvites = document.querySelector("#poll-send-invites").checked;
-  const notificationEmailEnabled = document.querySelector("#poll-notify-responses").checked;
-  const allowEmailInvites = document.querySelector("#poll-allow-invite-emails").checked;
-
-  if (state.createMode === "fixed" && dates.length === 0) {
-    setFeedback(feedback, "Bitte waehle mindestens ein Datum aus.", "error");
-    return;
-  }
-
-  try {
-    setFeedback(feedback, "Umfrage wird erstellt ...");
-    const data = await apiFetch("/api/polls", {
-      method: "POST",
-      body: JSON.stringify({
-        title,
-        description,
-        mode: state.createMode,
-        dates,
-        inviteMessage,
-        inviteEmails,
-        sendInvites,
-        notificationEmailEnabled,
-        allowEmailInvites,
-      }),
-    });
-
-    document.querySelector("#create-poll-form").reset();
-    state.selectedDates.clear();
-    state.createMode = "fixed";
-    hydrateCreateModeInputs();
-    renderCalendar();
-    renderSelectedDates();
-    syncCreateModeUi();
-    await navigateTo(data.poll.shareUrl);
-  } catch (error) {
-    if (error.status === 401) {
-      await navigateTo("/login", { replace: true });
-      return;
-    }
-
     setFeedback(feedback, error.message, "error");
   }
 }
