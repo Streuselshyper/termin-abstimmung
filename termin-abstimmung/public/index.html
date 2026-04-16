@@ -661,28 +661,39 @@
 
     <template id="poll-template">
       <section class="poll-shell">
-        <article class="panel poll-summary">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Umfrage-Detail</p>
-              <h1 id="poll-title-view"></h1>
+        <article class="panel poll-summary poll-summary-panel">
+          <div class="poll-summary-top">
+            <div class="poll-summary-main">
+              <div class="poll-summary-title-row">
+                <p class="eyebrow">Umfrage-Detail</p>
+                <h1 id="poll-title-view"></h1>
+              </div>
+
+              <div class="info-pills poll-summary-meta-row">
+                <span class="pill"><i class="fa-regular fa-calendar"></i> <span id="poll-date-count"></span></span>
+                <span class="pill"><i class="fa-regular fa-user"></i> <span id="poll-response-count"></span></span>
+                <span class="pill"><i class="fa-regular fa-compass"></i> <span id="poll-mode-pill"></span></span>
+              </div>
             </div>
-            <div class="header-action-row">
+
+            <div class="poll-summary-toolbar">
               <a id="poll-back-link" class="ghost-link" href="/dashboard">
                 <i class="fa-solid fa-arrow-left"></i>
                 Zurueck
               </a>
+
+              <details id="poll-settings-shell" class="poll-settings-shell is-hidden">
+                <summary class="ghost-button compact-button">
+                  <i class="fa-solid fa-sliders"></i>
+                  Settings
+                </summary>
+                <div id="poll-owner-actions" class="owner-actions"></div>
+              </details>
             </div>
           </div>
 
           <p id="poll-description-view" class="description"></p>
           <p id="poll-mode-description" class="description"></p>
-
-          <div class="info-pills">
-            <span class="pill"><i class="fa-regular fa-calendar"></i> <span id="poll-date-count"></span></span>
-            <span class="pill"><i class="fa-regular fa-user"></i> <span id="poll-response-count"></span></span>
-            <span class="pill"><i class="fa-regular fa-compass"></i> <span id="poll-mode-pill"></span></span>
-          </div>
 
           <div class="best-date-card">
             <div>
@@ -694,15 +705,19 @@
 
           <div id="poll-dates-overview" class="date-overview-grid"></div>
 
-          <div id="poll-owner-actions" class="owner-actions is-hidden"></div>
+          <div id="poll-summary-empty" class="empty-state poll-summary-empty is-hidden"></div>
         </article>
 
-        <article class="panel">
+        <article class="panel poll-response-panel">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Antwort</p>
-              <h2>Deine Verfuegbarkeit</h2>
+              <h2 id="participant-form-title">Deine Verfuegbarkeit</h2>
             </div>
+            <button id="poll-share-button" class="ghost-button compact-button" type="button">
+              <i class="fa-solid fa-share-nodes"></i>
+              Teilen
+            </button>
           </div>
 
           <form id="response-form" class="stack-form">
@@ -723,7 +738,7 @@
           </form>
         </article>
 
-        <article class="panel">
+        <article class="panel poll-ranking-panel">
           <div class="panel-header">
             <div>
               <p id="results-panel-eyebrow" class="eyebrow">Heatmap</p>

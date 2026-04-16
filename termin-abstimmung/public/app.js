@@ -22,6 +22,7 @@ const state = {
   currentMonth: startOfMonth(new Date()),
   participantSelectedDates: new Set(),
   participantCurrentMonth: startOfMonth(new Date()),
+  participantCalendarExpanded: !window.matchMedia("(max-width: 720px)").matches,
   pollData: null,
   responseDraft: {},
   createMode: "fixed",
@@ -783,7 +784,6 @@ function renderDashboardPollCard(poll) {
         <span class="dashboard-status-badge dashboard-status-${status.tone}">${escapeHtml(status.label)}</span>
       </div>
       <div class="poll-card-actions poll-list-actions">
-        <a class="primary-link poll-open-link" href="${poll.shareUrl}">Oeffnen</a>
       </div>
     </article>
   `;
@@ -1040,6 +1040,11 @@ async function renderPollPage(pollId) {
     renderResultsTable();
 
     document.querySelector("#response-form").addEventListener("submit", handleResponseSubmit);
+    document.querySelector("#poll-share-button").addEventListener("click", () => {
+      sharePollLink().catch((error) => {
+        setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+      });
+    });
   } catch (error) {
     dynamicViewElement.innerHTML = `<section class="panel"><h1>Nicht gefunden</h1><p>${escapeHtml(
       error.message
@@ -1048,6 +1053,7 @@ async function renderPollPage(pollId) {
 }
 
 function initializeDraftFromPoll(poll) {
+  state.participantCalendarExpanded = !window.matchMedia("(max-width: 720px)").matches;
   if (poll.mode === "free") {
     state.responseDraft = {};
     state.participantSelectedDates = new Set();
@@ -1070,6 +1076,7 @@ function fillPollSummary() {
   const isFixed = poll.mode === "fixed";
   document.querySelector("#poll-title-view").textContent = poll.title;
   document.querySelector("#poll-description-view").textContent = poll.description;
+  document.querySelector("#participant-form-title").textContent = isFixed ? "Deine Verfuegbarkeit" : "Teilnehmen";
   document.querySelector("#poll-mode-pill").textContent = isFixed ? "Festgelegte Termine" : "Freie Wahl";
   document.querySelector("#poll-date-count").textContent = isFixed
     ? `${poll.dates.length} Termine`
@@ -1088,7 +1095,10 @@ function fillPollSummary() {
   const bestDateMeta = document.querySelector("#best-date-meta");
   const resultsPanelEyebrow = document.querySelector("#results-panel-eyebrow");
   const resultsPanelTitle = document.querySelector("#results-panel-title");
+  const summaryEmpty = document.querySelector("#poll-summary-empty");
   bestDateMeta.innerHTML = "";
+  summaryEmpty.classList.add("is-hidden");
+  summaryEmpty.innerHTML = "";
   renderPollDatesOverview();
   renderPollOwnerActions();
 
@@ -1100,6 +1110,12 @@ function fillPollSummary() {
     if (results.bestDates.length === 0) {
       bestDateLabel.textContent = "Noch keine Antworten";
       bestDateMeta.innerHTML = '<span class="pill">Noch keine Vorschlaege eingegangen</span>';
+      summaryEmpty.innerHTML = renderEmptyStateMarkup(
+        "fa-regular fa-calendar-plus",
+        "Die ersten Tage fehlen noch",
+        "Sobald jemand mitmacht, erscheinen hier direkt die beliebtesten Vorschlaege."
+      );
+      summaryEmpty.classList.remove("is-hidden");
       return;
     }
 
@@ -1134,10 +1150,14 @@ function fillPollSummary() {
 
 function renderPollOwnerActions() {
   const container = document.querySelector("#poll-owner-actions");
-  if (!container || !state.pollData?.permissions?.canManage) {
+  const shell = document.querySelector("#poll-settings-shell");
+  if (!container || !shell || !state.pollData?.permissions?.canManage) {
     if (container) {
-      container.classList.add("is-hidden");
       container.innerHTML = "";
+    }
+    if (shell) {
+      shell.classList.add("is-hidden");
+      shell.open = false;
     }
     return;
   }
@@ -1145,36 +1165,39 @@ function renderPollOwnerActions() {
   const { poll } = state.pollData;
   const exportDates = getPollExportDates(poll);
   const defaultDate = exportDates[0] || "";
-  container.classList.remove("is-hidden");
+  shell.classList.remove("is-hidden");
   container.innerHTML = `
-    <div class="owner-action-grid">
-      <section class="owner-action-card">
-        <p class="eyebrow">Bearbeiten</p>
-        <h3>In den Editor wechseln</h3>
-        <p class="description">Titel, Beschreibung und Modus lassen sich im Create-Template anpassen.</p>
-        <button id="owner-edit-poll" class="ghost-button wide-button" type="button">Bearbeiten</button>
-      </section>
+    <div class="owner-action-stack">
+      <button id="owner-edit-poll" class="settings-action" type="button">
+        <span class="settings-action-copy">
+          <span class="settings-action-title">Bearbeiten</span>
+          <small>Titel, Beschreibung oder Modus anpassen.</small>
+        </span>
+        <i class="fa-solid fa-pen"></i>
+      </button>
 
-      <section class="owner-action-card">
-        <p class="eyebrow">Teilen</p>
-        <h3>Link fuer Teilnehmende</h3>
-        <div class="share-link-row">
-          <div class="share-link-output">${escapeHtml(poll.absoluteShareUrl || window.location.href)}</div>
-          <button id="owner-copy-share-link" class="ghost-button compact-button" type="button">Kopieren</button>
-        </div>
-      </section>
+      <button id="owner-copy-share-link" class="settings-action" type="button">
+        <span class="settings-action-copy">
+          <span class="settings-action-title">Link kopieren</span>
+          <small>${escapeHtml(poll.absoluteShareUrl || window.location.href)}</small>
+        </span>
+        <i class="fa-regular fa-copy"></i>
+      </button>
 
-      <section class="owner-action-card">
-        <p class="eyebrow">Duplizieren</p>
-        <h3>Kopie anlegen</h3>
-        <p class="description">Erstellt eine neue Umfrage mit denselben Stammdaten.</p>
-        <button id="owner-duplicate-poll" class="ghost-button wide-button" type="button">Duplizieren</button>
-      </section>
+      <button id="owner-duplicate-poll" class="settings-action" type="button">
+        <span class="settings-action-copy">
+          <span class="settings-action-title">Duplizieren</span>
+          <small>Neue Umfrage mit denselben Stammdaten anlegen.</small>
+        </span>
+        <i class="fa-regular fa-clone"></i>
+      </button>
 
-      <section class="owner-action-card">
-        <p class="eyebrow">Kalender</p>
-        <h3>ICS exportieren</h3>
-        <div class="export-row">
+      <div class="settings-action">
+        <span class="settings-action-copy">
+          <span class="settings-action-title">ICS exportieren</span>
+          <small>Direkt den besten Termin in den Kalender ziehen.</small>
+        </span>
+        <div class="settings-action-copy">
           <select id="poll-export-date">
             ${
               exportDates.length > 0
@@ -1192,16 +1215,17 @@ function renderPollOwnerActions() {
           </select>
           <button id="owner-export-ics" class="ghost-button wide-button" type="button" ${
             exportDates.length === 0 ? "disabled" : ""
-          }>ICS</button>
+          }>ICS herunterladen</button>
         </div>
-      </section>
+      </div>
 
-      <section class="owner-action-card">
-        <p class="eyebrow">Loeschen</p>
-        <h3>Umfrage entfernen</h3>
-        <p class="description">Loescht die Umfrage inklusive aller Antworten dauerhaft.</p>
-        <button id="owner-delete-poll" class="ghost-button wide-button danger-button" type="button">Loeschen</button>
-      </section>
+      <button id="owner-delete-poll" class="settings-action danger-button" type="button">
+        <span class="settings-action-copy">
+          <span class="settings-action-title">Loeschen</span>
+          <small>Entfernt die Umfrage inklusive aller Antworten dauerhaft.</small>
+        </span>
+        <i class="fa-regular fa-trash-can"></i>
+      </button>
     </div>
   `;
 
@@ -1258,7 +1282,7 @@ function renderPollDatesOverview() {
     container.innerHTML = `
       <article class="poll-date-card">
         <strong>Noch keine Termine sichtbar</strong>
-        <span>Hier erscheinen feste Termine oder die ersten Vorschlaege der Teilnehmenden.</span>
+        <span>Hier landen spaeter feste Termine oder erste Vorschlaege aus der Runde.</span>
       </article>
     `;
     return;
@@ -1361,12 +1385,17 @@ function renderFreeChoiceForm(grid) {
   const intro = document.createElement("div");
   intro.className = "free-mode-intro";
   intro.innerHTML = `
-    <strong>Waehle alle Tage, an denen du kannst</strong>
-    <p class="description">Du kannst beliebige Tage im Kalender markieren, auch in anderen Monaten oder Jahren.</p>
+    <div>
+      <strong>Waehle alle Tage, an denen du kannst</strong>
+      <p class="description">Du kannst beliebige Tage im Kalender markieren, auch in anderen Monaten oder Jahren.</p>
+    </div>
+    <button id="participant-toggle-calendar" class="ghost-button compact-button participant-mobile-toggle" type="button">
+      ${state.participantCalendarExpanded ? "Kalender ausblenden" : "Teilnehmen"}
+    </button>
   `;
 
   const calendarSection = document.createElement("div");
-  calendarSection.className = "calendar-section";
+  calendarSection.className = `calendar-section${state.participantCalendarExpanded ? "" : " is-collapsed"}`;
   calendarSection.innerHTML = `
     <div class="calendar-header">
       <div>
@@ -1394,6 +1423,11 @@ function renderFreeChoiceForm(grid) {
 
   grid.appendChild(intro);
   grid.appendChild(calendarSection);
+
+  document.querySelector("#participant-toggle-calendar")?.addEventListener("click", () => {
+    state.participantCalendarExpanded = !state.participantCalendarExpanded;
+    renderAvailabilityForm();
+  });
 
   document.querySelector("#participant-prev-month").addEventListener("click", () => {
     state.participantCurrentMonth = addMonths(state.participantCurrentMonth, -1);
@@ -1467,7 +1501,11 @@ function renderParticipantSelectedDates() {
 
   const dates = Array.from(state.participantSelectedDates).sort();
   if (dates.length === 0) {
-    container.innerHTML = '<p class="description">Noch keine Tage ausgewaehlt.</p>';
+    container.innerHTML = renderEmptyStateMarkup(
+      "fa-regular fa-hand-point-up",
+      "Noch keine Tage ausgewaehlt",
+      "Markiere ein paar Optionen im Kalender, dann siehst du sie hier als schnelle Badge-Liste."
+    );
     return;
   }
 
@@ -1496,20 +1534,42 @@ function renderHeatmap() {
 
   if (poll.mode === "free") {
     if (results.summary.length === 0) {
-      grid.innerHTML = '<p class="description">Noch keine Tagesvorschlaege vorhanden.</p>';
+      grid.innerHTML = renderEmptyStateMarkup(
+        "fa-regular fa-star",
+        "Noch kein Favorit in Sicht",
+        "Sobald Antworten reinkommen, baut sich hier automatisch das Ranking der beliebtesten Tage auf."
+      );
       return;
     }
 
-    for (const entry of results.summary) {
-      const card = document.createElement("article");
-      card.className = "heatmap-cell high free-ranking-card";
-      const participantLabel = entry.count === 1 ? "1 Person" : `${entry.count} Personen`;
-      card.innerHTML = `
-        <strong>${formatDateLong(entry.date)}</strong>
-        <span>${participantLabel}</span>
+    const topEntries = results.summary.slice(0, 10);
+    const maxCount = Math.max(...topEntries.map((entry) => entry.count), 1);
+    const totalResponses = Math.max(responses.length, 1);
+    const list = document.createElement("div");
+    list.className = "free-ranking-list";
+
+    for (const entry of topEntries) {
+      const row = document.createElement("article");
+      const strength = getScoreStrength(entry.count, maxCount);
+      const participantLabel = entry.count === 1 ? "1 Stimme" : `${entry.count} Stimmen`;
+      const percentage = responses.length > 0 ? Math.round((entry.count / totalResponses) * 100) : 0;
+      row.className = "ranking-row";
+      row.style.setProperty("--score-strength", strength.toFixed(3));
+      row.innerHTML = `
+        <div class="ranking-row-main">
+          <div class="ranking-row-meta">
+            <span class="ranking-label">${escapeHtml(formatDateLong(entry.date))}</span>
+            <span>${participantLabel}</span>
+          </div>
+          <div class="ranking-bar-track">
+            <div class="ranking-bar-fill" style="--bar-width:${(entry.count / maxCount).toFixed(3)}; --score-strength:${strength.toFixed(3)};"></div>
+          </div>
+        </div>
+        <strong class="ranking-percent">${percentage}%</strong>
       `;
-      grid.appendChild(card);
+      list.appendChild(row);
     }
+    grid.appendChild(list);
     return;
   }
 
@@ -1522,9 +1582,10 @@ function renderHeatmap() {
   const maxScore = Math.max(...summary.map((entry) => entry.score), 1);
   for (const entry of summary) {
     const cell = document.createElement("article");
-    const ratio = entry.score / maxScore;
+    const ratio = getScoreStrength(entry.score, maxScore);
     const level = ratio > 0.66 ? "high" : ratio > 0.33 ? "mid" : "low";
     cell.className = `heatmap-cell ${level}`;
+    cell.style.setProperty("--score-strength", ratio.toFixed(3));
     cell.innerHTML = `
       <strong>${formatDateShort(entry.date)}</strong>
       <span>${entry.yes} Ja</span>
@@ -1537,22 +1598,44 @@ function renderHeatmap() {
 }
 
 function renderResultsTable() {
-  const { poll, responses } = state.pollData;
+  const { poll, responses, results } = state.pollData;
   const head = document.querySelector("#results-head");
   const body = document.querySelector("#results-body");
+  const table = document.querySelector(".results-table");
+
+  table.classList.toggle("free-choice-matrix", poll.mode === "free");
 
   if (poll.mode === "free") {
+    const matrixDates = getTopMatrixDates(results.summary);
     head.innerHTML = `
       <tr>
         <th>Name</th>
-        <th>Vorgeschlagene Tage</th>
+        ${matrixDates
+          .map((entry) => {
+            const percentage = responses.length > 0 ? Math.round((entry.count / responses.length) * 100) : 0;
+            return `
+              <th>
+                <div class="results-matrix-header">
+                  <strong>${escapeHtml(formatDateShort(entry.date))}</strong>
+                  <span class="results-matrix-subline">${entry.count} Stimmen · ${percentage}%</span>
+                </div>
+              </th>
+            `;
+          })
+          .join("")}
       </tr>
     `;
 
-    if (responses.length === 0) {
+    if (responses.length === 0 || matrixDates.length === 0) {
       body.innerHTML = `
         <tr>
-          <td colspan="2" class="description">Noch keine Antworten eingetragen.</td>
+          <td colspan="${Math.max(matrixDates.length, 1) + 1}" class="participant-column-empty">
+            ${renderEmptyStateMarkup(
+              "fa-regular fa-comments",
+              "Noch niemand hat abgestimmt",
+              "Sobald die ersten Antworten eingehen, siehst du hier sofort die Verfuegbarkeits-Matrix."
+            )}
+          </td>
         </tr>
       `;
       return;
@@ -1560,14 +1643,28 @@ function renderResultsTable() {
 
     body.innerHTML = responses
       .map((response) => {
-        const items = response.suggestedDates
-          .map((entry) => `<li>${escapeHtml(formatDateLong(entry))}</li>`)
+        const pickedDates = new Set(response.suggestedDates || []);
+        const items = matrixDates
+          .map((entry) => {
+            const isAvailable = pickedDates.has(entry.date);
+            return `
+              <td class="matrix-cell ${isAvailable ? "is-available" : ""}" title="${escapeHtml(
+                `${response.name}: ${isAvailable ? "Ja" : "Nein"} fuer ${formatDateLong(entry.date)}`
+              )}">
+                ${
+                  isAvailable
+                    ? '<i class="fa-solid fa-check matrix-check" aria-label="Ja"></i>'
+                    : '<span class="matrix-empty" aria-hidden="true">-</span>'
+                }
+              </td>
+            `;
+          })
           .join("");
 
         return `
           <tr>
             <td>${escapeHtml(response.name)}</td>
-            <td><ul class="result-list">${items || "<li>Keine Tage eingetragen</li>"}</ul></td>
+            ${items}
           </tr>
         `;
       })
@@ -1634,6 +1731,7 @@ async function handleResponseSubmit(event) {
     if (!isFixed) {
       state.participantSelectedDates = new Set();
       state.participantCurrentMonth = startOfMonth(new Date());
+      state.participantCalendarExpanded = !window.matchMedia("(max-width: 720px)").matches;
     }
     fillPollSummary();
     renderAvailabilityForm();
@@ -1706,6 +1804,32 @@ function getSelectedExportDate() {
 
   const poll = state.pollData?.poll;
   return getPollExportDates(poll)[0] || "";
+}
+
+function getTopMatrixDates(summary, limit = 8) {
+  return (summary || []).slice(0, limit);
+}
+
+function getScoreStrength(value, maxValue) {
+  if (!maxValue) {
+    return 0.2;
+  }
+
+  return Math.max(0.2, Math.min(1, value / maxValue));
+}
+
+function renderEmptyStateMarkup(iconClass, title, description) {
+  return `
+    <div class="empty-state free-empty-state">
+      <div class="empty-state-visual">
+        <i class="${escapeHtml(iconClass)}"></i>
+      </div>
+      <div class="empty-state-copy">
+        <strong>${escapeHtml(title)}</strong>
+        <p class="description">${escapeHtml(description)}</p>
+      </div>
+    </div>
+  `;
 }
 
 async function copyTextToClipboard(text) {
