@@ -1040,7 +1040,6 @@ async function renderPollPage(pollId) {
     initializeDraftFromPoll(data.poll);
     fillPollSummary();
     renderAvailabilityForm();
-    renderHeatmap();
     renderResultsTable();
     bindPollResponseEvents();
     syncPollResponsePanelState();
@@ -1171,13 +1170,16 @@ function fillPollSummary() {
   const isFixed = poll.mode === "fixed";
   const meta = document.querySelector("#poll-context-meta");
   const summaryEmpty = document.querySelector("#poll-summary-empty");
-  const resultsPanelEyebrow = document.querySelector("#results-panel-eyebrow");
-  const resultsPanelTitle = document.querySelector("#results-panel-title");
+  const favoriteSummary = document.querySelector("#poll-favorite-summary");
   const ownerLabel = owner ? owner.name || owner.email : "";
+  const favorite = getPollFavorite(poll, responses, results);
 
   document.querySelector("#poll-title-view").textContent = poll.title;
   document.querySelector("#poll-description-view").textContent = poll.description || "";
   document.querySelector("#poll-description-view").classList.toggle("is-hidden", !poll.description);
+  favoriteSummary.textContent =
+    responses.length > 0 && favorite ? `Favorit: ${formatDateShort(favorite.date)} mit ${favorite.votes} Stimmen` : "";
+  favoriteSummary.classList.toggle("is-hidden", !(responses.length > 0 && favorite));
   document.querySelector("#participant-form-title").textContent = hasEditableResponse()
     ? "Verfuegbarkeit anpassen"
     : isFixed
@@ -1203,9 +1205,6 @@ function fillPollSummary() {
   updatePollResponseCta();
 
   if (!isFixed) {
-    resultsPanelEyebrow.textContent = "Ranking";
-    resultsPanelTitle.textContent = "Beliebteste Tage";
-
     if (results.bestDates.length === 0) {
       summaryEmpty.innerHTML = renderEmptyStateMarkup(
         "fa-regular fa-calendar-plus",
@@ -1216,9 +1215,6 @@ function fillPollSummary() {
     }
     return;
   }
-
-  resultsPanelEyebrow.textContent = "Heatmap";
-  resultsPanelTitle.textContent = "Beste Ueberschneidungen";
 
   if (responses.length === 0) {
     summaryEmpty.innerHTML = renderEmptyStateMarkup(
@@ -1587,80 +1583,11 @@ function renderParticipantSelectedDates() {
   }
 }
 
-function renderHeatmap() {
-  const grid = document.querySelector("#heatmap-grid");
-  const { poll, responses, results } = state.pollData;
-  grid.innerHTML = "";
-
-  if (poll.mode === "free") {
-    if (results.summary.length === 0) {
-      grid.innerHTML = renderEmptyStateMarkup(
-        "fa-regular fa-star",
-        "Noch kein Favorit in Sicht",
-        "Sobald Antworten reinkommen, baut sich hier automatisch das Ranking der beliebtesten Tage auf."
-      );
-      return;
-    }
-
-    const topEntries = results.summary.slice(0, 10);
-    const maxCount = Math.max(...topEntries.map((entry) => entry.count), 1);
-    const totalResponses = Math.max(responses.length, 1);
-    const list = document.createElement("div");
-    list.className = "free-ranking-list";
-
-    for (const entry of topEntries) {
-      const row = document.createElement("article");
-      const strength = getScoreStrength(entry.count, maxCount);
-      const participantLabel = entry.count === 1 ? "1 Stimme" : `${entry.count} Stimmen`;
-      const percentage = responses.length > 0 ? Math.round((entry.count / totalResponses) * 100) : 0;
-      row.className = "ranking-row";
-      row.style.setProperty("--score-strength", strength.toFixed(3));
-      row.innerHTML = `
-        <div class="ranking-row-main">
-          <div class="ranking-row-meta">
-            <span class="ranking-label">${escapeHtml(formatDateLong(entry.date))}</span>
-            <span>${participantLabel}</span>
-          </div>
-          <div class="ranking-bar-track">
-            <div class="ranking-bar-fill" style="--bar-width:${(entry.count / maxCount).toFixed(3)}; --score-strength:${strength.toFixed(3)};"></div>
-          </div>
-        </div>
-        <strong class="ranking-percent">${percentage}%</strong>
-      `;
-      list.appendChild(row);
-    }
-    grid.appendChild(list);
-    return;
-  }
-
-  const summary = results.summary;
-  if (summary.length === 0) {
-    grid.innerHTML = '<p class="description">Noch keine Daten vorhanden.</p>';
-    return;
-  }
-
-  const maxScore = Math.max(...summary.map((entry) => entry.score), 1);
-  for (const entry of summary) {
-    const cell = document.createElement("article");
-    const ratio = getScoreStrength(entry.score, maxScore);
-    const level = ratio > 0.66 ? "high" : ratio > 0.33 ? "mid" : "low";
-    cell.className = `heatmap-cell ${level}`;
-    cell.style.setProperty("--score-strength", ratio.toFixed(3));
-    cell.innerHTML = `
-      <strong>${formatDateShort(entry.date)}</strong>
-      <span>${entry.yes} Ja</span>
-      <span>${entry.maybe} Vielleicht</span>
-      <span>${entry.no} Nein</span>
-      <strong>Score ${entry.score}</strong>
-    `;
-    grid.appendChild(cell);
-  }
-}
-
 function renderResultsTable() {
   const { poll, responses, results } = state.pollData;
   const head = document.querySelector("#results-head");
   const body = document.querySelector("#results-body");
+  const foot = document.querySelector("#results-foot");
   const table = document.querySelector(".results-table");
   const editableResponse = getEditableResponse();
   const showEditIcon = Boolean(editableResponse) && hasEditableResponse();
@@ -1669,6 +1596,7 @@ function renderResultsTable() {
   table.classList.toggle("fixed-choice-matrix", poll.mode === "fixed");
 
   if (poll.mode === "free") {
+    foot.innerHTML = "";
     const matrixDates = getTopMatrixDates(results.summary);
     head.innerHTML = `
       <tr>
@@ -1737,14 +1665,22 @@ function renderResultsTable() {
     return;
   }
 
+  const dateStats = getFixedDateStats(poll.dates, responses);
   head.innerHTML = `
     <tr>
       <th class="name-column">Name</th>
-      ${poll.dates.map((date) => `<th>${escapeHtml(formatDateShort(date))}</th>`).join("")}
+      ${dateStats.entries
+        .map(
+          (entry) => `<th class="${entry.date === dateStats.winnerDate ? "winner-column" : ""}">${escapeHtml(
+            formatDateShort(entry.date)
+          )}</th>`
+        )
+        .join("")}
     </tr>
   `;
 
   if (responses.length === 0) {
+    foot.innerHTML = "";
     body.innerHTML = `
       <tr>
         <td colspan="${poll.dates.length + 1}" class="description">Noch keine Antworten eingetragen.</td>
@@ -1765,6 +1701,22 @@ function renderResultsTable() {
       return `<tr><td class="name-column">${renderMatrixNameCell(response.name, response, editableResponse, showEditIcon)}</td>${cells}</tr>`;
     })
     .join("");
+
+  foot.innerHTML = `
+    <tr>
+      <td class="name-column score-footer">Score</td>
+      ${dateStats.entries
+        .map(
+          (entry) => `
+            <td class="score-footer ${entry.date === dateStats.winnerDate ? "winner-column" : ""}">
+              <strong>${entry.score}</strong>
+              <div class="results-matrix-subline">${entry.yes} Ja</div>
+            </td>
+          `
+        )
+        .join("")}
+    </tr>
+  `;
 
   bindMatrixEditButtons();
 }
@@ -1826,7 +1778,6 @@ async function handleResponseSubmit(event) {
     initializeDraftFromPoll(data.poll);
     fillPollSummary();
     renderAvailabilityForm();
-    renderHeatmap();
     renderResultsTable();
     setFeedback(document.querySelector("#response-feedback"), "Antwort gespeichert.", "success");
 
@@ -1907,12 +1858,63 @@ function getTopMatrixDates(summary, limit = 8) {
   return (summary || []).slice(0, limit);
 }
 
-function getScoreStrength(value, maxValue) {
-  if (!maxValue) {
-    return 0.2;
+function getFixedDateStats(dates, responses) {
+  const entries = (dates || []).map((date) => ({
+    date,
+    score: 0,
+    yes: 0,
+    maybe: 0,
+    no: 0,
+  }));
+  const entryByDate = new Map(entries.map((entry) => [entry.date, entry]));
+
+  for (const response of responses || []) {
+    for (const date of dates || []) {
+      const status = response.availabilities?.[date] || "no";
+      const entry = entryByDate.get(date);
+      if (!entry) {
+        continue;
+      }
+
+      if (status === "yes") {
+        entry.yes += 1;
+        entry.score += 2;
+      } else if (status === "maybe") {
+        entry.maybe += 1;
+        entry.score += 1;
+      } else {
+        entry.no += 1;
+      }
+    }
   }
 
-  return Math.max(0.2, Math.min(1, value / maxValue));
+  const winnerEntry = entries.reduce((bestEntry, entry) => {
+    if (!bestEntry || entry.score > bestEntry.score) {
+      return entry;
+    }
+
+    return bestEntry;
+  }, null);
+
+  return {
+    entries,
+    winnerDate: winnerEntry?.date || "",
+    winnerEntry,
+  };
+}
+
+function getPollFavorite(poll, responses, results) {
+  if (!responses?.length) {
+    return null;
+  }
+
+  if (poll.mode === "fixed") {
+    const { winnerEntry } = getFixedDateStats(poll.dates, responses);
+    return winnerEntry ? { date: winnerEntry.date, votes: winnerEntry.yes, score: winnerEntry.score } : null;
+  }
+
+  const favorite = (results?.summary || [])[0];
+  return favorite ? { date: favorite.date, votes: favorite.count, score: favorite.count } : null;
 }
 
 function renderEmptyStateMarkup(iconClass, title, description) {

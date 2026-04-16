@@ -145,6 +145,41 @@
         padding: 0.5rem 0.75rem;
       }
 
+      .poll-favorite-summary {
+        margin: 0;
+        color: #10b981;
+        font-weight: 700;
+      }
+
+      .score-footer {
+        background: rgba(255, 255, 255, 0.08);
+        border-top: 1px solid var(--border-soft);
+        font-weight: 700;
+      }
+
+      body[data-theme="light"] .score-footer {
+        background: rgba(15, 23, 42, 0.08);
+      }
+
+      .results-table tfoot .score-footer {
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+      }
+
+      .results-table tfoot .score-footer:first-child {
+        z-index: 2;
+      }
+
+      .winner-column {
+        color: #10b981;
+        font-weight: 700;
+      }
+
+      .winner-column .results-matrix-subline {
+        color: inherit;
+      }
+
       .poll-card-actions,
       .owner-action-grid {
         display: flex;
@@ -668,6 +703,7 @@
                 <h1 id="poll-title-view"></h1>
               </div>
               <p id="poll-description-view" class="description"></p>
+              <p id="poll-favorite-summary" class="poll-favorite-summary is-hidden"></p>
               <div id="poll-context-meta" class="info-pills poll-summary-meta-row"></div>
             </div>
 
@@ -726,16 +762,6 @@
           </div>
         </article>
 
-        <article class="panel poll-ranking-panel">
-          <div class="panel-header">
-            <div>
-              <p id="results-panel-eyebrow" class="eyebrow">Heatmap</p>
-              <h2 id="results-panel-title">Beste Ueberschneidungen</h2>
-            </div>
-          </div>
-          <div id="heatmap-grid" class="heatmap-grid"></div>
-        </article>
-
         <article class="panel">
           <div class="panel-header">
             <div>
@@ -751,6 +777,7 @@
             <table class="results-table">
               <thead id="results-head"></thead>
               <tbody id="results-body"></tbody>
+              <tfoot id="results-foot"></tfoot>
             </table>
           </div>
         </article>
