@@ -573,6 +573,10 @@ function fillCreateForm(existingPoll) {
 
   document.querySelector("#create-fixed-fields").classList.toggle("is-hidden", !isFixed);
   document.querySelector("#create-free-fields").classList.toggle("is-hidden", isFixed);
+  document.querySelectorAll('.create-mode-card[href^="/create?mode="]').forEach((card) => {
+    const url = new URL(card.href, window.location.origin);
+    card.classList.toggle("is-active", url.searchParams.get("mode") === state.createMode);
+  });
 
   if (isFixed) {
     renderCreateCalendar();
@@ -1684,34 +1688,6 @@ async function handleCalendarDownload() {
   }
   const query = exportDate ? `?date=${encodeURIComponent(exportDate)}` : "";
   window.open(`/api/polls/${poll.id}/ics${query}`, "_blank", "noopener");
-}
-
-async function handleCalendarOpen() {
-  await handleCalendarDownload();
-}
-
-async function handleOwnerInvites(event) {
-  event.preventDefault();
-
-  const poll = state.pollData?.poll;
-  if (!poll) {
-    return;
-  }
-
-  const feedback = document.querySelector("#owner-invite-feedback");
-  const inviteEmails = document.querySelector("#owner-invite-emails").value.trim();
-  const inviteMessage = document.querySelector("#owner-invite-message").value.trim();
-
-  try {
-    setFeedback(feedback, "Einladung wird protokolliert ...");
-    const data = await apiFetch(`/api/polls/${poll.id}/invitations`, {
-      method: "POST",
-      body: JSON.stringify({ inviteEmails, inviteMessage }),
-    });
-    setFeedback(feedback, data.message || "Einladung protokolliert.", "success");
-  } catch (error) {
-    setFeedback(feedback, error.message, "error");
-  }
 }
 
 function getPollExportDates(poll) {

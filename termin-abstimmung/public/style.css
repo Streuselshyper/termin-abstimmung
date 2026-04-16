@@ -618,6 +618,11 @@ select:focus {
   cursor: pointer;
 }
 
+.create-mode-card.is-active {
+  border-color: rgba(16, 185, 129, 0.42);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.16), var(--surface-soft));
+}
+
 .poll-card {
   padding: 1rem;
   border-radius: var(--radius-md);
