@@ -783,9 +783,6 @@ function renderDashboardPollCard(poll) {
         <span class="dashboard-status-badge dashboard-status-${status.tone}">${escapeHtml(status.label)}</span>
       </div>
       <div class="poll-card-actions poll-list-actions">
-        <span class="poll-type-pill" aria-label="${escapeHtml(type.label)}" title="${escapeHtml(type.label)}">
-          <i class="${escapeHtml(type.icon)}" aria-hidden="true"></i>
-        </span>
         <a class="primary-link poll-open-link" href="${poll.shareUrl}">Oeffnen</a>
       </div>
     </article>
