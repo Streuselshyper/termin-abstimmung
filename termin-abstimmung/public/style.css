@@ -1246,26 +1246,17 @@ body.poll-drawer-open {
   z-index: 4;
 }
 
-.results-table th:last-child,
-.results-table td:last-child {
-  width: 3.8rem;
-  min-width: 3.8rem;
-}
-
-.results-table th:not(:first-child):not(:last-child),
-.results-table td:not(:first-child):not(:last-child) {
+.results-table th:not(:first-child),
+.results-table td:not(:first-child) {
   min-width: 7rem;
 }
 
 .matrix-name-cell {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.matrix-actions-cell {
-  text-align: center;
-}
 
 .matrix-edit-button {
   width: 2.35rem;

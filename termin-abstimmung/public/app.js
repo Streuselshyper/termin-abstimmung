@@ -1686,14 +1686,13 @@ function renderResultsTable() {
             `;
           })
           .join("")}
-        <th class="matrix-actions-head"></th>
       </tr>
     `;
 
     if (responses.length === 0 || matrixDates.length === 0) {
       body.innerHTML = `
         <tr>
-          <td colspan="${Math.max(matrixDates.length, 1) + 2}" class="participant-column-empty">
+          <td colspan="${Math.max(matrixDates.length, 1) + 1}" class="participant-column-empty">
             ${renderEmptyStateMarkup(
               "fa-regular fa-comments",
               "Noch niemand hat abgestimmt",
@@ -1727,9 +1726,8 @@ function renderResultsTable() {
 
         return `
           <tr>
-            <td class="name-column">${renderMatrixNameCell(response.name)}</td>
+            <td class="name-column">${renderMatrixNameCell(response.name, response, editableResponse, showEditIcon)}</td>
             ${items}
-            ${renderMatrixEditCell(response, editableResponse, showEditIcon)}
           </tr>
         `;
       })
@@ -1743,14 +1741,13 @@ function renderResultsTable() {
     <tr>
       <th class="name-column">Name</th>
       ${poll.dates.map((date) => `<th>${escapeHtml(formatDateShort(date))}</th>`).join("")}
-      <th class="matrix-actions-head"></th>
     </tr>
   `;
 
   if (responses.length === 0) {
     body.innerHTML = `
       <tr>
-        <td colspan="${poll.dates.length + 2}" class="description">Noch keine Antworten eingetragen.</td>
+        <td colspan="${poll.dates.length + 1}" class="description">Noch keine Antworten eingetragen.</td>
       </tr>
     `;
     return;
@@ -1765,33 +1762,29 @@ function renderResultsTable() {
         })
         .join("");
 
-      return `<tr><td class="name-column">${renderMatrixNameCell(response.name)}</td>${cells}${renderMatrixEditCell(
-        response,
-        editableResponse,
-        showEditIcon
-      )}</tr>`;
+      return `<tr><td class="name-column">${renderMatrixNameCell(response.name, response, editableResponse, showEditIcon)}</td>${cells}</tr>`;
     })
     .join("");
 
   bindMatrixEditButtons();
 }
 
-function renderMatrixNameCell(name) {
-  return `<div class="matrix-name-cell"><span>${escapeHtml(name)}</span></div>`;
-}
-
-function renderMatrixEditCell(response, editableResponse, showEditIcon) {
+function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
   const isOwnRow = Boolean(showEditIcon && editableResponse && response.id === editableResponse.id);
-  if (!isOwnRow) {
-    return '<td class="matrix-actions-cell"></td>';
-  }
 
   return `
-    <td class="matrix-actions-cell">
-      <button class="matrix-edit-button" type="button" data-response-id="${response.id}" aria-label="Eigene Verfuegbarkeit bearbeiten">
-        <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
-      </button>
-    </td>
+    <div class="matrix-name-cell">
+      <span>${escapeHtml(name)}</span>
+      ${
+        isOwnRow
+          ? `
+            <button class="matrix-edit-button" type="button" data-response-id="${response.id}" aria-label="Eigene Verfuegbarkeit bearbeiten">
+              <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+            </button>
+          `
+          : ""
+      }
+    </div>
   `;
 }
 
