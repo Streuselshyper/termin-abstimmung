@@ -100,14 +100,12 @@ function renderHomePage() {
 
 function syncCreateModeUi() {
   const fixedFields = document.querySelector("#fixed-mode-fields");
-  const freeFields = document.querySelector("#free-mode-fields");
-  if (!fixedFields || !freeFields) {
+  if (!fixedFields) {
     return;
   }
 
   const isFixed = state.createMode === "fixed";
   fixedFields.classList.toggle("is-hidden", !isFixed);
-  freeFields.classList.toggle("is-hidden", isFixed);
 }
 
 function renderCalendar() {
