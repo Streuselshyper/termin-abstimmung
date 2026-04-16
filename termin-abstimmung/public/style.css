@@ -600,22 +600,43 @@ select:focus {
   align-items: start;
 }
 
-.poll-summary-panel {
-  grid-column: span 8;
+.poll-summary-panel,
+.poll-ranking-panel,
+.poll-shell > .panel:last-child {
+  grid-column: span 12;
+}
+
+.poll-response-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: rgba(7, 17, 31, 0.52);
+  backdrop-filter: blur(6px);
 }
 
 .poll-response-panel {
-  grid-column: span 4;
-  align-self: start;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  width: min(32rem, 100vw);
+  padding: 0.8rem;
+  transform: translateX(104%);
+  transition: transform 220ms ease;
+  pointer-events: none;
+}
+
+.poll-response-panel.is-open {
+  transform: translateX(0);
+  pointer-events: auto;
 }
 
 .poll-response-card {
-  /* Sticky liegt auf dem inneren Wrapper, damit Grid + internes Scrolling stabil bleiben. */
-  position: sticky;
-  top: 1rem;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 2rem);
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -631,7 +652,7 @@ select:focus {
 }
 
 .poll-ranking-panel,
-.poll-shell > .panel:nth-child(4) {
+.poll-shell > .panel:last-child {
   grid-column: span 12;
 }
 
@@ -662,6 +683,10 @@ select:focus {
   align-items: flex-start;
 }
 
+body.poll-drawer-open {
+  overflow: hidden;
+}
+
 .poll-summary-top {
   gap: 1rem;
 }
@@ -670,6 +695,7 @@ select:focus {
   min-width: 0;
   flex: 1 1 auto;
   flex-direction: column;
+  gap: 0.6rem;
 }
 
 .poll-summary-title-row {
@@ -687,7 +713,7 @@ select:focus {
 }
 
 .poll-summary-toolbar {
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
 }
@@ -874,33 +900,11 @@ select:focus {
 }
 
 .results-table.free-choice-matrix {
-  min-width: 42rem;
+  width: max(100%, 72rem);
 }
 
-.results-table.free-choice-matrix th,
-.results-table.free-choice-matrix td {
-  text-align: center;
-  vertical-align: middle;
-}
-
-.results-table.free-choice-matrix th:first-child,
-.results-table.free-choice-matrix td:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  text-align: left;
-  background: var(--surface-strong);
-}
-
-.results-table.free-choice-matrix thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--surface-strong);
-}
-
-.results-table.free-choice-matrix thead th:first-child {
-  z-index: 3;
+.results-table.fixed-choice-matrix {
+  width: max(100%, 68rem);
 }
 
 .results-matrix-header {
@@ -934,12 +938,16 @@ select:focus {
   padding: 1rem 0;
 }
 
-.results-table.free-choice-matrix tbody tr:hover td {
+.matrix-actions-head {
+  background: var(--surface-strong);
+}
+
+.results-table tbody tr:hover td {
   background: color-mix(in srgb, var(--surface-muted) 88%, transparent);
 }
 
-.results-table.free-choice-matrix tbody tr:hover td:first-child,
-.results-table.free-choice-matrix tbody tr:hover .matrix-cell.is-available {
+.results-table tbody tr:hover td:first-child,
+.results-table tbody tr:hover .matrix-cell.is-available {
   background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong));
 }
 
@@ -1132,41 +1140,6 @@ select:focus {
   gap: 0.35rem;
 }
 
-.best-date-card {
-  padding: 1rem;
-  border-radius: var(--radius-md);
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.best-date-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.date-overview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.85rem;
-}
-
-.poll-date-card {
-  padding: 0.95rem 1rem;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--surface-muted);
-  display: grid;
-  gap: 0.35rem;
-}
-
-.poll-date-card span {
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
 .availability-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
@@ -1231,23 +1204,80 @@ select:focus {
 }
 
 .table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  border-radius: var(--radius-md);
 }
 
 .results-table {
-  width: 100%;
-  border-collapse: collapse;
+  width: max(100%, 64rem);
+  min-width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .results-table th,
 .results-table td {
-  padding: 0.8rem 0.6rem;
-  text-align: left;
+  padding: 0.8rem 0.7rem;
+  text-align: center;
+  vertical-align: middle;
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
 }
 
 .results-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   color: var(--muted);
+  background: var(--surface-strong);
+}
+
+.results-table th:first-child,
+.results-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 14rem;
+  text-align: left;
+  background: var(--surface-strong);
+}
+
+.results-table thead th:first-child {
+  z-index: 4;
+}
+
+.results-table th:last-child,
+.results-table td:last-child {
+  width: 3.8rem;
+  min-width: 3.8rem;
+}
+
+.results-table th:not(:first-child):not(:last-child),
+.results-table td:not(:first-child):not(:last-child) {
+  min-width: 7rem;
+}
+
+.matrix-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.matrix-actions-cell {
+  text-align: center;
+}
+
+.matrix-edit-button {
+  width: 2.35rem;
+  height: 2.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--surface-muted);
+  color: var(--accent);
+}
+
+.matrix-edit-button:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-muted));
 }
 
 .result-badge {
@@ -1331,14 +1361,8 @@ select:focus {
   .poll-summary-panel,
   .poll-response-panel,
   .poll-ranking-panel,
-  .poll-shell > .panel:nth-child(4) {
+  .poll-shell > .panel:last-child {
     grid-column: span 1;
-  }
-
-  .poll-response-card {
-    position: static;
-    max-height: none;
-    overflow: visible;
   }
 
   .poll-list-row {
@@ -1398,11 +1422,37 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
+  .poll-response-overlay {
+    display: none !important;
+  }
+
+  .poll-response-panel {
+    position: static;
+    width: 100%;
+    padding: 0;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  .poll-response-card {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
   .poll-summary-top,
   .poll-summary-toolbar,
   .free-mode-intro {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  #poll-open-response {
+    display: none;
+  }
+
+  #poll-close-response {
+    display: none;
   }
 
   .poll-settings-shell,
@@ -1414,7 +1464,6 @@ select:focus {
     position: static;
   }
 
-  .best-date-card,
   .poll-card-top,
   .poll-card-actions {
     flex-direction: column;
@@ -1460,8 +1509,15 @@ select:focus {
     display: inline-flex;
   }
 
-  .results-table.free-choice-matrix {
-    min-width: 36rem;
+  .results-table,
+  .results-table.free-choice-matrix,
+  .results-table.fixed-choice-matrix {
+    width: max(100%, 42rem);
+  }
+
+  .results-table th:first-child,
+  .results-table td:first-child {
+    min-width: 11rem;
   }
 }
 

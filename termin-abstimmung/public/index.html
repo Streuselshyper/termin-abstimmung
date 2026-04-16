@@ -665,59 +665,45 @@
           <div class="poll-summary-top">
             <div class="poll-summary-main">
               <div class="poll-summary-title-row">
-                <p class="eyebrow">Umfrage-Detail</p>
                 <h1 id="poll-title-view"></h1>
               </div>
-
-              <div class="info-pills poll-summary-meta-row">
-                <span class="pill"><i class="fa-regular fa-calendar"></i> <span id="poll-date-count"></span></span>
-                <span class="pill"><i class="fa-regular fa-user"></i> <span id="poll-response-count"></span></span>
-                <span class="pill"><i class="fa-regular fa-compass"></i> <span id="poll-mode-pill"></span></span>
-              </div>
+              <p id="poll-description-view" class="description"></p>
+              <div id="poll-context-meta" class="info-pills poll-summary-meta-row"></div>
             </div>
 
             <div class="poll-summary-toolbar">
-              <a id="poll-back-link" class="ghost-link" href="/dashboard">
-                <i class="fa-solid fa-arrow-left"></i>
-                Zurueck
-              </a>
+              <button id="poll-share-button" class="ghost-button compact-button" type="button" aria-label="Umfrage teilen">
+                <i class="fa-solid fa-share-nodes"></i>
+              </button>
+
+              <button id="poll-open-response" class="primary-link" type="button">
+                <i class="fa-regular fa-pen-to-square"></i>
+                <span id="poll-open-response-label">Jetzt abstimmen</span>
+              </button>
 
               <details id="poll-settings-shell" class="poll-settings-shell is-hidden">
-                <summary class="ghost-button compact-button">
-                  <i class="fa-solid fa-sliders"></i>
-                  Settings
+                <summary class="ghost-button compact-button" aria-label="Admin-Tools">
+                  <i class="fa-solid fa-gear"></i>
                 </summary>
                 <div id="poll-owner-actions" class="owner-actions"></div>
               </details>
             </div>
           </div>
 
-          <p id="poll-description-view" class="description"></p>
-          <p id="poll-mode-description" class="description"></p>
-
-          <div class="best-date-card">
-            <div>
-              <p id="best-date-eyebrow" class="eyebrow">Beste Termine</p>
-              <h2 id="best-date-label">Noch keine Antworten</h2>
-            </div>
-            <div id="best-date-meta" class="best-date-meta"></div>
-          </div>
-
-          <div id="poll-dates-overview" class="date-overview-grid"></div>
-
           <div id="poll-summary-empty" class="empty-state poll-summary-empty is-hidden"></div>
         </article>
 
-        <article class="poll-response-panel">
-          <div class="panel poll-response-card">
+        <article id="poll-response-overlay" class="poll-response-overlay is-hidden"></article>
+
+        <article id="poll-response-panel" class="poll-response-panel">
+          <div class="panel poll-response-card" id="poll-response-card">
             <div class="panel-header">
               <div>
                 <p class="eyebrow">Antwort</p>
                 <h2 id="participant-form-title">Deine Verfuegbarkeit</h2>
               </div>
-              <button id="poll-share-button" class="ghost-button compact-button" type="button">
-                <i class="fa-solid fa-share-nodes"></i>
-                Teilen
+              <button id="poll-close-response" class="ghost-button compact-button" type="button" aria-label="Abstimmung schliessen">
+                <i class="fa-solid fa-xmark"></i>
               </button>
             </div>
 
@@ -756,6 +742,10 @@
               <p class="eyebrow">Uebersicht</p>
               <h2>Wer wann kann</h2>
             </div>
+            <a id="poll-back-link" class="ghost-link" href="/dashboard">
+              <i class="fa-solid fa-arrow-left"></i>
+              Zurueck
+            </a>
           </div>
           <div class="table-wrap">
             <table class="results-table">

@@ -25,11 +25,14 @@ const state = {
   participantCalendarExpanded: !window.matchMedia("(max-width: 720px)").matches,
   pollData: null,
   responseDraft: {},
+  responseParticipantName: "",
+  pollDrawerOpen: false,
   createMode: "fixed",
 };
 
 initializeRouting();
 bindStaticEventHandlers();
+document.addEventListener("keydown", handleGlobalKeydown);
 
 initializeApp().catch(handleRenderError);
 
@@ -1030,6 +1033,7 @@ async function renderPollPage(pollId) {
   try {
     const data = await apiFetch(`/api/polls/${pollId}`);
     state.pollData = data;
+    state.pollDrawerOpen = false;
     dynamicViewElement.innerHTML = "";
     dynamicViewElement.appendChild(template.content.cloneNode(true));
 
@@ -1038,6 +1042,8 @@ async function renderPollPage(pollId) {
     renderAvailabilityForm();
     renderHeatmap();
     renderResultsTable();
+    bindPollResponseEvents();
+    syncPollResponsePanelState();
 
     document.querySelector("#response-form").addEventListener("submit", handleResponseSubmit);
     document.querySelector("#poll-share-button").addEventListener("click", () => {
@@ -1053,17 +1059,20 @@ async function renderPollPage(pollId) {
 }
 
 function initializeDraftFromPoll(poll) {
+  const editableResponse = getEditableResponse();
   state.participantCalendarExpanded = !window.matchMedia("(max-width: 720px)").matches;
+  state.responseParticipantName = !state.pollData?.user && editableResponse ? editableResponse.name : "";
+
   if (poll.mode === "free") {
     state.responseDraft = {};
-    state.participantSelectedDates = new Set();
+    state.participantSelectedDates = new Set(editableResponse?.suggestedDates || []);
     state.participantCurrentMonth = startOfMonth(new Date());
     return;
   }
 
   const defaultDraft = {};
   for (const date of poll.dates) {
-    defaultDraft[date] = "maybe";
+    defaultDraft[date] = editableResponse?.availabilities?.[date] || "maybe";
   }
 
   state.responseDraft = defaultDraft;
@@ -1071,81 +1080,158 @@ function initializeDraftFromPoll(poll) {
   state.participantCurrentMonth = startOfMonth(new Date());
 }
 
+function getEditableResponse() {
+  if (!state.pollData) {
+    return null;
+  }
+
+  if (state.pollData.user?.id) {
+    return state.pollData.responses.find((response) => response.userId === state.pollData.user.id) || null;
+  }
+
+  if (state.pollData.editToken && state.pollData.userHasVoted) {
+    return state.pollData.responses.find((response) => response.editToken === state.pollData.editToken) || null;
+  }
+
+  return null;
+}
+
+function hasEditableResponse() {
+  return Boolean(getEditableResponse() || (state.pollData?.userHasVoted && state.pollData?.editToken));
+}
+
+function isCompactPollLayout() {
+  return window.matchMedia("(max-width: 720px)").matches;
+}
+
+function updatePollResponseCta() {
+  const label = document.querySelector("#poll-open-response-label");
+  if (!label) {
+    return;
+  }
+
+  label.textContent = hasEditableResponse() ? "Verfuegbarkeit aendern" : "Jetzt abstimmen";
+}
+
+function syncPollResponsePanelState() {
+  const panel = document.querySelector("#poll-response-panel");
+  const overlay = document.querySelector("#poll-response-overlay");
+  if (!panel || !overlay) {
+    return;
+  }
+
+  const drawerOpen = state.pollDrawerOpen && !isCompactPollLayout();
+  panel.classList.toggle("is-open", drawerOpen);
+  overlay.classList.toggle("is-hidden", !drawerOpen);
+  document.body.classList.toggle("poll-drawer-open", drawerOpen);
+}
+
+function openPollResponseDrawer(options = {}) {
+  if (options.resetDraft) {
+    initializeDraftFromPoll(state.pollData.poll);
+    renderAvailabilityForm();
+  }
+
+  if (isCompactPollLayout()) {
+    document.querySelector("#poll-response-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  state.pollDrawerOpen = true;
+  syncPollResponsePanelState();
+}
+
+function closePollResponseDrawer() {
+  state.pollDrawerOpen = false;
+  syncPollResponsePanelState();
+}
+
+function bindPollResponseEvents() {
+  document.querySelector("#poll-open-response")?.addEventListener("click", () => {
+    openPollResponseDrawer();
+  });
+
+  document.querySelector("#poll-close-response")?.addEventListener("click", () => {
+    closePollResponseDrawer();
+  });
+
+  document.querySelector("#poll-response-overlay")?.addEventListener("click", () => {
+    closePollResponseDrawer();
+  });
+}
+
+function handleGlobalKeydown(event) {
+  if (event.key === "Escape" && state.pollDrawerOpen) {
+    closePollResponseDrawer();
+  }
+}
+
 function fillPollSummary() {
-  const { poll, responses, results } = state.pollData;
+  const { poll, owner, responses, results } = state.pollData;
   const isFixed = poll.mode === "fixed";
+  const meta = document.querySelector("#poll-context-meta");
+  const summaryEmpty = document.querySelector("#poll-summary-empty");
+  const resultsPanelEyebrow = document.querySelector("#results-panel-eyebrow");
+  const resultsPanelTitle = document.querySelector("#results-panel-title");
+  const ownerLabel = owner ? owner.name || owner.email : "";
+
   document.querySelector("#poll-title-view").textContent = poll.title;
-  document.querySelector("#poll-description-view").textContent = poll.description;
-  document.querySelector("#participant-form-title").textContent = isFixed ? "Deine Verfuegbarkeit" : "Teilnehmen";
-  document.querySelector("#poll-mode-pill").textContent = isFixed ? "Festgelegte Termine" : "Freie Wahl";
-  document.querySelector("#poll-date-count").textContent = isFixed
-    ? `${poll.dates.length} Termine`
-    : "Beliebige Tage";
-  document.querySelector("#poll-response-count").textContent = `${responses.length} Antworten`;
-  document.querySelector("#poll-mode-description").textContent = isFixed
-    ? "Teilnehmende stimmen pro festem Termin mit Ja, Vielleicht oder Nein ab."
-    : "Teilnehmende waehlen selbst beliebige Kalendertage. Das Ergebnis zeigt die am haeufigsten gewaehlten Termine.";
+  document.querySelector("#poll-description-view").textContent = poll.description || "";
+  document.querySelector("#poll-description-view").classList.toggle("is-hidden", !poll.description);
+  document.querySelector("#participant-form-title").textContent = hasEditableResponse()
+    ? "Verfuegbarkeit anpassen"
+    : isFixed
+      ? "Deine Verfuegbarkeit"
+      : "Teilnehmen";
   document.querySelector("#poll-back-link").setAttribute("href", state.auth.user ? "/dashboard" : "/");
   document.querySelector("#poll-back-link").innerHTML = state.auth.user
     ? '<i class="fa-solid fa-arrow-left"></i> Zurueck'
     : '<i class="fa-solid fa-arrow-left"></i> Start';
 
-  const bestDateEyebrow = document.querySelector("#best-date-eyebrow");
-  const bestDateLabel = document.querySelector("#best-date-label");
-  const bestDateMeta = document.querySelector("#best-date-meta");
-  const resultsPanelEyebrow = document.querySelector("#results-panel-eyebrow");
-  const resultsPanelTitle = document.querySelector("#results-panel-title");
-  const summaryEmpty = document.querySelector("#poll-summary-empty");
-  bestDateMeta.innerHTML = "";
+  meta.innerHTML = [
+    `<span class="pill"><i class="fa-regular fa-compass"></i> ${escapeHtml(isFixed ? "Feste Termine" : "Freie Wahl")}</span>`,
+    `<span class="pill"><i class="fa-regular fa-calendar"></i> ${escapeHtml(isFixed ? `${poll.dates.length} Termine` : `${results.summary.length || 0} genannte Tage`)}</span>`,
+    `<span class="pill"><i class="fa-regular fa-user"></i> ${escapeHtml(formatResponseCountLabel(responses.length))}</span>`,
+    ownerLabel
+      ? `<span class="pill"><i class="fa-regular fa-id-badge"></i> ${escapeHtml(ownerLabel)}</span>`
+      : "",
+  ].filter(Boolean).join("");
+
   summaryEmpty.classList.add("is-hidden");
   summaryEmpty.innerHTML = "";
-  renderPollDatesOverview();
   renderPollOwnerActions();
+  updatePollResponseCta();
 
   if (!isFixed) {
-    bestDateEyebrow.textContent = "Am haeufigsten genannt";
     resultsPanelEyebrow.textContent = "Ranking";
     resultsPanelTitle.textContent = "Beliebteste Tage";
 
     if (results.bestDates.length === 0) {
-      bestDateLabel.textContent = "Noch keine Antworten";
-      bestDateMeta.innerHTML = '<span class="pill">Noch keine Vorschlaege eingegangen</span>';
       summaryEmpty.innerHTML = renderEmptyStateMarkup(
         "fa-regular fa-calendar-plus",
-        "Die ersten Tage fehlen noch",
-        "Sobald jemand mitmacht, erscheinen hier direkt die beliebtesten Vorschlaege."
+        "Noch keine Vorschlaege eingegangen",
+        "Die Matrix bleibt bewusst schlank. Die ersten Eintraege tauchen direkt in der Uebersicht auf."
       );
       summaryEmpty.classList.remove("is-hidden");
-      return;
-    }
-
-    bestDateLabel.textContent = results.bestDates.map((entry) => formatDateLong(entry.date)).join(" · ");
-    for (const entry of results.bestDates) {
-      const meta = document.createElement("span");
-      meta.className = "pill";
-      meta.textContent = `${entry.count} Personen`;
-      bestDateMeta.appendChild(meta);
     }
     return;
   }
 
-  bestDateEyebrow.textContent = "Beste Termine";
   resultsPanelEyebrow.textContent = "Heatmap";
   resultsPanelTitle.textContent = "Beste Ueberschneidungen";
 
-  if (results.bestDates.length === 0 || responses.length === 0) {
-    bestDateLabel.textContent = "Noch keine Antworten";
-    bestDateMeta.textContent = "Sobald Teilnehmende antworten, erscheint hier die beste Option.";
-    return;
+  if (responses.length === 0) {
+    summaryEmpty.innerHTML = renderEmptyStateMarkup(
+      "fa-regular fa-comments",
+      "Noch keine Antworten eingegangen",
+      "Die Matrix fuellt sich automatisch, sobald die ersten Personen abstimmen."
+    );
+    summaryEmpty.classList.remove("is-hidden");
   }
+}
 
-  bestDateLabel.textContent = results.bestDates.map((entry) => formatDateShort(entry.date)).join(" · ");
-  for (const entry of results.bestDates) {
-      const meta = document.createElement("span");
-      meta.className = "pill";
-      meta.textContent = `${entry.yes} Ja · ${entry.maybe} Vielleicht · Score ${entry.score}`;
-      bestDateMeta.appendChild(meta);
-    }
+function formatResponseCountLabel(count) {
+  return count === 1 ? "1 Antwort" : `${count} Antworten`;
 }
 
 function renderPollOwnerActions() {
@@ -1269,44 +1355,13 @@ function renderPollOwnerActions() {
   });
 }
 
-function renderPollDatesOverview() {
-  const container = document.querySelector("#poll-dates-overview");
-  if (!container || !state.pollData) {
-    return;
-  }
-
-  const { poll, results } = state.pollData;
-  const items = poll.mode === "fixed" ? poll.dates : results.summary.map((entry) => entry.date);
-
-  if (items.length === 0) {
-    container.innerHTML = `
-      <article class="poll-date-card">
-        <strong>Noch keine Termine sichtbar</strong>
-        <span>Hier landen spaeter feste Termine oder erste Vorschlaege aus der Runde.</span>
-      </article>
-    `;
-    return;
-  }
-
-  container.innerHTML = items
-    .map((date) => {
-      const summary = poll.mode === "fixed"
-        ? "Festgelegter Termin"
-        : `${results.summary.find((entry) => entry.date === date)?.count || 0} Nennungen`;
-      return `
-        <article class="poll-date-card">
-          <strong>${escapeHtml(formatDateLong(date))}</strong>
-          <span>${escapeHtml(summary)}</span>
-        </article>
-      `;
-    })
-    .join("");
-}
 
 function renderAvailabilityForm() {
   const grid = document.querySelector("#availability-grid");
   const legend = document.querySelector("#availability-legend");
   renderParticipantIdentity();
+  updatePollResponseCta();
+  syncPollResponsePanelState();
   grid.innerHTML = "";
 
   if (state.pollData.poll.mode === "free") {
@@ -1376,9 +1431,14 @@ function renderParticipantIdentity() {
         maxlength="80"
         required
         placeholder="Dein Name"
+        value="${escapeHtml(state.responseParticipantName)}"
       />
     </label>
   `;
+
+  document.querySelector("#participant-name")?.addEventListener("input", (event) => {
+    state.responseParticipantName = event.target.value;
+  });
 }
 
 function renderFreeChoiceForm(grid) {
@@ -1602,14 +1662,17 @@ function renderResultsTable() {
   const head = document.querySelector("#results-head");
   const body = document.querySelector("#results-body");
   const table = document.querySelector(".results-table");
+  const editableResponse = getEditableResponse();
+  const showEditIcon = Boolean(editableResponse) && hasEditableResponse();
 
   table.classList.toggle("free-choice-matrix", poll.mode === "free");
+  table.classList.toggle("fixed-choice-matrix", poll.mode === "fixed");
 
   if (poll.mode === "free") {
     const matrixDates = getTopMatrixDates(results.summary);
     head.innerHTML = `
       <tr>
-        <th>Name</th>
+        <th class="name-column">Name</th>
         ${matrixDates
           .map((entry) => {
             const percentage = responses.length > 0 ? Math.round((entry.count / responses.length) * 100) : 0;
@@ -1623,13 +1686,14 @@ function renderResultsTable() {
             `;
           })
           .join("")}
+        <th class="matrix-actions-head"></th>
       </tr>
     `;
 
     if (responses.length === 0 || matrixDates.length === 0) {
       body.innerHTML = `
         <tr>
-          <td colspan="${Math.max(matrixDates.length, 1) + 1}" class="participant-column-empty">
+          <td colspan="${Math.max(matrixDates.length, 1) + 2}" class="participant-column-empty">
             ${renderEmptyStateMarkup(
               "fa-regular fa-comments",
               "Noch niemand hat abgestimmt",
@@ -1663,26 +1727,30 @@ function renderResultsTable() {
 
         return `
           <tr>
-            <td>${escapeHtml(response.name)}</td>
+            <td class="name-column">${renderMatrixNameCell(response.name)}</td>
             ${items}
+            ${renderMatrixEditCell(response, editableResponse, showEditIcon)}
           </tr>
         `;
       })
       .join("");
+
+    bindMatrixEditButtons();
     return;
   }
 
   head.innerHTML = `
     <tr>
-      <th>Name</th>
-      ${poll.dates.map((date) => `<th>${formatDateShort(date)}</th>`).join("")}
+      <th class="name-column">Name</th>
+      ${poll.dates.map((date) => `<th>${escapeHtml(formatDateShort(date))}</th>`).join("")}
+      <th class="matrix-actions-head"></th>
     </tr>
   `;
 
   if (responses.length === 0) {
     body.innerHTML = `
       <tr>
-        <td colspan="${poll.dates.length + 1}" class="description">Noch keine Antworten eingetragen.</td>
+        <td colspan="${poll.dates.length + 2}" class="description">Noch keine Antworten eingetragen.</td>
       </tr>
     `;
     return;
@@ -1693,13 +1761,46 @@ function renderResultsTable() {
       const cells = poll.dates
         .map((date) => {
           const status = response.availabilities[date];
-          return `<td><span class="result-badge ${status}">${statusLabels[status]}</span></td>`;
+          return `<td class="matrix-cell"><span class="result-badge ${status}">${statusLabels[status]}</span></td>`;
         })
         .join("");
 
-      return `<tr><td>${escapeHtml(response.name)}</td>${cells}</tr>`;
+      return `<tr><td class="name-column">${renderMatrixNameCell(response.name)}</td>${cells}${renderMatrixEditCell(
+        response,
+        editableResponse,
+        showEditIcon
+      )}</tr>`;
     })
     .join("");
+
+  bindMatrixEditButtons();
+}
+
+function renderMatrixNameCell(name) {
+  return `<div class="matrix-name-cell"><span>${escapeHtml(name)}</span></div>`;
+}
+
+function renderMatrixEditCell(response, editableResponse, showEditIcon) {
+  const isOwnRow = Boolean(showEditIcon && editableResponse && response.id === editableResponse.id);
+  if (!isOwnRow) {
+    return '<td class="matrix-actions-cell"></td>';
+  }
+
+  return `
+    <td class="matrix-actions-cell">
+      <button class="matrix-edit-button" type="button" data-response-id="${response.id}" aria-label="Eigene Verfuegbarkeit bearbeiten">
+        <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+      </button>
+    </td>
+  `;
+}
+
+function bindMatrixEditButtons() {
+  for (const button of document.querySelectorAll(".matrix-edit-button")) {
+    button.addEventListener("click", () => {
+      openPollResponseDrawer({ resetDraft: true });
+    });
+  }
 }
 
 async function handleResponseSubmit(event) {
@@ -1710,7 +1811,8 @@ async function handleResponseSubmit(event) {
   const payload = {};
 
   if (!state.pollData.user) {
-    const name = document.querySelector("#participant-name")?.value.trim() || "";
+    const name = (document.querySelector("#participant-name")?.value.trim() || state.responseParticipantName || "").trim();
+    state.responseParticipantName = name;
     payload.name = name;
   }
 
@@ -1728,16 +1830,18 @@ async function handleResponseSubmit(event) {
     });
 
     state.pollData = data;
-    if (!isFixed) {
-      state.participantSelectedDates = new Set();
-      state.participantCurrentMonth = startOfMonth(new Date());
-      state.participantCalendarExpanded = !window.matchMedia("(max-width: 720px)").matches;
-    }
+    initializeDraftFromPoll(data.poll);
     fillPollSummary();
     renderAvailabilityForm();
     renderHeatmap();
     renderResultsTable();
-    setFeedback(feedback, "Antwort gespeichert.", "success");
+    setFeedback(document.querySelector("#response-feedback"), "Antwort gespeichert.", "success");
+
+    if (!isCompactPollLayout()) {
+      window.setTimeout(() => {
+        closePollResponseDrawer();
+      }, 180);
+    }
   } catch (error) {
     setFeedback(feedback, error.message, "error");
   }
