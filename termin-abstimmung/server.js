@@ -1,3 +1,4 @@
+const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
@@ -7,20 +8,22 @@ const Database = require("better-sqlite3");
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
-const DB_PATH = path.join(__dirname, "data", "terminabstimmung.db");
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, "data", "terminabstimmung.db");
+const MAIL_LOG_PATH = path.join(path.dirname(DB_PATH), "mail-outbox.log");
 const APP_BASE_URL = normalizeConfiguredBaseUrl(process.env.APP_BASE_URL || "");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
-const LOGIN_LIMIT = 5;
-const LOGIN_WINDOW_MS = 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
 const VALID_POLL_MODES = new Set(["fixed", "free"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
-const loginAttempts = new Map();
+const rateLimitBuckets = new Map();
+
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
+db.pragma("busy_timeout = 5000");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -28,7 +31,12 @@ db.exec(`
     email TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL DEFAULT '',
     password_hash TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    reset_token TEXT,
+    reset_token_expires_at TEXT,
+    notify_on_response INTEGER NOT NULL DEFAULT 1,
+    daily_summary INTEGER NOT NULL DEFAULT 0,
+    daily_summary_last_sent_at TEXT
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -45,12 +53,19 @@ db.exec(`
     description TEXT NOT NULL,
     dates TEXT NOT NULL,
     mode TEXT NOT NULL DEFAULT 'fixed',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    invite_message TEXT NOT NULL DEFAULT '',
+    notification_email_enabled INTEGER NOT NULL DEFAULT 1,
+    allow_email_invites INTEGER NOT NULL DEFAULT 1,
+    last_response_at TEXT
   );
 
   CREATE TABLE IF NOT EXISTS responses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     poll_id TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     availabilities TEXT NOT NULL,
     suggested_dates TEXT NOT NULL DEFAULT '[]',
@@ -60,23 +75,38 @@ db.exec(`
     UNIQUE(poll_id, name COLLATE NOCASE),
     FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
   );
-
-  CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 `);
 
-migrateUsersTable();
-ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
-ensureColumn("polls", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
-ensureColumn("responses", "suggested_dates", "TEXT NOT NULL DEFAULT '[]'");
-ensureColumn("responses", "free_text_availabilities", "TEXT NOT NULL DEFAULT '[]'");
-ensureColumn("responses", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
 ensureColumn("users", "name", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "reset_token", "TEXT");
 ensureColumn("users", "reset_token_expires_at", "TEXT");
-dropColumnIfExists("polls", "time_range_text");
-db.exec("CREATE INDEX IF NOT EXISTS idx_polls_user_id ON polls(user_id)");
-db.exec("CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token)");
-db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_responses_poll_user_id ON responses(poll_id, user_id) WHERE user_id IS NOT NULL");
+ensureColumn("users", "notify_on_response", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("users", "daily_summary", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("users", "daily_summary_last_sent_at", "TEXT");
+ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
+ensureColumn("polls", "created_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("polls", "updated_at", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("polls", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
+ensureColumn("polls", "invite_message", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("polls", "notification_email_enabled", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("polls", "allow_email_invites", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("polls", "last_response_at", "TEXT");
+ensureColumn("responses", "suggested_dates", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("responses", "free_text_availabilities", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("responses", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+  CREATE INDEX IF NOT EXISTS idx_sessions_last_activity_at ON sessions(last_activity_at);
+  CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token);
+  CREATE INDEX IF NOT EXISTS idx_polls_user_created ON polls(user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_polls_last_response_at ON polls(last_response_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_responses_poll_updated ON responses(poll_id, updated_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_responses_poll_user_id
+    ON responses(poll_id, user_id) WHERE user_id IS NOT NULL;
+`);
+
+backfillTimestamps();
 
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
@@ -97,6 +127,19 @@ function normalizeEmail(value) {
   return normalizeText(value, 320).toLowerCase();
 }
 
+function normalizeBoolean(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value === 1;
+  }
+  if (typeof value === "string") {
+    return value === "true" || value === "1";
+  }
+  return fallback;
+}
+
 function normalizeConfiguredBaseUrl(value) {
   if (!value) {
     return "";
@@ -104,10 +147,9 @@ function normalizeConfiguredBaseUrl(value) {
 
   try {
     const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
+    if (!["http:", "https:"].includes(url.protocol)) {
       return "";
     }
-
     return `${url.protocol}//${url.host}`;
   } catch (_error) {
     return "";
@@ -126,75 +168,28 @@ function normalizeHostHeader(value) {
 
   const ipv4OrHostname = /^[a-z0-9.-]+(?::\d{1,5})?$/;
   const ipv6WithPort = /^\[[0-9a-f:]+\](?::\d{1,5})?$/i;
-  if (!ipv4OrHostname.test(host) && !ipv6WithPort.test(host)) {
-    return "";
-  }
-
-  return host;
+  return ipv4OrHostname.test(host) || ipv6WithPort.test(host) ? host : "";
 }
 
 function ensureColumn(tableName, columnName, definition) {
   const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
-  const exists = columns.some((column) => column.name === columnName);
-  if (!exists) {
+  if (!columns.some((column) => column.name === columnName)) {
     db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
   }
 }
 
-function dropColumnIfExists(tableName, columnName) {
-  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
-  const exists = columns.some((column) => column.name === columnName);
-  if (!exists) {
-    return;
-  }
-
-  try {
-    db.exec(`ALTER TABLE ${tableName} DROP COLUMN ${columnName}`);
-  } catch (error) {
-    console.warn(`Spalte ${tableName}.${columnName} konnte nicht entfernt werden:`, error.message);
-  }
+function backfillTimestamps() {
+  const now = new Date().toISOString();
+  db.prepare("UPDATE polls SET created_at = ? WHERE created_at IS NULL OR created_at = ''").run(now);
+  db.prepare("UPDATE polls SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''").run();
 }
 
-function migrateUsersTable() {
-  const columns = db.prepare("PRAGMA table_info(users)").all();
-  const hasName = columns.some((column) => column.name === "name");
-  const hasVerified = columns.some((column) => column.name === "verified");
-  const hasVerificationToken = columns.some((column) => column.name === "verification_token");
-
-  if (!hasVerified && !hasVerificationToken) {
-    return;
-  }
-
-  if (hasVerified) {
-    db.exec("UPDATE users SET verified = 1 WHERE verified IS NULL OR verified != 1");
-  }
-
-  const foreignKeysEnabled = db.pragma("foreign_keys", { simple: true });
-  db.pragma("foreign_keys = OFF");
-
+function parseJsonArray(value) {
   try {
-    const migrate = db.transaction(() => {
-      db.exec(`
-        CREATE TABLE users_migrated (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          email TEXT NOT NULL UNIQUE,
-          name TEXT NOT NULL DEFAULT '',
-          password_hash TEXT,
-          created_at TEXT NOT NULL
-        );
-
-        INSERT INTO users_migrated (id, email, name, password_hash, created_at)
-        SELECT id, email, ${hasName ? "COALESCE(name, '')" : "''"}, password_hash, created_at
-        FROM users;
-
-        DROP TABLE users;
-        ALTER TABLE users_migrated RENAME TO users;
-      `);
-    });
-
-    migrate();
-  } finally {
-    db.pragma(`foreign_keys = ${foreignKeysEnabled ? "ON" : "OFF"}`);
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
   }
 }
 
@@ -204,7 +199,6 @@ function normalizeDates(dates) {
   }
 
   const uniqueDates = new Set();
-
   for (const date of dates) {
     if (typeof date !== "string") {
       continue;
@@ -216,42 +210,32 @@ function normalizeDates(dates) {
     }
   }
 
-  return Array.from(uniqueDates).sort();
+  return Array.from(uniqueDates).sort().slice(0, 90);
 }
 
 function normalizeMode(mode) {
   return VALID_POLL_MODES.has(mode) ? mode : "fixed";
 }
 
-function normalizeSuggestedDates(entries) {
-  return normalizeDates(entries).slice(0, 60);
-}
+function normalizeInviteEmails(entries) {
+  const source = Array.isArray(entries)
+    ? entries
+    : typeof entries === "string"
+      ? entries
+          .split(/[\n,;]+/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
 
-function validateAvailabilities(dates, availabilities) {
-  if (!availabilities || typeof availabilities !== "object" || Array.isArray(availabilities)) {
-    return { ok: false, message: "Ungültige Verfügbarkeiten." };
-  }
-
-  const normalized = {};
-
-  for (const date of dates) {
-    const status = availabilities[date];
-    if (!VALID_STATUSES.has(status)) {
-      return { ok: false, message: `Für ${date} fehlt ein gültiger Status.` };
+  const unique = new Set();
+  for (const entry of source) {
+    const email = normalizeEmail(entry);
+    if (email && isValidEmail(email)) {
+      unique.add(email);
     }
-    normalized[date] = status;
   }
 
-  return { ok: true, value: normalized };
-}
-
-function validateSuggestedDates(entries) {
-  const normalized = normalizeSuggestedDates(entries);
-  if (normalized.length === 0) {
-    return { ok: false, message: "Bitte trage mindestens einen möglichen Tag ein." };
-  }
-
-  return { ok: true, value: normalized };
+  return Array.from(unique).slice(0, 30);
 }
 
 function validatePassword(password) {
@@ -262,17 +246,70 @@ function validatePassword(password) {
   return { ok: true, value: password.slice(0, 200) };
 }
 
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+function validatePollInput(body) {
+  const title = normalizeText(body?.title, 120);
+  const description = normalizeText(body?.description, 1200);
+  const mode = normalizeMode(body?.mode);
+  const dates = mode === "fixed" ? normalizeDates(body?.dates) : [];
+  const inviteMessage = normalizeText(body?.inviteMessage, 500);
+  const inviteEmails = normalizeInviteEmails(body?.inviteEmails);
+
+  if (title.length < 3) {
+    return { ok: false, message: "Der Titel muss mindestens 3 Zeichen lang sein." };
+  }
+  if (description.length < 3) {
+    return { ok: false, message: "Die Beschreibung muss mindestens 3 Zeichen lang sein." };
+  }
+  if (mode === "fixed" && dates.length === 0) {
+    return { ok: false, message: "Bitte waehle mindestens ein Datum aus." };
+  }
+  if (dates.some((date) => Number.isNaN(new Date(`${date}T00:00:00Z`).getTime()))) {
+    return { ok: false, message: "Mindestens ein Datum ist ungueltig." };
+  }
+
+  return {
+    ok: true,
+    value: {
+      title,
+      description,
+      mode,
+      dates,
+      inviteMessage,
+      inviteEmails,
+      notificationEmailEnabled: normalizeBoolean(body?.notificationEmailEnabled, true),
+      allowEmailInvites: normalizeBoolean(body?.allowEmailInvites, true),
+      sendInvites: normalizeBoolean(body?.sendInvites, false),
+    },
+  };
 }
 
-function parseJsonArray(value) {
-  try {
-    const parsed = JSON.parse(value || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_error) {
-    return [];
+function validateAvailabilities(dates, availabilities) {
+  if (!availabilities || typeof availabilities !== "object" || Array.isArray(availabilities)) {
+    return { ok: false, message: "Ungueltige Verfuegbarkeiten." };
   }
+
+  const normalized = {};
+  for (const date of dates) {
+    const status = availabilities[date];
+    if (!VALID_STATUSES.has(status)) {
+      return { ok: false, message: `Fuer ${date} fehlt ein gueltiger Status.` };
+    }
+    normalized[date] = status;
+  }
+
+  return { ok: true, value: normalized };
+}
+
+function validateSuggestedDates(entries) {
+  const dates = normalizeDates(entries);
+  if (dates.length === 0) {
+    return { ok: false, message: "Bitte trage mindestens einen moeglichen Tag ein." };
+  }
+  return { ok: true, value: dates };
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function mapUserRow(row) {
@@ -285,7 +322,16 @@ function mapUserRow(row) {
     email: row.email,
     name: row.name || "",
     createdAt: row.created_at,
+    preferences: {
+      notifyOnResponse: Boolean(row.notify_on_response),
+      dailySummary: Boolean(row.daily_summary),
+      dailySummaryLastSentAt: row.daily_summary_last_sent_at || null,
+    },
   };
+}
+
+function isSecureRequest(req) {
+  return req.secure || req.get("x-forwarded-proto") === "https";
 }
 
 function getBaseUrl(req) {
@@ -302,7 +348,11 @@ function getBaseUrl(req) {
   return `${protocol}://${req.hostname}`;
 }
 
-function mapPollRow(row) {
+function getShareUrl(req, pollId) {
+  return `${getBaseUrl(req)}/poll/${pollId}`;
+}
+
+function mapPollRow(row, req) {
   if (!row) {
     return null;
   }
@@ -314,8 +364,14 @@ function mapPollRow(row) {
     dates: parseJsonArray(row.dates),
     mode: normalizeMode(row.mode),
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
     userId: row.user_id ?? null,
+    inviteMessage: row.invite_message || "",
+    notificationEmailEnabled: Boolean(row.notification_email_enabled),
+    allowEmailInvites: Boolean(row.allow_email_invites),
+    lastResponseAt: row.last_response_at || null,
     shareUrl: `/poll/${row.id}`,
+    absoluteShareUrl: req ? getShareUrl(req, row.id) : `/poll/${row.id}`,
   };
 }
 
@@ -350,18 +406,10 @@ function calculateBestDates(dates, responses) {
       } else {
         no += 1;
       }
-
       score += SCORE_MAP[status];
     }
 
-    return {
-      date,
-      yes,
-      maybe,
-      no,
-      score,
-      participants: responses.length,
-    };
+    return { date, yes, maybe, no, score, participants: responses.length };
   });
 
   const sorted = [...summary].sort((left, right) => {
@@ -375,22 +423,18 @@ function calculateBestDates(dates, responses) {
   });
 
   const bestScore = sorted[0]?.score ?? 0;
-  const bestDates = sorted.filter((entry) => entry.score === bestScore);
-
-  return { summary, bestDates };
+  return {
+    summary,
+    bestDates: sorted.filter((entry) => entry.score === bestScore && sorted.length > 0),
+  };
 }
 
 function calculateSuggestedDatesRanking(responses) {
   const counts = new Map();
 
   for (const response of responses) {
-    for (const entry of normalizeSuggestedDates(response.suggestedDates)) {
-      const current = counts.get(entry) || {
-        date: entry,
-        count: 0,
-        participants: [],
-      };
-
+    for (const entry of normalizeDates(response.suggestedDates)) {
+      const current = counts.get(entry) || { date: entry, count: 0, participants: [] };
       current.count += 1;
       current.participants.push(response.name);
       counts.set(entry, current);
@@ -401,16 +445,17 @@ function calculateSuggestedDatesRanking(responses) {
     if (right.count !== left.count) {
       return right.count - left.count;
     }
-    return left.date.localeCompare(right.date, "de-DE");
+    return left.date.localeCompare(right.date);
   });
 
   const bestCount = summary[0]?.count ?? 0;
-  const bestDates = summary.filter((entry) => entry.count === bestCount);
-
-  return { summary, bestDates };
+  return {
+    summary,
+    bestDates: summary.filter((entry) => entry.count === bestCount && summary.length > 0),
+  };
 }
 
-function loadPollWithResponses(pollId, currentUser = null) {
+function loadPollWithResponses(pollId, currentUser = null, req = null) {
   const pollRow = db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId);
   if (!pollRow) {
     return null;
@@ -420,23 +465,81 @@ function loadPollWithResponses(pollId, currentUser = null) {
     .prepare("SELECT * FROM responses WHERE poll_id = ? ORDER BY updated_at DESC, id DESC")
     .all(pollId);
 
-  const poll = mapPollRow(pollRow);
+  const poll = mapPollRow(pollRow, req);
   const responses = responseRows.map(mapResponseRow);
-  const results =
-    poll.mode === "fixed"
-      ? calculateBestDates(poll.dates, responses)
-      : calculateSuggestedDatesRanking(responses);
+  const results = poll.mode === "fixed"
+    ? calculateBestDates(poll.dates, responses)
+    : calculateSuggestedDatesRanking(responses);
+
+  const owner = poll.userId
+    ? db.prepare("SELECT id, email, name FROM users WHERE id = ?").get(poll.userId)
+    : null;
 
   return {
     poll,
+    owner: owner
+      ? { id: owner.id, email: owner.email, name: owner.name || "" }
+      : null,
+    permissions: {
+      canManage: Boolean(currentUser && poll.userId && currentUser.id === poll.userId),
+    },
     responses,
     results,
     user: currentUser
-      ? {
-          id: currentUser.id,
-          email: currentUser.email,
-        }
+      ? { id: currentUser.id, email: currentUser.email, name: currentUser.name || "" }
       : null,
+  };
+}
+
+function getPollOwnerOrThrow(pollId, userId) {
+  const poll = db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId);
+  if (!poll) {
+    return null;
+  }
+  if (poll.user_id !== userId) {
+    return false;
+  }
+  return poll;
+}
+
+function buildDashboardPayload(req, userId) {
+  const rows = db
+    .prepare(`
+      SELECT
+        polls.*,
+        COUNT(responses.id) AS response_count,
+        MAX(responses.updated_at) AS latest_response_at
+      FROM polls
+      LEFT JOIN responses ON responses.poll_id = polls.id
+      WHERE polls.user_id = ?
+      GROUP BY polls.id
+      ORDER BY COALESCE(polls.last_response_at, polls.updated_at, polls.created_at) DESC
+    `)
+    .all(userId);
+
+  const polls = rows.map((row) => {
+    const mapped = mapPollRow(row, req);
+    const responses = db.prepare("SELECT * FROM responses WHERE poll_id = ?").all(row.id).map(mapResponseRow);
+    const results = mapped.mode === "fixed"
+      ? calculateBestDates(mapped.dates, responses)
+      : calculateSuggestedDatesRanking(responses);
+
+    return {
+      ...mapped,
+      responseCount: Number(row.response_count || 0),
+      latestResponseAt: row.latest_response_at || null,
+      bestDates: results.bestDates,
+    };
+  });
+
+  return {
+    polls,
+    stats: {
+      totalPolls: polls.length,
+      totalResponses: polls.reduce((sum, poll) => sum + poll.responseCount, 0),
+      activePolls: polls.filter((poll) => poll.responseCount > 0).length,
+      inviteEnabledPolls: polls.filter((poll) => poll.allowEmailInvites).length,
+    },
   };
 }
 
@@ -467,7 +570,6 @@ function parseCookies(headerValue) {
 function serializeCookie(name, value, options = {}) {
   const parts = [`${name}=${encodeURIComponent(value)}`];
   parts.push(`Path=${options.path || "/"}`);
-
   if (options.httpOnly) {
     parts.push("HttpOnly");
   }
@@ -480,7 +582,6 @@ function serializeCookie(name, value, options = {}) {
   if (typeof options.maxAge === "number") {
     parts.push(`Max-Age=${options.maxAge}`);
   }
-
   return parts.join("; ");
 }
 
@@ -493,10 +594,6 @@ function appendCookie(res, cookieValue) {
 
   const next = Array.isArray(current) ? current.concat(cookieValue) : [current, cookieValue];
   res.setHeader("Set-Cookie", next);
-}
-
-function isSecureRequest(req) {
-  return req.secure || req.get("x-forwarded-proto") === "https";
 }
 
 function getCookieSettings(req, httpOnly = true) {
@@ -522,64 +619,34 @@ function createToken(bytes = 24) {
   return crypto.randomBytes(bytes).toString("hex");
 }
 
-function cleanupLoginAttempts(now) {
-  for (const [key, values] of loginAttempts.entries()) {
-    const nextValues = values.filter((timestamp) => now - timestamp < LOGIN_WINDOW_MS);
-    if (nextValues.length === 0) {
-      loginAttempts.delete(key);
-    } else {
-      loginAttempts.set(key, nextValues);
+function bucketKey(prefix, key) {
+  return `${prefix}:${key}`;
+}
+
+function cleanupBucket(bucket, now, windowMs) {
+  bucket.timestamps = bucket.timestamps.filter((timestamp) => now - timestamp < windowMs);
+}
+
+function createRateLimit(options) {
+  const limit = options.limit ?? 10;
+  const windowMs = options.windowMs ?? 60 * 1000;
+  const keyPrefix = options.keyPrefix || "global";
+  const keyFn = options.keyFn || ((req) => req.ip);
+
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = bucketKey(keyPrefix, keyFn(req));
+    const bucket = rateLimitBuckets.get(key) || { timestamps: [] };
+    cleanupBucket(bucket, now, windowMs);
+
+    if (bucket.timestamps.length >= limit) {
+      return res.status(429).json({ error: "Zu viele Anfragen. Bitte warte kurz." });
     }
-  }
-}
 
-function recordFailedLogin(key) {
-  const now = Date.now();
-  cleanupLoginAttempts(now);
-  const current = loginAttempts.get(key) || [];
-  current.push(now);
-  loginAttempts.set(key, current);
-}
-
-function clearFailedLogins(key) {
-  loginAttempts.delete(key);
-}
-
-function isRateLimited(key) {
-  const now = Date.now();
-  cleanupLoginAttempts(now);
-  const current = loginAttempts.get(key) || [];
-  return current.length >= LOGIN_LIMIT;
-}
-
-function createSession(res, req, userId) {
-  const sessionId = createToken(32);
-  const timestamp = new Date().toISOString();
-  db.prepare("INSERT INTO sessions (id, user_id, created_at, last_activity_at) VALUES (?, ?, ?, ?)").run(
-    sessionId,
-    userId,
-    timestamp,
-    timestamp
-  );
-  appendCookie(
-    res,
-    serializeCookie(
-      "session_id",
-      sessionId,
-      {
-        ...getCookieSettings(req, true),
-        maxAge: Math.floor(SESSION_TIMEOUT_MS / 1000),
-      }
-    )
-  );
-}
-
-function destroySession(res, req) {
-  const sessionId = req.cookies.session_id;
-  if (sessionId) {
-    db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
-  }
-  clearCookie(res, "session_id", req, true);
+    bucket.timestamps.push(now);
+    rateLimitBuckets.set(key, bucket);
+    next();
+  };
 }
 
 function cookieMiddleware(req, _res, next) {
@@ -598,16 +665,38 @@ function csrfCookieMiddleware(req, res, next) {
   req.csrfToken = csrfToken;
   appendCookie(
     res,
-    serializeCookie(
-      "csrf_token",
-      csrfToken,
-      {
-        ...getCookieSettings(req, false),
-        maxAge: 7 * 24 * 60 * 60,
-      }
-    )
+    serializeCookie("csrf_token", csrfToken, {
+      ...getCookieSettings(req, false),
+      maxAge: 7 * 24 * 60 * 60,
+    })
   );
   next();
+}
+
+function createSession(res, req, userId) {
+  const sessionId = createToken(32);
+  const timestamp = new Date().toISOString();
+  db.prepare("INSERT INTO sessions (id, user_id, created_at, last_activity_at) VALUES (?, ?, ?, ?)").run(
+    sessionId,
+    userId,
+    timestamp,
+    timestamp
+  );
+  appendCookie(
+    res,
+    serializeCookie("session_id", sessionId, {
+      ...getCookieSettings(req, true),
+      maxAge: Math.floor(SESSION_TIMEOUT_MS / 1000),
+    })
+  );
+}
+
+function destroySession(res, req) {
+  const sessionId = req.cookies.session_id;
+  if (sessionId) {
+    db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+  }
+  clearCookie(res, "session_id", req, true);
 }
 
 function sessionMiddleware(req, res, next) {
@@ -644,14 +733,10 @@ function sessionMiddleware(req, res, next) {
   db.prepare("UPDATE sessions SET last_activity_at = ? WHERE id = ?").run(nowIso, sessionId);
   appendCookie(
     res,
-    serializeCookie(
-      "session_id",
-      sessionId,
-      {
-        ...getCookieSettings(req, true),
-        maxAge: Math.floor(SESSION_TIMEOUT_MS / 1000),
-      }
-    )
+    serializeCookie("session_id", sessionId, {
+      ...getCookieSettings(req, true),
+      maxAge: Math.floor(SESSION_TIMEOUT_MS / 1000),
+    })
   );
 
   req.session = {
@@ -670,16 +755,14 @@ function sessionMiddleware(req, res, next) {
 }
 
 function requireCsrf(req, res, next) {
-  const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(req.method);
-  if (!unsafeMethod) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
     return next();
   }
 
   const headerToken = req.get("x-csrf-token");
   const cookieToken = req.cookies.csrf_token;
-
   if (!headerToken || !cookieToken || headerToken !== cookieToken) {
-    return res.status(403).json({ error: "CSRF-Prüfung fehlgeschlagen." });
+    return res.status(403).json({ error: "CSRF-Pruefung fehlgeschlagen." });
   }
 
   next();
@@ -689,7 +772,6 @@ function requireAuth(req, res, next) {
   if (!req.currentUser) {
     return res.status(401).json({ error: "Bitte zuerst einloggen." });
   }
-
   next();
 }
 
@@ -723,11 +805,142 @@ function loadUserByResetToken(token) {
     .get(token, new Date().toISOString());
 }
 
+function appendMailLog(payload) {
+  const line = `${JSON.stringify({ createdAt: new Date().toISOString(), ...payload })}\n`;
+  fs.appendFileSync(MAIL_LOG_PATH, line, "utf8");
+}
+
+function deliverEmail({ to, subject, text, meta = {} }) {
+  appendMailLog({ to, subject, text, meta });
+}
+
+function sendInvitationEmails(req, poll, inviteEmails) {
+  if (!inviteEmails.length || !poll.allowEmailInvites) {
+    return 0;
+  }
+
+  for (const email of inviteEmails) {
+    deliverEmail({
+      to: email,
+      subject: `Einladung: ${poll.title}`,
+      text: [
+        `Du wurdest zu einer Termin-Abstimmung eingeladen.`,
+        ``,
+        `Titel: ${poll.title}`,
+        `Beschreibung: ${poll.description}`,
+        poll.inviteMessage ? `Nachricht: ${poll.inviteMessage}` : "",
+        `Link: ${getShareUrl(req, poll.id)}`,
+      ].filter(Boolean).join("\n"),
+      meta: { type: "poll_invitation", pollId: poll.id },
+    });
+  }
+
+  return inviteEmails.length;
+}
+
+function sendOwnerResponseNotification(req, pollId, responseName, isUpdate) {
+  const poll = db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId);
+  if (!poll || !poll.user_id || !poll.notification_email_enabled) {
+    return;
+  }
+
+  const owner = db.prepare("SELECT * FROM users WHERE id = ?").get(poll.user_id);
+  if (!owner || !owner.notify_on_response) {
+    return;
+  }
+
+  deliverEmail({
+    to: owner.email,
+    subject: `${isUpdate ? "Aktualisierte" : "Neue"} Antwort fuer ${poll.title}`,
+    text: [
+      `${responseName} hat ${isUpdate ? "eine Antwort aktualisiert" : "geantwortet"}.`,
+      `Umfrage: ${poll.title}`,
+      `Link: ${getShareUrl(req, poll.id)}`,
+    ].join("\n"),
+    meta: { type: "poll_response", pollId: poll.id, responseName },
+  });
+}
+
+function sendDailySummaryIfDue(req, userId) {
+  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+  if (!user || !user.daily_summary) {
+    return;
+  }
+
+  const lastSentAt = user.daily_summary_last_sent_at ? new Date(user.daily_summary_last_sent_at).getTime() : 0;
+  if (lastSentAt && Date.now() - lastSentAt < 24 * 60 * 60 * 1000) {
+    return;
+  }
+
+  const polls = buildDashboardPayload(req, userId).polls;
+  if (polls.length === 0) {
+    return;
+  }
+
+  const lines = polls.slice(0, 10).map((poll) => {
+    const bestLabel = poll.bestDates.length > 0
+      ? poll.bestDates.map((entry) => entry.date).join(", ")
+      : "noch keine Antworten";
+    return `- ${poll.title}: ${poll.responseCount} Antworten, Top-Termine: ${bestLabel}`;
+  });
+
+  deliverEmail({
+    to: user.email,
+    subject: "Taegliche Termin-Abstimmungs-Zusammenfassung",
+    text: ["Deine letzten Umfragen:", ...lines].join("\n"),
+    meta: { type: "daily_summary", userId },
+  });
+
+  db.prepare("UPDATE users SET daily_summary_last_sent_at = ? WHERE id = ?").run(new Date().toISOString(), userId);
+}
+
+function formatIcsDate(date) {
+  return date.replaceAll("-", "");
+}
+
+function escapeIcsText(value) {
+  return String(value || "")
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\n", "\\n")
+    .replaceAll(",", "\\,")
+    .replaceAll(";", "\\;");
+}
+
+function buildIcsContent(req, poll, date) {
+  const dtStamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const start = formatIcsDate(date);
+  const endDate = new Date(`${date}T00:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + 1);
+  const end = formatIcsDate(endDate.toISOString().slice(0, 10));
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Termin-Abstimmung//DE",
+    "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${poll.id}-${start}@termin-abstimmung`,
+    `DTSTAMP:${dtStamp}`,
+    `DTSTART;VALUE=DATE:${start}`,
+    `DTEND;VALUE=DATE:${end}`,
+    `SUMMARY:${escapeIcsText(poll.title)}`,
+    `DESCRIPTION:${escapeIcsText(poll.description)}`,
+    `URL:${escapeIcsText(getShareUrl(req, poll.id))}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+    "",
+  ].join("\r\n");
+}
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
 app.get("/api/auth/me", (req, res) => {
+  if (req.currentUser) {
+    sendDailySummaryIfDue(req, req.currentUser.id);
+  }
+
   res.json({
     user: req.currentUser
       ? {
@@ -741,10 +954,11 @@ app.get("/api/auth/me", (req, res) => {
   });
 });
 
-app.post("/api/auth/register", requireCsrf, (req, res) => {
+app.post("/api/auth/register", requireCsrf, createRateLimit({ keyPrefix: "register", limit: 6 }), (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const passwordCheck = validatePassword(req.body?.password);
+    const name = normalizeText(req.body?.name, 120);
 
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: "Bitte gib eine gueltige E-Mail-Adresse ein." });
@@ -762,14 +976,15 @@ app.post("/api/auth/register", requireCsrf, (req, res) => {
     }
 
     if (existingUser) {
-      db.prepare("UPDATE users SET password_hash = ?, created_at = COALESCE(created_at, ?) WHERE id = ?").run(
-        passwordHash,
-        createdAt,
-        existingUser.id
-      );
+      db.prepare(`
+        UPDATE users
+        SET password_hash = ?, name = ?, created_at = COALESCE(created_at, ?)
+        WHERE id = ?
+      `).run(passwordHash, name, createdAt, existingUser.id);
     } else {
-      db.prepare("INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)").run(
+      db.prepare("INSERT INTO users (email, name, password_hash, created_at) VALUES (?, ?, ?, ?)").run(
         email,
+        name,
         passwordHash,
         createdAt
       );
@@ -779,71 +994,71 @@ app.post("/api/auth/register", requireCsrf, (req, res) => {
     destroySession(res, req);
     createSession(res, req, user.id);
 
-    return res.status(201).json({
+    res.status(201).json({
       message: "Konto erstellt. Du bist jetzt eingeloggt.",
       user: mapUserRow(user),
     });
   } catch (error) {
     console.error("Fehler bei der Registrierung:", error);
-    return res.status(500).json({ error: "Die Registrierung konnte nicht gespeichert werden." });
+    res.status(500).json({ error: "Die Registrierung konnte nicht gespeichert werden." });
   }
 });
 
-app.post("/api/auth/login", requireCsrf, (req, res) => {
+app.post("/api/auth/login", requireCsrf, createRateLimit({
+  keyPrefix: "login",
+  limit: 8,
+  keyFn: (req) => `${req.ip}:${normalizeEmail(req.body?.email || "")}`,
+}), (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const password = typeof req.body?.password === "string" ? req.body.password : "";
-    const rateLimitKey = `${req.ip}:${email}`;
-
-    if (isRateLimited(rateLimitKey)) {
-      return res.status(429).json({ error: "Zu viele Login-Versuche. Bitte warte kurz." });
-    }
 
     const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
     if (!user || !user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
-      recordFailedLogin(rateLimitKey);
       return res.status(401).json({ error: "E-Mail oder Passwort ist falsch." });
     }
 
-    clearFailedLogins(rateLimitKey);
     destroySession(res, req);
     createSession(res, req, user.id);
 
-    return res.json({
+    res.json({
       message: "Login erfolgreich.",
       user: mapUserRow(user),
     });
   } catch (error) {
     console.error("Fehler beim Login:", error);
-    return res.status(500).json({ error: "Der Login konnte nicht abgeschlossen werden." });
+    res.status(500).json({ error: "Der Login konnte nicht abgeschlossen werden." });
   }
 });
 
-app.post("/api/auth/forgot-password", requireCsrf, (req, res) => {
+app.post("/api/auth/forgot-password", requireCsrf, createRateLimit({ keyPrefix: "forgot", limit: 5 }), (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
-
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: "Bitte gib eine gueltige E-Mail-Adresse ein." });
     }
 
     const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
     if (!user || !user.password_hash) {
-      return res.json({
-        message: "Falls ein Konto existiert, wurde ein Reset-Link erzeugt.",
-      });
+      return res.json({ message: "Falls ein Konto existiert, wurde ein Reset-Link erzeugt." });
     }
 
     const { token, expiresAt } = issuePasswordResetToken(user.id);
+    deliverEmail({
+      to: email,
+      subject: "Passwort zuruecksetzen",
+      text: `Reset-Link: ${getBaseUrl(req)}/reset-password?token=${token}\nGueltig bis: ${expiresAt}`,
+      meta: { type: "password_reset", userId: user.id },
+    });
 
-    return res.json({
+    res.json({
       message: "Reset-Link erzeugt. In dieser lokalen Version wird der Link direkt angezeigt.",
       resetUrl: `${getBaseUrl(req)}/reset-password?token=${token}`,
       expiresAt,
     });
   } catch (error) {
     console.error("Fehler beim Erzeugen des Passwort-Reset-Links:", error);
-    return res.status(500).json({ error: "Der Reset-Link konnte nicht erzeugt werden." });
+    res.status(500).json({ error: "Der Reset-Link konnte nicht erzeugt werden." });
   }
 });
 
@@ -859,17 +1074,14 @@ app.get("/api/auth/reset-password/:token", (req, res) => {
       return res.status(404).json({ error: "Der Reset-Link ist ungueltig oder abgelaufen." });
     }
 
-    return res.json({
-      email: user.email,
-      expiresAt: user.reset_token_expires_at,
-    });
+    res.json({ email: user.email, expiresAt: user.reset_token_expires_at });
   } catch (error) {
     console.error("Fehler beim Pruefen des Reset-Tokens:", error);
-    return res.status(500).json({ error: "Der Reset-Link konnte nicht geprueft werden." });
+    res.status(500).json({ error: "Der Reset-Link konnte nicht geprueft werden." });
   }
 });
 
-app.post("/api/auth/reset-password", requireCsrf, (req, res) => {
+app.post("/api/auth/reset-password", requireCsrf, createRateLimit({ keyPrefix: "reset", limit: 8 }), (req, res) => {
   try {
     const token = normalizeText(req.body?.token, 128);
     const passwordCheck = validatePassword(req.body?.password);
@@ -877,7 +1089,6 @@ app.post("/api/auth/reset-password", requireCsrf, (req, res) => {
     if (!token) {
       return res.status(400).json({ error: "Es fehlt ein gueltiger Token." });
     }
-
     if (!passwordCheck.ok) {
       return res.status(400).json({ error: passwordCheck.message });
     }
@@ -887,22 +1098,21 @@ app.post("/api/auth/reset-password", requireCsrf, (req, res) => {
       return res.status(404).json({ error: "Der Reset-Link ist ungueltig oder abgelaufen." });
     }
 
-    const passwordHash = bcrypt.hashSync(passwordCheck.value, 12);
     db.prepare("UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires_at = NULL WHERE id = ?").run(
-      passwordHash,
+      bcrypt.hashSync(passwordCheck.value, 12),
       user.id
     );
 
     destroySession(res, req);
     createSession(res, req, user.id);
 
-    return res.json({
+    res.json({
       message: "Passwort gespeichert. Du bist jetzt eingeloggt.",
       user: mapUserRow(db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)),
     });
   } catch (error) {
     console.error("Fehler beim Zuruecksetzen des Passworts:", error);
-    return res.status(500).json({ error: "Das Passwort konnte nicht zurueckgesetzt werden." });
+    res.status(500).json({ error: "Das Passwort konnte nicht zurueckgesetzt werden." });
   }
 });
 
@@ -911,36 +1121,13 @@ app.post("/api/auth/logout", requireCsrf, (req, res) => {
   res.json({ message: "Logout erfolgreich." });
 });
 
-app.get("/api/user/polls", requireAuth, (req, res) => {
-  try {
-    const rows = db
-      .prepare("SELECT * FROM polls WHERE user_id = ? ORDER BY created_at DESC")
-      .all(req.currentUser.id);
-
-    return res.json({
-      polls: rows.map(mapPollRow),
-    });
-  } catch (error) {
-    console.error("Fehler beim Laden der User-Polls:", error);
-    return res.status(500).json({ error: "Die Umfragen konnten nicht geladen werden." });
-  }
-});
-
 app.get("/api/user/profile", requireAuth, (req, res) => {
   try {
-    const user = db
-      .prepare("SELECT id, email, name, created_at FROM users WHERE id = ?")
-      .get(req.currentUser.id);
-
-    return res.json({
-      id: user.id,
-      email: user.email,
-      name: user.name || "",
-      createdAt: user.created_at,
-    });
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.currentUser.id);
+    res.json(mapUserRow(user));
   } catch (error) {
     console.error("Fehler beim Laden des Profils:", error);
-    return res.status(500).json({ error: "Das Profil konnte nicht geladen werden." });
+    res.status(500).json({ error: "Das Profil konnte nicht geladen werden." });
   }
 });
 
@@ -951,15 +1138,23 @@ app.put("/api/user/profile", requireCsrf, requireAuth, (req, res) => {
       return res.status(400).json({ error: "Der Name muss mindestens 2 Zeichen lang sein." });
     }
 
-    db.prepare("UPDATE users SET name = ? WHERE id = ?").run(name, req.currentUser.id);
-    return res.json({ success: true, name });
+    const notifyOnResponse = normalizeBoolean(req.body?.notifyOnResponse, true);
+    const dailySummary = normalizeBoolean(req.body?.dailySummary, false);
+
+    db.prepare(`
+      UPDATE users
+      SET name = ?, notify_on_response = ?, daily_summary = ?
+      WHERE id = ?
+    `).run(name, notifyOnResponse ? 1 : 0, dailySummary ? 1 : 0, req.currentUser.id);
+
+    res.json(mapUserRow(db.prepare("SELECT * FROM users WHERE id = ?").get(req.currentUser.id)));
   } catch (error) {
     console.error("Fehler beim Aktualisieren des Profils:", error);
-    return res.status(500).json({ error: "Das Profil konnte nicht gespeichert werden." });
+    res.status(500).json({ error: "Das Profil konnte nicht gespeichert werden." });
   }
 });
 
-app.put("/api/user/password", requireCsrf, requireAuth, (req, res) => {
+app.put("/api/user/password", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "password", limit: 10 }), (req, res) => {
   try {
     const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
     const newPasswordCheck = validatePassword(req.body?.newPassword);
@@ -967,7 +1162,6 @@ app.put("/api/user/password", requireCsrf, requireAuth, (req, res) => {
     if (!currentPassword) {
       return res.status(400).json({ error: "Bitte gib dein aktuelles Passwort ein." });
     }
-
     if (!newPasswordCheck.ok) {
       return res.status(400).json({ error: newPasswordCheck.message });
     }
@@ -977,114 +1171,251 @@ app.put("/api/user/password", requireCsrf, requireAuth, (req, res) => {
       return res.status(400).json({ error: "Aktuelles Passwort falsch." });
     }
 
-    const newHash = bcrypt.hashSync(newPasswordCheck.value, 12);
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(newHash, req.currentUser.id);
-    return res.json({ success: true });
+    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(
+      bcrypt.hashSync(newPasswordCheck.value, 12),
+      req.currentUser.id
+    );
+
+    res.json({ success: true });
   } catch (error) {
     console.error("Fehler beim Aendern des Passworts:", error);
-    return res.status(500).json({ error: "Das Passwort konnte nicht geaendert werden." });
+    res.status(500).json({ error: "Das Passwort konnte nicht geaendert werden." });
   }
 });
 
 app.delete("/api/user/account", requireCsrf, requireAuth, (req, res) => {
   try {
     const userId = req.currentUser.id;
-    const polls = db.prepare("SELECT id FROM polls WHERE user_id = ?").all(userId);
-
     const deleteAccount = db.transaction(() => {
+      const polls = db.prepare("SELECT id FROM polls WHERE user_id = ?").all(userId);
       for (const poll of polls) {
         db.prepare("DELETE FROM responses WHERE poll_id = ?").run(poll.id);
         db.prepare("DELETE FROM polls WHERE id = ?").run(poll.id);
       }
-
       db.prepare("DELETE FROM responses WHERE user_id = ?").run(userId);
       db.prepare("DELETE FROM users WHERE id = ?").run(userId);
     });
 
     deleteAccount();
     destroySession(res, req);
-    return res.json({ success: true });
+    res.json({ success: true });
   } catch (error) {
     console.error("Fehler beim Loeschen des Kontos:", error);
-    return res.status(500).json({ error: "Das Konto konnte nicht geloescht werden." });
+    res.status(500).json({ error: "Das Konto konnte nicht geloescht werden." });
   }
 });
 
-app.post("/api/polls", requireCsrf, requireAuth, (req, res) => {
+app.get("/api/user/dashboard", requireAuth, (req, res) => {
   try {
-    const title = normalizeText(req.body?.title, 120);
-    const description = normalizeText(req.body?.description, 1000);
-    const mode = normalizeMode(req.body?.mode);
-    const dates = mode === "fixed" ? normalizeDates(req.body?.dates) : [];
+    sendDailySummaryIfDue(req, req.currentUser.id);
+    const profile = db.prepare("SELECT * FROM users WHERE id = ?").get(req.currentUser.id);
+    res.json({
+      user: mapUserRow(profile),
+      ...buildDashboardPayload(req, req.currentUser.id),
+    });
+  } catch (error) {
+    console.error("Fehler beim Laden des Dashboards:", error);
+    res.status(500).json({ error: "Das Dashboard konnte nicht geladen werden." });
+  }
+});
 
-    if (title.length < 3) {
-      return res.status(400).json({ error: "Der Titel muss mindestens 3 Zeichen lang sein." });
+app.get("/api/user/polls", requireAuth, (req, res) => {
+  try {
+    res.json(buildDashboardPayload(req, req.currentUser.id));
+  } catch (error) {
+    console.error("Fehler beim Laden der Polls:", error);
+    res.status(500).json({ error: "Die Umfragen konnten nicht geladen werden." });
+  }
+});
+
+app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "poll-create", limit: 12 }), (req, res) => {
+  try {
+    const validation = validatePollInput(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.message });
     }
 
-    if (description.length < 3) {
-      return res.status(400).json({ error: "Die Beschreibung muss mindestens 3 Zeichen lang sein." });
-    }
+    const input = validation.value;
+    const now = new Date().toISOString();
+    const pollId = createToken(6);
 
-    if (mode === "fixed" && dates.length === 0) {
-      return res.status(400).json({ error: "Bitte waehle mindestens ein Datum aus." });
-    }
+    db.prepare(`
+      INSERT INTO polls (
+        id, title, description, dates, mode, created_at, updated_at, user_id,
+        invite_message, notification_email_enabled, allow_email_invites
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      pollId,
+      input.title,
+      input.description,
+      JSON.stringify(input.dates),
+      input.mode,
+      now,
+      now,
+      req.currentUser.id,
+      input.inviteMessage,
+      input.notificationEmailEnabled ? 1 : 0,
+      input.allowEmailInvites ? 1 : 0
+    );
 
-    const pollId = crypto.randomBytes(6).toString("hex");
-    const createdAt = new Date().toISOString();
+    const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId), req);
+    const invitedCount = input.sendInvites ? sendInvitationEmails(req, poll, input.inviteEmails) : 0;
 
-    db.prepare(
-      "INSERT INTO polls (id, title, description, dates, mode, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).run(pollId, title, description, JSON.stringify(dates), mode, createdAt, req.currentUser.id);
-
-    return res.status(201).json({
-      poll: {
-        id: pollId,
-        title,
-        description,
-        dates,
-        mode,
-        createdAt,
-        userId: req.currentUser.id,
-        shareUrl: `/poll/${pollId}`,
-      },
+    res.status(201).json({
+      poll,
+      invitedCount,
+      message: invitedCount > 0 ? `${invitedCount} Einladungen wurden protokolliert.` : "Umfrage erstellt.",
     });
   } catch (error) {
     console.error("Fehler beim Erstellen des Polls:", error);
-    return res.status(500).json({ error: "Der Poll konnte nicht erstellt werden." });
+    res.status(500).json({ error: "Die Umfrage konnte nicht erstellt werden." });
   }
 });
 
 app.get("/api/polls/:pollId", (req, res) => {
   try {
-    const data = loadPollWithResponses(req.params.pollId, req.currentUser);
+    const data = loadPollWithResponses(req.params.pollId, req.currentUser, req);
     if (!data) {
       return res.status(404).json({ error: "Poll nicht gefunden." });
     }
 
-    return res.json(data);
+    res.json(data);
   } catch (error) {
     console.error("Fehler beim Laden des Polls:", error);
-    return res.status(500).json({ error: "Der Poll konnte nicht geladen werden." });
+    res.status(500).json({ error: "Der Poll konnte nicht geladen werden." });
   }
 });
 
-app.post("/api/polls/:pollId/responses", requireCsrf, (req, res) => {
+app.put("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
   try {
-    const data = loadPollWithResponses(req.params.pollId, req.currentUser);
+    const existing = getPollOwnerOrThrow(req.params.pollId, req.currentUser.id);
+    if (existing === null) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+    if (existing === false) {
+      return res.status(403).json({ error: "Nicht erlaubt." });
+    }
+
+    const validation = validatePollInput(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.message });
+    }
+
+    const input = validation.value;
+    const now = new Date().toISOString();
+    db.prepare(`
+      UPDATE polls
+      SET title = ?, description = ?, dates = ?, mode = ?, updated_at = ?, invite_message = ?,
+          notification_email_enabled = ?, allow_email_invites = ?
+      WHERE id = ?
+    `).run(
+      input.title,
+      input.description,
+      JSON.stringify(input.dates),
+      input.mode,
+      now,
+      input.inviteMessage,
+      input.notificationEmailEnabled ? 1 : 0,
+      input.allowEmailInvites ? 1 : 0,
+      req.params.pollId
+    );
+
+    const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(req.params.pollId), req);
+    const invitedCount = input.sendInvites ? sendInvitationEmails(req, poll, input.inviteEmails) : 0;
+    res.json({
+      poll,
+      invitedCount,
+      message: invitedCount > 0 ? `${invitedCount} Einladungen wurden protokolliert.` : "Umfrage aktualisiert.",
+    });
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren des Polls:", error);
+    res.status(500).json({ error: "Die Umfrage konnte nicht aktualisiert werden." });
+  }
+});
+
+app.post("/api/polls/:pollId/duplicate", requireCsrf, requireAuth, (req, res) => {
+  try {
+    const existing = getPollOwnerOrThrow(req.params.pollId, req.currentUser.id);
+    if (existing === null) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+    if (existing === false) {
+      return res.status(403).json({ error: "Nicht erlaubt." });
+    }
+
+    const newId = createToken(6);
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO polls (
+        id, title, description, dates, mode, created_at, updated_at, user_id,
+        invite_message, notification_email_enabled, allow_email_invites
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      newId,
+      `${existing.title} (Kopie)`.slice(0, 120),
+      existing.description,
+      existing.dates,
+      existing.mode,
+      now,
+      now,
+      req.currentUser.id,
+      existing.invite_message || "",
+      existing.notification_email_enabled,
+      existing.allow_email_invites
+    );
+
+    res.status(201).json({
+      poll: mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(newId), req),
+      message: "Umfrage dupliziert.",
+    });
+  } catch (error) {
+    console.error("Fehler beim Duplizieren des Polls:", error);
+    res.status(500).json({ error: "Die Umfrage konnte nicht dupliziert werden." });
+  }
+});
+
+app.post("/api/polls/:pollId/invitations", requireCsrf, requireAuth, (req, res) => {
+  try {
+    const existing = getPollOwnerOrThrow(req.params.pollId, req.currentUser.id);
+    if (existing === null) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+    if (existing === false) {
+      return res.status(403).json({ error: "Nicht erlaubt." });
+    }
+
+    const inviteEmails = normalizeInviteEmails(req.body?.inviteEmails);
+    if (inviteEmails.length === 0) {
+      return res.status(400).json({ error: "Bitte gib mindestens eine gueltige E-Mail-Adresse ein." });
+    }
+
+    const poll = mapPollRow(existing, req);
+    poll.inviteMessage = normalizeText(req.body?.inviteMessage || existing.invite_message, 500);
+    poll.allowEmailInvites = Boolean(existing.allow_email_invites);
+    const invitedCount = sendInvitationEmails(req, poll, inviteEmails);
+    res.json({ invitedCount, message: `${invitedCount} Einladungen wurden protokolliert.` });
+  } catch (error) {
+    console.error("Fehler beim Senden der Einladungen:", error);
+    res.status(500).json({ error: "Die Einladungen konnten nicht verarbeitet werden." });
+  }
+});
+
+app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefix: "responses", limit: 30 }), (req, res) => {
+  try {
+    const data = loadPollWithResponses(req.params.pollId, req.currentUser, req);
     if (!data) {
       return res.status(404).json({ error: "Poll nicht gefunden." });
     }
 
     const isLoggedIn = Boolean(req.session?.userId && req.currentUser);
-    const name = isLoggedIn ? req.currentUser.email : normalizeText(req.body?.name, 80);
-
+    const name = isLoggedIn ? (req.currentUser.name || req.currentUser.email) : normalizeText(req.body?.name, 80);
     if (!isLoggedIn && name.length < 2) {
       return res.status(400).json({ error: "Bitte gib einen Namen mit mindestens 2 Zeichen ein." });
     }
 
     let availabilities = {};
     let suggestedDates = [];
-
     if (data.poll.mode === "fixed") {
       const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
       if (!availabilityCheck.ok) {
@@ -1102,6 +1433,7 @@ app.post("/api/polls/:pollId/responses", requireCsrf, (req, res) => {
     const timestamp = new Date().toISOString();
     const serializedAvailabilities = JSON.stringify(availabilities);
     const serializedSuggestedDates = JSON.stringify(suggestedDates);
+    let isUpdate = false;
 
     if (isLoggedIn) {
       const existing = db
@@ -1116,81 +1448,93 @@ app.post("/api/polls/:pollId/responses", requireCsrf, (req, res) => {
         .get(data.poll.id, req.session.userId, name, req.session.userId);
 
       if (existing) {
+        isUpdate = true;
         db.prepare(`
           UPDATE responses
           SET name = ?, user_id = ?, availabilities = ?, suggested_dates = ?, updated_at = ?
           WHERE id = ?
-        `).run(
-          name,
-          req.session.userId,
-          serializedAvailabilities,
-          serializedSuggestedDates,
-          timestamp,
-          existing.id
-        );
+        `).run(name, req.session.userId, serializedAvailabilities, serializedSuggestedDates, timestamp, existing.id);
       } else {
         db.prepare(`
           INSERT INTO responses (poll_id, user_id, name, availabilities, suggested_dates, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          data.poll.id,
-          req.session.userId,
-          name,
-          serializedAvailabilities,
-          serializedSuggestedDates,
-          timestamp,
-          timestamp
-        );
+        `).run(data.poll.id, req.session.userId, name, serializedAvailabilities, serializedSuggestedDates, timestamp, timestamp);
       }
-
-      return res.status(201).json(loadPollWithResponses(req.params.pollId, req.currentUser));
+    } else {
+      const existing = db.prepare("SELECT id FROM responses WHERE poll_id = ? AND lower(name) = lower(?)").get(data.poll.id, name);
+      isUpdate = Boolean(existing);
+      db.prepare(`
+        INSERT INTO responses (poll_id, name, availabilities, suggested_dates, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(poll_id, name) DO UPDATE SET
+          availabilities = excluded.availabilities,
+          suggested_dates = excluded.suggested_dates,
+          updated_at = excluded.updated_at
+      `).run(data.poll.id, name, serializedAvailabilities, serializedSuggestedDates, timestamp, timestamp);
     }
 
-    db.prepare(`
-      INSERT INTO responses (poll_id, name, availabilities, suggested_dates, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(poll_id, name) DO UPDATE SET
-        availabilities = excluded.availabilities,
-        suggested_dates = excluded.suggested_dates,
-        updated_at = excluded.updated_at
-    `).run(
-      data.poll.id,
-      name,
-      serializedAvailabilities,
-      serializedSuggestedDates,
-      timestamp,
-      timestamp
-    );
+    db.prepare("UPDATE polls SET last_response_at = ?, updated_at = ? WHERE id = ?").run(timestamp, timestamp, data.poll.id);
+    sendOwnerResponseNotification(req, data.poll.id, name, isUpdate);
 
-    return res.status(201).json(loadPollWithResponses(req.params.pollId, req.currentUser));
+    res.status(201).json(loadPollWithResponses(req.params.pollId, req.currentUser, req));
   } catch (error) {
     console.error("Fehler beim Speichern der Antwort:", error);
-    return res.status(500).json({ error: "Die Antwort konnte nicht gespeichert werden." });
+    res.status(500).json({ error: "Die Antwort konnte nicht gespeichert werden." });
+  }
+});
+
+app.get("/api/polls/:pollId/ics", (req, res) => {
+  try {
+    const data = loadPollWithResponses(req.params.pollId, req.currentUser, req);
+    if (!data) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+
+    const requestedDate = normalizeText(req.query?.date || "", 10);
+    const bestDate = requestedDate
+      || data.results.bestDates[0]?.date
+      || data.poll.dates[0]
+      || null;
+
+    if (!bestDate || !/^\d{4}-\d{2}-\d{2}$/.test(bestDate)) {
+      return res.status(400).json({ error: "Fuer diese Umfrage ist kein exportierbares Datum verfuegbar." });
+    }
+
+    const ics = buildIcsContent(req, data.poll, bestDate);
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${data.poll.id}-${bestDate}.ics"`);
+    res.send(ics);
+  } catch (error) {
+    console.error("Fehler beim Erstellen des ICS-Exports:", error);
+    res.status(500).json({ error: "Der Kalender-Export konnte nicht erstellt werden." });
   }
 });
 
 app.delete("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
   try {
-    const poll = db.prepare("SELECT user_id FROM polls WHERE id = ?").get(req.params.pollId);
-    if (!poll) {
-      return res.status(404).json({ error: "Nicht gefunden" });
+    const poll = getPollOwnerOrThrow(req.params.pollId, req.currentUser.id);
+    if (poll === null) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
     }
-    if (poll.user_id !== req.session.userId) {
-      return res.status(403).json({ error: "Nicht erlaubt" });
+    if (poll === false) {
+      return res.status(403).json({ error: "Nicht erlaubt." });
     }
 
     db.prepare("DELETE FROM responses WHERE poll_id = ?").run(req.params.pollId);
     db.prepare("DELETE FROM polls WHERE id = ?").run(req.params.pollId);
-    return res.json({ success: true });
+    res.json({ success: true });
   } catch (error) {
     console.error("Fehler beim Loeschen des Polls:", error);
-    return res.status(500).json({ error: "Der Poll konnte nicht geloescht werden." });
+    res.status(500).json({ error: "Die Umfrage konnte nicht geloescht werden." });
   }
 });
 
-app.get(["/", "/login", "/register", "/forgot-password", "/reset-password", "/dashboard", "/account", "/poll/:pollId"], (_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+app.get(
+  ["/", "/login", "/register", "/forgot-password", "/reset-password", "/dashboard", "/account", "/create", "/poll/:pollId"],
+  (_req, res) => {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+  }
+);
 
 app.use("/api", (req, res) => {
   res.status(404).json({ error: `Route nicht gefunden: ${req.method} ${req.originalUrl}` });
@@ -1203,7 +1547,7 @@ app.use((error, _req, res, _next) => {
 
 function startServer(port = PORT, host = HOST) {
   return app.listen(port, host, () => {
-    console.log(`Termin-Abstimmung läuft auf http://${host}:${port}`);
+    console.log(`Termin-Abstimmung laeuft auf http://${host}:${port}`);
   });
 }
 

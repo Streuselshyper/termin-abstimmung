@@ -78,8 +78,13 @@ async function renderCurrentRoute() {
     return;
   }
 
-  if (route.type === "dashboard" && !state.auth.user) {
+  if (["dashboard", "create"].includes(route.type) && !state.auth.user) {
     await navigateTo("/login", { replace: true });
+    return;
+  }
+
+  if (route.type === "create") {
+    await renderCreatePage(route.mode, route.pollId);
     return;
   }
 
@@ -125,6 +130,7 @@ function isSpaPath(pathname) {
     pathname === "/register" ||
     pathname === "/forgot-password" ||
     pathname === "/account" ||
+    pathname === "/create" ||
     pathname === "/reset-password" ||
     pathname === "/dashboard" ||
     /^\/poll\/[a-z0-9]+$/i.test(pathname)
@@ -221,7 +227,7 @@ function renderTopbarNav() {
   }
 
   topbarPrimaryElement.innerHTML = `
-    <a class="primary-link" href="/dashboard#create">
+    <a class="primary-link" href="/create">
       <i class="fa-solid fa-plus"></i>
       Neue Umfrage
     </a>
@@ -238,6 +244,7 @@ function renderTopbarNav() {
 
 function getRoute() {
   const pathname = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
   const pollMatch = pathname.match(/^\/poll\/([a-z0-9]+)$/i);
 
   if (pollMatch) {
@@ -255,8 +262,12 @@ function getRoute() {
   if (pathname === "/account") {
     return { type: "account" };
   }
+  if (pathname === "/create") {
+    const mode = ["fixed", "free"].includes(params.get("mode")) ? params.get("mode") : "fixed";
+    return { type: "create", mode, pollId: params.get("edit") || "" };
+  }
   if (pathname === "/reset-password") {
-    return { type: "reset-password", token: new URLSearchParams(window.location.search).get("token") || "" };
+    return { type: "reset-password", token: params.get("token") || "" };
   }
   if (pathname === "/dashboard") {
     return { type: "dashboard" };
@@ -511,6 +522,192 @@ async function renderAccountPage() {
   }
 }
 
+async function renderCreatePage(mode = "fixed", pollId = "") {
+  const template = document.querySelector("#create-template");
+  showDynamicView();
+  dynamicViewElement.innerHTML = '<section class="panel"><p class="description">Editor wird geladen ...</p></section>';
+
+  state.createMode = mode === "free" ? "free" : "fixed";
+  state.selectedDates = new Set();
+  state.currentMonth = startOfMonth(new Date());
+
+  let existingPoll = null;
+  if (pollId) {
+    const data = await apiFetch(`/api/polls/${pollId}`);
+    if (!data.permissions?.canManage) {
+      throw new Error("Diese Umfrage kann nicht bearbeitet werden.");
+    }
+    existingPoll = data.poll;
+    state.createMode = existingPoll.mode;
+    state.selectedDates = new Set(existingPoll.dates || []);
+    state.currentMonth = startOfMonth(getFirstSelectedCreateDate(existingPoll.dates));
+  }
+
+  dynamicViewElement.innerHTML = "";
+  dynamicViewElement.appendChild(template.content.cloneNode(true));
+
+  fillCreateForm(existingPoll);
+  bindCreateForm(existingPoll);
+}
+
+function fillCreateForm(existingPoll) {
+  const isEditing = Boolean(existingPoll);
+  const isFixed = state.createMode === "fixed";
+  const pageTitle = document.querySelector("#create-page-title");
+  const pageDescription = document.querySelector("#create-page-description");
+  const pageBadge = document.querySelector("#create-page-badge");
+  const formTitle = document.querySelector("#create-form-title");
+  const submitButton = document.querySelector("#create-submit-button");
+
+  document.querySelector("#create-title").value = existingPoll?.title || "";
+  document.querySelector("#create-description").value = existingPoll?.description || "";
+  pageBadge.textContent = isEditing ? "Bearbeiten" : "Neue Umfrage";
+  pageTitle.textContent = isEditing ? "Umfrage bearbeiten" : "Neue Termin-Abstimmung";
+  pageDescription.textContent = isFixed
+    ? "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab."
+    : "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
+  formTitle.textContent = isFixed ? "Feste Termine konfigurieren" : "Freie Wahl konfigurieren";
+  submitButton.innerHTML = isEditing
+    ? '<i class="fa-regular fa-floppy-disk"></i> Aenderungen speichern'
+    : '<i class="fa-regular fa-floppy-disk"></i> Umfrage speichern';
+
+  document.querySelector("#create-fixed-fields").classList.toggle("is-hidden", !isFixed);
+  document.querySelector("#create-free-fields").classList.toggle("is-hidden", isFixed);
+
+  if (isFixed) {
+    renderCreateCalendar();
+    renderCreateSelectedDates();
+  }
+}
+
+function bindCreateForm(existingPoll) {
+  document.querySelector("#create-prev-month").addEventListener("click", () => {
+    state.currentMonth = addMonths(state.currentMonth, -1);
+    renderCreateCalendar();
+  });
+
+  document.querySelector("#create-next-month").addEventListener("click", () => {
+    state.currentMonth = addMonths(state.currentMonth, 1);
+    renderCreateCalendar();
+  });
+
+  document.querySelector("#create-clear-dates").addEventListener("click", () => {
+    state.selectedDates.clear();
+    renderCreateCalendar();
+    renderCreateSelectedDates();
+  });
+
+  document.querySelector("#create-form").addEventListener("submit", (event) => handleCreateSubmit(event, existingPoll?.id || ""));
+}
+
+function renderCreateCalendar() {
+  const grid = document.querySelector("#create-calendar-grid");
+  const label = document.querySelector("#create-calendar-label");
+  if (!grid || !label) {
+    return;
+  }
+
+  label.textContent = formatMonthYear(state.currentMonth);
+  grid.innerHTML = "";
+
+  for (const weekday of weekdayLabels) {
+    const cell = document.createElement("div");
+    cell.className = "calendar-weekday";
+    cell.textContent = weekday;
+    grid.appendChild(cell);
+  }
+
+  const days = buildCalendarDays(state.currentMonth.getFullYear(), state.currentMonth.getMonth());
+  for (const day of days) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "calendar-day";
+    if (!day.inCurrentMonth) {
+      button.classList.add("muted");
+    }
+    if (state.selectedDates.has(day.isoDate)) {
+      button.classList.add("selected");
+    }
+
+    button.innerHTML = `<span>${day.date.getDate()}</span>`;
+    button.addEventListener("click", () => {
+      if (state.selectedDates.has(day.isoDate)) {
+        state.selectedDates.delete(day.isoDate);
+      } else {
+        state.selectedDates.add(day.isoDate);
+      }
+      renderCreateCalendar();
+      renderCreateSelectedDates();
+    });
+    grid.appendChild(button);
+  }
+}
+
+function renderCreateSelectedDates() {
+  const container = document.querySelector("#create-selected-dates");
+  if (!container) {
+    return;
+  }
+
+  const dates = Array.from(state.selectedDates).sort();
+  if (dates.length === 0) {
+    container.innerHTML = '<p class="description">Noch keine Termine ausgewaehlt.</p>';
+    return;
+  }
+
+  container.innerHTML = "";
+  for (const date of dates) {
+    const pill = document.createElement("div");
+    pill.className = "selected-date-pill";
+    pill.innerHTML = `
+      <span>${formatDateLong(date)}</span>
+      <button type="button" aria-label="Datum entfernen">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    `;
+    pill.querySelector("button").addEventListener("click", () => {
+      state.selectedDates.delete(date);
+      renderCreateCalendar();
+      renderCreateSelectedDates();
+    });
+    container.appendChild(pill);
+  }
+}
+
+async function handleCreateSubmit(event, pollId) {
+  event.preventDefault();
+  const feedback = document.querySelector("#create-feedback");
+  const title = document.querySelector("#create-title").value.trim();
+  const description = document.querySelector("#create-description").value.trim();
+  const payload = {
+    title,
+    description,
+    mode: state.createMode,
+    dates: state.createMode === "fixed" ? Array.from(state.selectedDates).sort() : [],
+  };
+
+  try {
+    setFeedback(feedback, pollId ? "Umfrage wird aktualisiert ..." : "Umfrage wird erstellt ...");
+    const data = await apiFetch(pollId ? `/api/polls/${pollId}` : "/api/polls", {
+      method: pollId ? "PUT" : "POST",
+      body: JSON.stringify(payload),
+    });
+    await navigateTo(`/poll/${data.poll.id}`, { replace: true });
+  } catch (error) {
+    setFeedback(feedback, error.message, "error");
+  }
+}
+
+function getFirstSelectedCreateDate(dates) {
+  const firstDate = [...(dates || [])].sort()[0];
+  if (!firstDate) {
+    return new Date();
+  }
+
+  const parsed = new Date(`${firstDate}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 async function loadDashboardPolls() {
   const list = document.querySelector("#dashboard-polls");
   const summary = document.querySelector("#dashboard-list-summary");
@@ -533,6 +730,15 @@ async function loadDashboardPolls() {
     }
 
     list.innerHTML = data.polls.map(renderDashboardPollCard).join("");
+    list.querySelectorAll("[data-poll-link]").forEach((row) => {
+      row.addEventListener("click", (event) => handleDashboardRowOpen(event, row.dataset.pollLink || ""));
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleDashboardRowOpen(event, row.dataset.pollLink || "");
+        }
+      });
+    });
     list.querySelectorAll("[data-dashboard-action]").forEach((button) => {
       button.addEventListener("click", handleDashboardAction);
     });
@@ -546,13 +752,25 @@ async function loadDashboardPolls() {
   }
 }
 
+function handleDashboardRowOpen(event, href) {
+  if (!href) {
+    return;
+  }
+
+  if (event.target.closest("button, a")) {
+    return;
+  }
+
+  navigateTo(href).catch(handleRenderError);
+}
+
 function renderDashboardPollCard(poll) {
   const absoluteShareUrl = poll.absoluteShareUrl || `${window.location.origin}${poll.shareUrl}`;
   const lastUpdated = poll.latestResponseAt || poll.updatedAt || poll.createdAt;
   const status = poll.responseCount > 0 ? "Aktiv" : "Neu";
 
   return `
-    <article class="poll-list-row">
+    <article class="poll-list-row" data-poll-link="${poll.shareUrl}" tabindex="0">
       <div>
         <h3>${escapeHtml(poll.title)}</h3>
         <p class="description">${escapeHtml(formatDateShort(lastUpdated.slice(0, 10)))} · ${escapeHtml(
@@ -826,9 +1044,6 @@ async function renderPollPage(pollId) {
     renderResultsTable();
 
     document.querySelector("#response-form").addEventListener("submit", handleResponseSubmit);
-    document.querySelector("#share-button").addEventListener("click", sharePollLink);
-    document.querySelector("#calendar-download-button").addEventListener("click", handleCalendarDownload);
-    document.querySelector("#calendar-open-button").addEventListener("click", handleCalendarOpen);
   } catch (error) {
     dynamicViewElement.innerHTML = `<section class="panel"><h1>Nicht gefunden</h1><p>${escapeHtml(
       error.message
@@ -857,7 +1072,6 @@ function initializeDraftFromPoll(poll) {
 function fillPollSummary() {
   const { poll, responses, results } = state.pollData;
   const isFixed = poll.mode === "fixed";
-  const absoluteShareUrl = poll.absoluteShareUrl || window.location.href;
   document.querySelector("#poll-title-view").textContent = poll.title;
   document.querySelector("#poll-description-view").textContent = poll.description;
   document.querySelector("#poll-mode-pill").textContent = isFixed ? "Festgelegte Termine" : "Freie Wahl";
@@ -868,19 +1082,19 @@ function fillPollSummary() {
   document.querySelector("#poll-mode-description").textContent = isFixed
     ? "Teilnehmende stimmen pro festem Termin mit Ja, Vielleicht oder Nein ab."
     : "Teilnehmende waehlen selbst beliebige Kalendertage. Das Ergebnis zeigt die am haeufigsten gewaehlten Termine.";
+  document.querySelector("#poll-back-link").setAttribute("href", state.auth.user ? "/dashboard" : "/");
+  document.querySelector("#poll-back-link").innerHTML = state.auth.user
+    ? '<i class="fa-solid fa-arrow-left"></i> Zurueck'
+    : '<i class="fa-solid fa-arrow-left"></i> Start';
 
   const bestDateEyebrow = document.querySelector("#best-date-eyebrow");
   const bestDateLabel = document.querySelector("#best-date-label");
   const bestDateMeta = document.querySelector("#best-date-meta");
   const resultsPanelEyebrow = document.querySelector("#results-panel-eyebrow");
   const resultsPanelTitle = document.querySelector("#results-panel-title");
-  const shareAnchor = document.querySelector("#share-link-anchor");
-  const exportDates = getPollExportDates(poll);
   bestDateMeta.innerHTML = "";
-  shareAnchor.href = absoluteShareUrl;
-  shareAnchor.textContent = "Share-Link oeffnen";
-  document.querySelector("#calendar-download-button").disabled = exportDates.length === 0;
-  document.querySelector("#calendar-open-button").disabled = exportDates.length === 0;
+  renderPollDatesOverview();
+  renderPollOwnerActions();
 
   if (!isFixed) {
     bestDateEyebrow.textContent = "Am haeufigsten genannt";
@@ -890,7 +1104,6 @@ function fillPollSummary() {
     if (results.bestDates.length === 0) {
       bestDateLabel.textContent = "Noch keine Antworten";
       bestDateMeta.innerHTML = '<span class="pill">Noch keine Vorschlaege eingegangen</span>';
-      renderPollOwnerActions();
       return;
     }
 
@@ -901,7 +1114,6 @@ function fillPollSummary() {
       meta.textContent = `${entry.count} Personen`;
       bestDateMeta.appendChild(meta);
     }
-    renderPollOwnerActions();
     return;
   }
 
@@ -917,13 +1129,11 @@ function fillPollSummary() {
 
   bestDateLabel.textContent = results.bestDates.map((entry) => formatDateShort(entry.date)).join(" · ");
   for (const entry of results.bestDates) {
-    const meta = document.createElement("span");
-    meta.className = "pill";
-    meta.textContent = `${entry.yes} Ja · ${entry.maybe} Vielleicht · Score ${entry.score}`;
-    bestDateMeta.appendChild(meta);
-  }
-
-  renderPollOwnerActions();
+      const meta = document.createElement("span");
+      meta.className = "pill";
+      meta.textContent = `${entry.yes} Ja · ${entry.maybe} Vielleicht · Score ${entry.score}`;
+      bestDateMeta.appendChild(meta);
+    }
 }
 
 function renderPollOwnerActions() {
@@ -943,7 +1153,14 @@ function renderPollOwnerActions() {
   container.innerHTML = `
     <div class="owner-action-grid">
       <section class="owner-action-card">
-        <p class="eyebrow">Share</p>
+        <p class="eyebrow">Bearbeiten</p>
+        <h3>In den Editor wechseln</h3>
+        <p class="description">Titel, Beschreibung und Modus lassen sich im Create-Template anpassen.</p>
+        <button id="owner-edit-poll" class="ghost-button wide-button" type="button">Bearbeiten</button>
+      </section>
+
+      <section class="owner-action-card">
+        <p class="eyebrow">Teilen</p>
         <h3>Link fuer Teilnehmende</h3>
         <div class="share-link-row">
           <div class="share-link-output">${escapeHtml(poll.absoluteShareUrl || window.location.href)}</div>
@@ -952,8 +1169,15 @@ function renderPollOwnerActions() {
       </section>
 
       <section class="owner-action-card">
+        <p class="eyebrow">Duplizieren</p>
+        <h3>Kopie anlegen</h3>
+        <p class="description">Erstellt eine neue Umfrage mit denselben Stammdaten.</p>
+        <button id="owner-duplicate-poll" class="ghost-button wide-button" type="button">Duplizieren</button>
+      </section>
+
+      <section class="owner-action-card">
         <p class="eyebrow">Kalender</p>
-        <h3>ICS-Export</h3>
+        <h3>ICS exportieren</h3>
         <div class="export-row">
           <select id="poll-export-date">
             ${
@@ -970,35 +1194,24 @@ function renderPollOwnerActions() {
                 : '<option value="">Kein Datum verfuegbar</option>'
             }
           </select>
-          <button id="owner-export-ics" class="ghost-button compact-button" type="button" ${
+          <button id="owner-export-ics" class="ghost-button wide-button" type="button" ${
             exportDates.length === 0 ? "disabled" : ""
-          }>Download</button>
+          }>ICS</button>
         </div>
       </section>
 
       <section class="owner-action-card">
-        <p class="eyebrow">E-Mail-Optionen</p>
-        <h3>Einladungen vorbereiten</h3>
-        <form id="owner-invitation-form" class="stack-form">
-          <label>
-            <span>Empfaenger</span>
-            <textarea id="owner-invite-emails" rows="3" placeholder="team@firma.de, kundin@firma.de"></textarea>
-          </label>
-          <label>
-            <span>Nachricht</span>
-            <textarea id="owner-invite-message" rows="3" maxlength="500" placeholder="Optionaler Einladungstext">${escapeHtml(
-              poll.inviteMessage || ""
-            )}</textarea>
-          </label>
-          <p class="muted-copy">Versand bleibt hier als UI/Log-Vorbereitung enthalten.</p>
-          <div id="owner-invite-feedback" class="feedback" role="status" aria-live="polite"></div>
-          <button class="ghost-button compact-button" type="submit" ${poll.allowEmailInvites ? "" : "disabled"}>
-            Einladung protokollieren
-          </button>
-        </form>
+        <p class="eyebrow">Loeschen</p>
+        <h3>Umfrage entfernen</h3>
+        <p class="description">Loescht die Umfrage inklusive aller Antworten dauerhaft.</p>
+        <button id="owner-delete-poll" class="ghost-button wide-button danger-button" type="button">Loeschen</button>
       </section>
     </div>
   `;
+
+  document.querySelector("#owner-edit-poll").addEventListener("click", () => {
+    navigateTo(`/create?mode=${encodeURIComponent(poll.mode)}&edit=${encodeURIComponent(poll.id)}`).catch(handleRenderError);
+  });
 
   document.querySelector("#owner-copy-share-link").addEventListener("click", async () => {
     try {
@@ -1009,8 +1222,65 @@ function renderPollOwnerActions() {
     }
   });
 
+  document.querySelector("#owner-duplicate-poll").addEventListener("click", async () => {
+    try {
+      setFeedback(document.querySelector("#response-feedback"), "Umfrage wird dupliziert ...");
+      const data = await apiFetch(`/api/polls/${poll.id}/duplicate`, { method: "POST" });
+      await navigateTo(`/poll/${data.poll.id}`);
+    } catch (error) {
+      setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+    }
+  });
+
   document.querySelector("#owner-export-ics")?.addEventListener("click", handleCalendarDownload);
-  document.querySelector("#owner-invitation-form").addEventListener("submit", handleOwnerInvites);
+
+  document.querySelector("#owner-delete-poll").addEventListener("click", async () => {
+    if (!confirm("Umfrage wirklich loeschen?")) {
+      return;
+    }
+
+    try {
+      setFeedback(document.querySelector("#response-feedback"), "Umfrage wird geloescht ...");
+      await apiFetch(`/api/polls/${poll.id}`, { method: "DELETE" });
+      await navigateTo("/dashboard", { replace: true });
+    } catch (error) {
+      setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+    }
+  });
+}
+
+function renderPollDatesOverview() {
+  const container = document.querySelector("#poll-dates-overview");
+  if (!container || !state.pollData) {
+    return;
+  }
+
+  const { poll, results } = state.pollData;
+  const items = poll.mode === "fixed" ? poll.dates : results.summary.map((entry) => entry.date);
+
+  if (items.length === 0) {
+    container.innerHTML = `
+      <article class="poll-date-card">
+        <strong>Noch keine Termine sichtbar</strong>
+        <span>Hier erscheinen feste Termine oder die ersten Vorschlaege der Teilnehmenden.</span>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = items
+    .map((date) => {
+      const summary = poll.mode === "fixed"
+        ? "Festgelegter Termin"
+        : `${results.summary.find((entry) => entry.date === date)?.count || 0} Nennungen`;
+      return `
+        <article class="poll-date-card">
+          <strong>${escapeHtml(formatDateLong(date))}</strong>
+          <span>${escapeHtml(summary)}</span>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderAvailabilityForm() {

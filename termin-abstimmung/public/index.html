@@ -505,14 +505,14 @@
           </div>
           <p class="description">Waehle zuerst den Typ deiner Umfrage. Der Editor wird im naechsten Schritt geoeffnet.</p>
           <div class="dashboard-actions-grid">
-            <a class="create-mode-card" href="/dashboard#create">
+            <a class="create-mode-card" href="/create?mode=fixed">
               <div class="create-mode-icon"><i class="fa-regular fa-calendar"></i></div>
               <div class="create-mode-copy">
                 <h3>Feste Termine</h3>
                 <p class="description">Du legst konkrete Tage fest und sammelst Ja-, Vielleicht- oder Nein-Antworten.</p>
               </div>
             </a>
-            <a class="create-mode-card" href="/dashboard#create">
+            <a class="create-mode-card" href="/create?mode=free">
               <div class="create-mode-icon"><i class="fa-regular fa-pen-to-square"></i></div>
               <div class="create-mode-copy">
                 <h3>Freie Wahl</h3>
@@ -542,18 +542,150 @@
       </section>
     </template>
 
+    <template id="create-template">
+      <section class="dashboard-shell">
+        <article class="hero-card create-hero">
+          <div class="hero-copy">
+            <div class="inline-action-row">
+              <a class="ghost-link" href="/dashboard">
+                <i class="fa-solid fa-arrow-left"></i>
+                Zurueck zum Dashboard
+              </a>
+              <span id="create-page-badge" class="pill">Neue Umfrage</span>
+            </div>
+            <p class="eyebrow">Umfrage erstellen</p>
+            <h1 id="create-page-title">Neue Termin-Abstimmung</h1>
+            <p id="create-page-description" class="hero-text">
+              Waehle zuerst den passenden Modus und erfasse dann Titel, Beschreibung und Termine.
+            </p>
+          </div>
+          <div class="hero-stats create-mode-stats">
+            <article class="hero-stat">
+              <strong>Titel + Beschreibung</strong>
+              <span>Klare Einordnung fuer alle Teilnehmenden</span>
+            </article>
+            <article class="hero-stat">
+              <strong>Direkter Flow</strong>
+              <span>Nach dem Speichern springst du direkt zur Detail-Seite</span>
+            </article>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Modus</p>
+              <h2>Wie soll abgestimmt werden?</h2>
+            </div>
+          </div>
+
+          <div class="dashboard-actions-grid">
+            <a class="create-mode-card" href="/create?mode=fixed">
+              <div class="create-mode-icon"><i class="fa-regular fa-calendar"></i></div>
+              <div class="create-mode-copy">
+                <h3>Feste Termine</h3>
+                <p class="description">Du definierst konkrete Tage und sammelst strukturierte Antworten.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=free">
+              <div class="create-mode-icon"><i class="fa-regular fa-pen-to-square"></i></div>
+              <div class="create-mode-copy">
+                <h3>Freie Wahl</h3>
+                <p class="description">Teilnehmende markieren selbst beliebige passende Tage im Kalender.</p>
+              </div>
+            </a>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Editor</p>
+              <h2 id="create-form-title">Details erfassen</h2>
+            </div>
+          </div>
+
+          <form id="create-form" class="stack-form">
+            <label>
+              <span>Titel</span>
+              <input id="create-title" name="title" maxlength="120" required placeholder="z. B. Sprint-Retrospektive Mai" />
+            </label>
+
+            <label>
+              <span>Beschreibung</span>
+              <textarea
+                id="create-description"
+                name="description"
+                maxlength="1200"
+                required
+                placeholder="Worum geht es bei der Termin-Abstimmung?"
+              ></textarea>
+            </label>
+
+            <div id="create-fixed-fields" class="stack-form">
+              <div class="calendar-section">
+                <div class="calendar-header">
+                  <div>
+                    <h3>Termine auswaehlen</h3>
+                    <p id="create-calendar-label" class="calendar-meta"></p>
+                  </div>
+                  <div class="calendar-actions">
+                    <button id="create-prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
+                      <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <button id="create-next-month" class="ghost-button compact-button" type="button" aria-label="Naechster Monat">
+                      <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                  </div>
+                </div>
+                <div id="create-calendar-grid" class="calendar-grid" aria-live="polite"></div>
+                <div class="selected-dates-box">
+                  <div class="selected-header">
+                    <span>Ausgewaehlte Termine</span>
+                    <button id="create-clear-dates" class="text-button" type="button">Leeren</button>
+                  </div>
+                  <div id="create-selected-dates" class="selected-dates"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="create-free-fields" class="selected-dates-box is-hidden">
+              <div class="selected-header">
+                <span>Freie Wahl</span>
+              </div>
+              <p class="description">
+                In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst beliebige Tage im
+                Kalender markieren.
+              </p>
+            </div>
+
+            <div id="create-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+            <div class="action-strip">
+              <a class="ghost-link" href="/dashboard">Abbrechen</a>
+              <button id="create-submit-button" class="primary-button" type="submit">
+                <i class="fa-regular fa-floppy-disk"></i>
+                Umfrage speichern
+              </button>
+            </div>
+          </form>
+        </article>
+      </section>
+    </template>
+
     <template id="poll-template">
       <section class="poll-shell">
         <article class="panel poll-summary">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Teilnahmelink</p>
+              <p class="eyebrow">Umfrage-Detail</p>
               <h1 id="poll-title-view"></h1>
             </div>
             <div class="header-action-row">
-              <button id="share-button" class="icon-button" type="button" aria-label="Link teilen">
-                <i class="fa-solid fa-share-nodes"></i>
-              </button>
+              <a id="poll-back-link" class="ghost-link" href="/dashboard">
+                <i class="fa-solid fa-arrow-left"></i>
+                Zurueck
+              </a>
             </div>
           </div>
 
@@ -574,17 +706,7 @@
             <div id="best-date-meta" class="best-date-meta"></div>
           </div>
 
-          <div class="action-strip">
-            <a id="share-link-anchor" class="ghost-link" href="#" target="_blank" rel="noreferrer">Share-Link oeffnen</a>
-            <button id="calendar-download-button" class="ghost-button wide-button" type="button">
-              <i class="fa-regular fa-calendar-plus"></i>
-              ICS herunterladen
-            </button>
-            <button id="calendar-open-button" class="ghost-button wide-button" type="button">
-              <i class="fa-solid fa-arrow-up-right-from-square"></i>
-              Export oeffnen
-            </button>
-          </div>
+          <div id="poll-dates-overview" class="date-overview-grid"></div>
 
           <div id="poll-owner-actions" class="owner-actions is-hidden"></div>
         </article>
