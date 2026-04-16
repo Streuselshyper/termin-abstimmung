@@ -747,7 +747,7 @@ body.poll-drawer-open {
   top: calc(100% + 0.6rem);
   right: 0;
   width: min(22rem, 82vw);
-  padding: 0.8rem;
+  padding: 0.8rem 1.55rem;
   border-radius: 1rem;
   border: 1px solid var(--border);
   background: var(--surface-strong);
@@ -758,7 +758,6 @@ body.poll-drawer-open {
 .owner-action-stack {
   display: grid;
   gap: 0.6rem;
-  padding-inline: 0.75rem;
 }
 
 .settings-action {
