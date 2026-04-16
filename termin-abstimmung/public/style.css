@@ -606,6 +606,12 @@ select:focus {
   grid-column: span 12;
 }
 
+.poll-summary-panel {
+  position: relative;
+  /* Admin-Dropdown muss vor dem Antwort-Drawer und anderen Panels liegen. */
+  z-index: 100;
+}
+
 .poll-response-overlay {
   position: fixed;
   inset: 0;
@@ -720,6 +726,11 @@ body.poll-drawer-open {
 
 .poll-settings-shell {
   position: relative;
+  z-index: 110;
+}
+
+.poll-settings-shell[open] {
+  z-index: 120;
 }
 
 .poll-settings-shell summary {
@@ -741,7 +752,7 @@ body.poll-drawer-open {
   border: 1px solid var(--border);
   background: var(--surface-strong);
   box-shadow: var(--shadow);
-  z-index: 6;
+  z-index: 130;
 }
 
 .owner-action-stack {
