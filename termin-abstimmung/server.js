@@ -21,7 +21,6 @@ db.exec(`
     description TEXT NOT NULL,
     dates TEXT NOT NULL,
     mode TEXT NOT NULL DEFAULT 'fixed',
-    time_range_text TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
   );
 
@@ -40,9 +39,9 @@ db.exec(`
 `);
 
 ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
-ensureColumn("polls", "time_range_text", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("responses", "suggested_dates", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("responses", "free_text_availabilities", "TEXT NOT NULL DEFAULT '[]'");
+dropColumnIfExists("polls", "time_range_text");
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -60,6 +59,20 @@ function ensureColumn(tableName, columnName, definition) {
   const exists = columns.some((column) => column.name === columnName);
   if (!exists) {
     db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+}
+
+function dropColumnIfExists(tableName, columnName) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  const exists = columns.some((column) => column.name === columnName);
+  if (!exists) {
+    return;
+  }
+
+  try {
+    db.exec(`ALTER TABLE ${tableName} DROP COLUMN ${columnName}`);
+  } catch (error) {
+    console.warn(`Spalte ${tableName}.${columnName} konnte nicht entfernt werden:`, error.message);
   }
 }
 
@@ -89,27 +102,7 @@ function normalizeMode(mode) {
 }
 
 function normalizeSuggestedDates(entries) {
-  if (!Array.isArray(entries)) {
-    return [];
-  }
-
-  const normalized = [];
-  const seen = new Set();
-
-  for (const entry of entries) {
-    if (typeof entry !== "string") {
-      continue;
-    }
-
-    const value = normalizeText(entry.replace(/\s+/g, " "), 200);
-    const key = value.toLocaleLowerCase("de-DE");
-    if (value.length > 0 && !seen.has(key)) {
-      seen.add(key);
-      normalized.push(value);
-    }
-  }
-
-  return normalized.slice(0, 20);
+  return normalizeDates(entries).slice(0, 60);
 }
 
 function validateAvailabilities(dates, availabilities) {
@@ -159,7 +152,6 @@ function mapPollRow(row) {
     description: row.description,
     dates: parseJsonArray(row.dates),
     mode: normalizeMode(row.mode),
-    timeRangeText: row.time_range_text || "",
     createdAt: row.created_at,
   };
 }
@@ -230,7 +222,7 @@ function calculateSuggestedDatesRanking(responses) {
   for (const response of responses) {
     for (const entry of normalizeSuggestedDates(response.suggestedDates)) {
       const current = counts.get(entry) || {
-        label: entry,
+        date: entry,
         count: 0,
         participants: [],
       };
@@ -245,7 +237,7 @@ function calculateSuggestedDatesRanking(responses) {
     if (right.count !== left.count) {
       return right.count - left.count;
     }
-    return left.label.localeCompare(right.label, "de-DE");
+    return left.date.localeCompare(right.date, "de-DE");
   });
 
   const bestCount = summary[0]?.count ?? 0;
@@ -284,7 +276,6 @@ app.post("/api/polls", (req, res) => {
     const description = normalizeText(req.body?.description, 1000);
     const mode = normalizeMode(req.body?.mode);
     const dates = mode === "fixed" ? normalizeDates(req.body?.dates) : [];
-    const timeRangeText = mode === "free" ? normalizeText(req.body?.timeRangeText, 300) : "";
 
     if (title.length < 3) {
       return res.status(400).json({ error: "Der Titel muss mindestens 3 Zeichen lang sein." });
@@ -298,18 +289,12 @@ app.post("/api/polls", (req, res) => {
       return res.status(400).json({ error: "Bitte wähle mindestens ein Datum aus." });
     }
 
-    if (mode === "free" && timeRangeText.length < 3) {
-      return res
-        .status(400)
-        .json({ error: "Bitte beschreibe den allgemeinen Zeitraum mit mindestens 3 Zeichen." });
-    }
-
     const pollId = crypto.randomBytes(6).toString("hex");
     const createdAt = new Date().toISOString();
 
     db.prepare(
-      "INSERT INTO polls (id, title, description, dates, mode, time_range_text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).run(pollId, title, description, JSON.stringify(dates), mode, timeRangeText, createdAt);
+      "INSERT INTO polls (id, title, description, dates, mode, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(pollId, title, description, JSON.stringify(dates), mode, createdAt);
 
     return res.status(201).json({
       poll: {
@@ -318,7 +303,6 @@ app.post("/api/polls", (req, res) => {
         description,
         dates,
         mode,
-        timeRangeText,
         createdAt,
         shareUrl: `/poll/${pollId}`,
       },

@@ -99,7 +99,7 @@
               <input type="radio" name="mode" value="free" />
               <div>
                 <strong>Freie Wahl</strong>
-                <p>Du gibst nur einen Zeitraum vor. Teilnehmende schlagen eigene Tage wie "20.5. ab 18 Uhr" vor.</p>
+                <p>Du gibst nur Titel und Beschreibung vor. Teilnehmende wählen danach selbst beliebige Tage im Kalender.</p>
               </div>
             </label>
           </fieldset>
@@ -130,16 +130,10 @@
             </div>
           </div>
 
-          <label id="free-mode-fields" class="mode-textarea is-hidden">
-            <span>Zeitraum beschreiben</span>
-            <textarea
-              id="poll-time-range"
-              name="timeRangeText"
-              maxlength="300"
-              rows="4"
-              placeholder="z. B. nächste 2 Wochen, Mai 2026, Kalenderwoche 20 bis 22"
-            ></textarea>
-          </label>
+          <div id="free-mode-fields" class="mode-textarea is-hidden">
+            <span>Freie Wahl</span>
+            <p class="description">Im freien Modus legst du keine Tage fest. Teilnehmende wählen später selbst beliebige Kalenderdaten.</p>
+          </div>
 
           <div id="form-feedback" class="feedback" role="status" aria-live="polite"></div>
 

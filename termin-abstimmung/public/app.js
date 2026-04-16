@@ -10,9 +10,10 @@ const statusLabels = {
 const state = {
   selectedDates: new Set(),
   currentMonth: startOfMonth(new Date()),
+  participantSelectedDates: new Set(),
+  participantCurrentMonth: startOfMonth(new Date()),
   pollData: null,
   responseDraft: {},
-  suggestedDateDraft: [""],
   createMode: "fixed",
 };
 
@@ -100,15 +101,13 @@ function renderHomePage() {
 function syncCreateModeUi() {
   const fixedFields = document.querySelector("#fixed-mode-fields");
   const freeFields = document.querySelector("#free-mode-fields");
-  const timeRangeInput = document.querySelector("#poll-time-range");
-  if (!fixedFields || !freeFields || !timeRangeInput) {
+  if (!fixedFields || !freeFields) {
     return;
   }
 
   const isFixed = state.createMode === "fixed";
   fixedFields.classList.toggle("is-hidden", !isFixed);
   freeFields.classList.toggle("is-hidden", isFixed);
-  timeRangeInput.required = !isFixed;
 }
 
 function renderCalendar() {
@@ -194,16 +193,10 @@ async function handleCreatePoll(event) {
   const feedback = document.querySelector("#form-feedback");
   const title = document.querySelector("#poll-title").value.trim();
   const description = document.querySelector("#poll-description").value.trim();
-  const timeRangeText = document.querySelector("#poll-time-range").value.trim();
   const dates = Array.from(state.selectedDates).sort();
 
   if (state.createMode === "fixed" && dates.length === 0) {
     setFeedback(feedback, "Bitte wähle mindestens ein Datum aus.", "error");
-    return;
-  }
-
-  if (state.createMode === "free" && timeRangeText.length < 3) {
-    setFeedback(feedback, "Bitte beschreibe den Zeitraum etwas genauer.", "error");
     return;
   }
 
@@ -217,7 +210,6 @@ async function handleCreatePoll(event) {
         description,
         mode: state.createMode,
         dates,
-        timeRangeText,
       }),
     });
 
@@ -263,7 +255,8 @@ async function renderPollPage(pollId) {
 function initializeDraftFromPoll(poll) {
   if (poll.mode === "free") {
     state.responseDraft = {};
-    state.suggestedDateDraft = [""];
+    state.participantSelectedDates = new Set();
+    state.participantCurrentMonth = startOfMonth(new Date());
     return;
   }
 
@@ -273,7 +266,8 @@ function initializeDraftFromPoll(poll) {
   }
 
   state.responseDraft = defaultDraft;
-  state.suggestedDateDraft = [""];
+  state.participantSelectedDates = new Set();
+  state.participantCurrentMonth = startOfMonth(new Date());
 }
 
 function fillPollSummary() {
@@ -284,11 +278,11 @@ function fillPollSummary() {
   document.querySelector("#poll-mode-pill").textContent = isFixed ? "Festgelegte Termine" : "Freie Wahl";
   document.querySelector("#poll-date-count").textContent = isFixed
     ? `${poll.dates.length} Termine`
-    : poll.timeRangeText || "Freier Zeitraum";
+    : "Beliebige Tage";
   document.querySelector("#poll-response-count").textContent = `${responses.length} Antworten`;
   document.querySelector("#poll-mode-description").textContent = isFixed
     ? "Teilnehmende stimmen pro festem Termin mit Ja, Vielleicht oder Nein ab."
-    : `Zeitraum: ${poll.timeRangeText}`;
+    : "Teilnehmende wählen selbst beliebige Kalendertage. Das Ergebnis zeigt die am häufigsten gewählten Termine.";
 
   const bestDateEyebrow = document.querySelector("#best-date-eyebrow");
   const bestDateLabel = document.querySelector("#best-date-label");
@@ -303,12 +297,12 @@ function fillPollSummary() {
     resultsPanelTitle.textContent = "Beliebteste Tage";
 
     if (results.bestDates.length === 0) {
-      bestDateLabel.textContent = poll.timeRangeText || "Freie Wahl";
+      bestDateLabel.textContent = "Noch keine Antworten";
       bestDateMeta.innerHTML = '<span class="pill">Noch keine Vorschläge eingegangen</span>';
       return;
     }
 
-    bestDateLabel.textContent = results.bestDates.map((entry) => entry.label).join(" · ");
+    bestDateLabel.textContent = results.bestDates.map((entry) => formatDateLong(entry.date)).join(" · ");
     for (const entry of results.bestDates) {
       const meta = document.createElement("span");
       meta.className = "pill";
@@ -344,7 +338,7 @@ function renderAvailabilityForm() {
 
   if (state.pollData.poll.mode === "free") {
     legend.classList.add("is-hidden");
-    renderFreeTextForm(grid);
+    renderFreeChoiceForm(grid);
     return;
   }
 
@@ -380,65 +374,136 @@ function renderAvailabilityForm() {
   }
 }
 
-function renderFreeTextForm(grid) {
+function renderFreeChoiceForm(grid) {
   const intro = document.createElement("div");
   intro.className = "free-mode-intro";
   intro.innerHTML = `
-    <strong>Eigene mögliche Tage eintragen</strong>
-    <p class="description">Erlaube Texte wie "20. Mai", "Dienstag, 20.5." oder "20.5. ab 18 Uhr".</p>
+    <strong>Wähle alle Tage, an denen du kannst</strong>
+    <p class="description">Du kannst beliebige Tage im Kalender markieren, auch in anderen Monaten oder Jahren.</p>
   `;
 
-  const wrapper = document.createElement("div");
-  wrapper.className = "free-text-list";
+  const calendarSection = document.createElement("div");
+  calendarSection.className = "calendar-section";
+  calendarSection.innerHTML = `
+    <div class="calendar-header">
+      <div>
+        <h3>Kalender</h3>
+        <p id="participant-calendar-label" class="calendar-meta"></p>
+      </div>
+      <div class="calendar-actions">
+        <button id="participant-prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <button id="participant-next-month" class="ghost-button compact-button" type="button" aria-label="Nächster Monat">
+          <i class="fa-solid fa-chevron-right"></i>
+        </button>
+      </div>
+    </div>
+    <div id="participant-calendar-grid" class="calendar-grid" aria-live="polite"></div>
+    <div class="selected-dates-box">
+      <div class="selected-header">
+        <span>Deine gewählten Tage</span>
+        <button id="participant-clear-dates" class="text-button" type="button">Leeren</button>
+      </div>
+      <div id="participant-selected-dates" class="selected-dates"></div>
+    </div>
+  `;
 
-  state.suggestedDateDraft.forEach((entry, index) => {
-    const card = document.createElement("div");
-    card.className = "free-text-card";
+  grid.appendChild(intro);
+  grid.appendChild(calendarSection);
 
-    const header = document.createElement("div");
-    header.className = "free-text-header";
-    header.innerHTML = `<strong>Eintrag ${index + 1}</strong>`;
+  document.querySelector("#participant-prev-month").addEventListener("click", () => {
+    state.participantCurrentMonth = addMonths(state.participantCurrentMonth, -1);
+    renderAvailabilityForm();
+  });
 
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "text-button";
-    removeButton.textContent = "Löschen";
-    removeButton.disabled = state.suggestedDateDraft.length === 1;
-    removeButton.addEventListener("click", () => {
-      state.suggestedDateDraft = state.suggestedDateDraft.filter((_, itemIndex) => itemIndex !== index);
-      if (state.suggestedDateDraft.length === 0) {
-        state.suggestedDateDraft = [""];
+  document.querySelector("#participant-next-month").addEventListener("click", () => {
+    state.participantCurrentMonth = addMonths(state.participantCurrentMonth, 1);
+    renderAvailabilityForm();
+  });
+
+  document.querySelector("#participant-clear-dates").addEventListener("click", () => {
+    state.participantSelectedDates.clear();
+    renderAvailabilityForm();
+  });
+
+  renderParticipantCalendar();
+  renderParticipantSelectedDates();
+}
+
+function renderParticipantCalendar() {
+  const calendarGrid = document.querySelector("#participant-calendar-grid");
+  const calendarLabel = document.querySelector("#participant-calendar-label");
+  if (!calendarGrid || !calendarLabel) {
+    return;
+  }
+
+  const year = state.participantCurrentMonth.getFullYear();
+  const month = state.participantCurrentMonth.getMonth();
+  calendarLabel.textContent = formatMonthYear(state.participantCurrentMonth);
+  calendarGrid.innerHTML = "";
+
+  for (const weekday of weekdayLabels) {
+    const cell = document.createElement("div");
+    cell.className = "calendar-weekday";
+    cell.textContent = weekday;
+    calendarGrid.appendChild(cell);
+  }
+
+  const days = buildCalendarDays(year, month);
+  for (const day of days) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "calendar-day";
+    if (!day.inCurrentMonth) {
+      button.classList.add("muted");
+    }
+    if (state.participantSelectedDates.has(day.isoDate)) {
+      button.classList.add("selected");
+    }
+
+    button.innerHTML = `<span>${day.date.getDate()}</span>`;
+    button.addEventListener("click", () => {
+      if (state.participantSelectedDates.has(day.isoDate)) {
+        state.participantSelectedDates.delete(day.isoDate);
+      } else {
+        state.participantSelectedDates.add(day.isoDate);
       }
       renderAvailabilityForm();
     });
 
-    const input = document.createElement("input");
-    input.type = "text";
-    input.maxLength = 200;
-    input.placeholder = 'z. B. "20. Mai" oder "20.5. ab 18 Uhr"';
-    input.value = entry;
-    input.addEventListener("input", (event) => {
-      state.suggestedDateDraft[index] = event.target.value;
+    calendarGrid.appendChild(button);
+  }
+}
+
+function renderParticipantSelectedDates() {
+  const container = document.querySelector("#participant-selected-dates");
+  if (!container) {
+    return;
+  }
+
+  const dates = Array.from(state.participantSelectedDates).sort();
+  if (dates.length === 0) {
+    container.innerHTML = '<p class="description">Noch keine Tage ausgewählt.</p>';
+    return;
+  }
+
+  container.innerHTML = "";
+  for (const date of dates) {
+    const pill = document.createElement("div");
+    pill.className = "selected-date-pill";
+    pill.innerHTML = `
+      <span>${formatDateLong(date)}</span>
+      <button type="button" aria-label="Datum entfernen">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    `;
+    pill.querySelector("button").addEventListener("click", () => {
+      state.participantSelectedDates.delete(date);
+      renderAvailabilityForm();
     });
-
-    header.appendChild(removeButton);
-    card.appendChild(header);
-    card.appendChild(input);
-    wrapper.appendChild(card);
-  });
-
-  const addButton = document.createElement("button");
-  addButton.type = "button";
-  addButton.className = "ghost-button add-entry-button";
-  addButton.innerHTML = '<i class="fa-solid fa-plus"></i><span>Weiteren Tag hinzufügen</span>';
-  addButton.addEventListener("click", () => {
-    state.suggestedDateDraft.push("");
-    renderAvailabilityForm();
-  });
-
-  grid.appendChild(intro);
-  grid.appendChild(wrapper);
-  grid.appendChild(addButton);
+    container.appendChild(pill);
+  }
 }
 
 function renderHeatmap() {
@@ -458,7 +523,7 @@ function renderHeatmap() {
       const participantLabel =
         entry.count === 1 ? "1 Person" : `${entry.count} Personen`;
       card.innerHTML = `
-        <strong>${escapeHtml(entry.label)}</strong>
+        <strong>${formatDateLong(entry.date)}</strong>
         <span>${participantLabel}</span>
       `;
       grid.appendChild(card);
@@ -514,7 +579,7 @@ function renderResultsTable() {
     body.innerHTML = responses
       .map((response) => {
         const items = response.suggestedDates
-          .map((entry) => `<li>${escapeHtml(entry)}</li>`)
+          .map((entry) => `<li>${escapeHtml(formatDateLong(entry))}</li>`)
           .join("");
 
         return `
@@ -569,9 +634,7 @@ async function handleResponseSubmit(event) {
   if (isFixed) {
     payload.availabilities = state.responseDraft;
   } else {
-    payload.suggestedDates = state.suggestedDateDraft
-      .map((entry) => entry.trim())
-      .filter(Boolean);
+    payload.suggestedDates = Array.from(state.participantSelectedDates).sort();
   }
 
   try {
@@ -589,7 +652,8 @@ async function handleResponseSubmit(event) {
 
     state.pollData = data;
     if (!isFixed) {
-      state.suggestedDateDraft = [""];
+      state.participantSelectedDates = new Set();
+      state.participantCurrentMonth = startOfMonth(new Date());
     }
     fillPollSummary();
     renderAvailabilityForm();
