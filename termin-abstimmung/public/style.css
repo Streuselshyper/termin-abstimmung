@@ -739,9 +739,15 @@ select:focus {
   align-items: center;
   gap: 0.55rem;
   flex: 0 0 auto;
+  min-height: auto;
   margin-top: 0;
   flex-wrap: nowrap;
   align-self: center;
+}
+
+.poll-list-actions > * {
+  align-self: center;
+  margin-block: 0;
 }
 
 .poll-open-link {
