@@ -4,8 +4,8 @@
   "description": "Coole Termin-Abstimmungs-Website mit Express und SQLite",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
+    "start": "PORT=18793 node server.js",
+    "dev": "PORT=18793 node --watch server.js",
     "test": "node -e \"console.log('Keine automatisierten Tests konfiguriert.')\""
   },
   "keywords": [
