@@ -6,7 +6,7 @@
     <title>Termin-Abstimmung</title>
     <meta
       name="description"
-      content="Moderne Termin-Abstimmung mit Heatmap, Teilnahmelink und mobiler Übersicht."
+      content="Termin-Abstimmung mit User-Login, Dashboard und mobiler Poll-Auswertung."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -29,114 +29,312 @@
           <span class="brand-mark"><i class="fa-regular fa-calendar-check"></i></span>
           <span class="brand-copy">
             <strong>Termin-Abstimmung</strong>
-            <small>Ohne Login</small>
+            <small>User-System MVP</small>
           </span>
         </a>
-        <button id="theme-toggle" class="icon-button" type="button" aria-label="Theme wechseln">
-          <i class="fa-regular fa-moon"></i>
-        </button>
+
+        <div class="topbar-actions">
+          <nav id="topbar-nav" class="topbar-nav"></nav>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Theme wechseln">
+            <i class="fa-regular fa-moon"></i>
+          </button>
+        </div>
       </header>
 
       <main id="app"></main>
     </div>
 
-    <template id="home-template">
-      <section class="hero-card">
+    <template id="landing-template">
+      <section class="hero-card auth-hero">
         <div class="hero-copy">
-          <h1>Finde den besten Termin</h1>
+          <p class="eyebrow">Login zuerst</p>
+          <h1>Dein Dashboard fuer Termin-Abstimmungen</h1>
           <p class="hero-text">
-            Poll erstellen, teilen und je nach Modus festen Termin finden oder freie Verfügbarkeiten sammeln.
+            Registriere dich mit deiner E-Mail-Adresse, bestaetige den Link und verwalte danach deine eigenen
+            Umfragen zentral im mobilen Dashboard.
           </p>
+          <div class="hero-cta-row">
+            <a class="primary-link" href="/register">Konto erstellen</a>
+            <a class="ghost-link" href="/login">Zum Login</a>
+          </div>
         </div>
-        <div class="hero-stats">
+        <div class="hero-stats auth-stats">
           <article class="hero-stat">
-            <strong>2 Modi</strong>
-            <span>Festgelegt oder freie Wahl</span>
+            <strong>30 Minuten</strong>
+            <span>Session-Timeout bei Inaktivitaet</span>
           </article>
           <article class="hero-stat">
-            <strong>Auswertung</strong>
-            <span>Heatmap oder Ranking freier Tagesvorschläge</span>
+            <strong>Eigenes Dashboard</strong>
+            <span>Alle erstellten Polls an einem Ort</span>
+          </article>
+          <article class="hero-stat">
+            <strong>Verifizierung</strong>
+            <span>SendGrid oder DB-Fallback-Link</span>
+          </article>
+        </div>
+      </section>
+    </template>
+
+    <template id="login-template">
+      <section class="auth-layout">
+        <article class="auth-panel auth-panel-highlight">
+          <p class="eyebrow">Sicherer Zugang</p>
+          <h1>Login</h1>
+          <p class="description">
+            Melde dich mit deiner verifizierten E-Mail-Adresse an und erstelle neue Termin-Abstimmungen direkt aus dem
+            Dashboard.
+          </p>
+        </article>
+
+        <article class="panel auth-panel">
+          <form id="login-form" class="stack-form">
+            <label>
+              <span>E-Mail</span>
+              <input id="login-email" type="email" name="email" autocomplete="email" required placeholder="du@firma.de" />
+            </label>
+
+            <label>
+              <span>Passwort</span>
+              <input
+                id="login-password"
+                type="password"
+                name="password"
+                autocomplete="current-password"
+                required
+                placeholder="Dein Passwort"
+              />
+            </label>
+
+            <div id="login-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+            <button class="primary-button" type="submit">
+              <i class="fa-solid fa-right-to-bracket"></i>
+              Einloggen
+            </button>
+
+            <p class="description">Noch kein Konto? <a class="inline-link" href="/register">Jetzt registrieren</a></p>
+          </form>
+        </article>
+      </section>
+    </template>
+
+    <template id="register-template">
+      <section class="auth-layout">
+        <article class="auth-panel auth-panel-highlight">
+          <p class="eyebrow">Registrierung</p>
+          <h1>Konto anlegen</h1>
+          <p class="description">
+            Gib nur deine E-Mail-Adresse an. Nach der Verifizierung setzt du dein Passwort und gelangst danach ins
+            Dashboard.
+          </p>
+        </article>
+
+        <article class="panel auth-panel">
+          <form id="register-form" class="stack-form">
+            <label>
+              <span>E-Mail</span>
+              <input
+                id="register-email"
+                type="email"
+                name="email"
+                autocomplete="email"
+                required
+                placeholder="du@firma.de"
+              />
+            </label>
+
+            <div id="register-feedback" class="feedback" role="status" aria-live="polite"></div>
+            <div id="register-fallback" class="stack-form"></div>
+
+            <button class="primary-button" type="submit">
+              <i class="fa-regular fa-envelope"></i>
+              Registrierung starten
+            </button>
+
+            <p class="description">Schon verifiziert? <a class="inline-link" href="/login">Zum Login</a></p>
+          </form>
+        </article>
+      </section>
+    </template>
+
+    <template id="verify-template">
+      <section class="auth-layout single-column">
+        <article class="panel auth-panel">
+          <p class="eyebrow">Verifizierung</p>
+          <h1>E-Mail bestaetigen</h1>
+          <div id="verify-status" class="feedback" role="status" aria-live="polite"></div>
+
+          <div id="verify-result" class="stack-form is-hidden">
+            <p class="description">
+              Die Adresse <strong id="verify-email"></strong> wurde bestaetigt. Setze jetzt direkt dein Passwort.
+            </p>
+
+            <form id="set-password-form-inline" class="stack-form">
+              <input id="set-password-token" type="hidden" name="token" />
+
+              <label>
+                <span>Passwort</span>
+                <input type="password" name="password" autocomplete="new-password" required minlength="8" />
+              </label>
+
+              <label>
+                <span>Passwort wiederholen</span>
+                <input type="password" name="password_confirm" autocomplete="new-password" required minlength="8" />
+              </label>
+
+              <div class="feedback" role="status" aria-live="polite"></div>
+
+              <button class="primary-button" type="submit">
+                <i class="fa-solid fa-key"></i>
+                Passwort setzen
+              </button>
+            </form>
+          </div>
+        </article>
+      </section>
+    </template>
+
+    <template id="set-password-template">
+      <section class="auth-layout single-column">
+        <article class="panel auth-panel">
+          <p class="eyebrow">Passwort setzen</p>
+          <h1>Neues Passwort speichern</h1>
+
+          <form id="set-password-form-page" class="stack-form">
+            <input id="set-password-token-page" type="hidden" name="token" />
+
+            <label>
+              <span>Passwort</span>
+              <input type="password" name="password" autocomplete="new-password" required minlength="8" />
+            </label>
+
+            <label>
+              <span>Passwort wiederholen</span>
+              <input type="password" name="password_confirm" autocomplete="new-password" required minlength="8" />
+            </label>
+
+            <div class="feedback" role="status" aria-live="polite"></div>
+
+            <button class="primary-button" type="submit">
+              <i class="fa-solid fa-key"></i>
+              Passwort speichern
+            </button>
+          </form>
+        </article>
+      </section>
+    </template>
+
+    <template id="dashboard-template">
+      <section class="hero-card dashboard-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Dashboard</p>
+          <h1>Eigene Polls anlegen und verwalten</h1>
+          <p class="hero-text">
+            Angemeldet als <strong id="dashboard-email"></strong>. Deine Session bleibt bei Aktivitaet offen und endet
+            nach <span id="dashboard-timeout"></span> Inaktivitaet.
+          </p>
+        </div>
+        <div class="hero-stats auth-stats">
+          <article class="hero-stat">
+            <strong id="dashboard-poll-count">0 eigene Umfragen</strong>
+            <span>Direkt aus deinem Konto erstellt</span>
+          </article>
+          <article class="hero-stat">
+            <strong>Mobile First</strong>
+            <span>Funktioniert auf Smartphone und Desktop</span>
           </article>
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <p class="eyebrow">Neuer Poll</p>
-            <h2>Termin-Abstimmung anlegen</h2>
-          </div>
-        </div>
-
-        <form id="create-poll-form" class="stack-form">
-          <label>
-            <span>Titel</span>
-            <input id="poll-title" name="title" maxlength="120" required placeholder="Team-Offsite Mai" />
-          </label>
-
-          <label>
-            <span>Beschreibung</span>
-            <textarea
-              id="poll-description"
-              name="description"
-              maxlength="1000"
-              rows="4"
-              required
-              placeholder="Kurzer Kontext, Ort oder Hinweise zur Terminwahl"
-            ></textarea>
-          </label>
-
-          <fieldset class="mode-fieldset">
-            <legend>Modus</legend>
-            <label class="mode-option">
-              <input type="radio" name="mode" value="fixed" checked />
-              <div>
-                <strong>Festgelegte Termine</strong>
-                <p>Du wählst konkrete Tage im Kalender. Teilnehmende stimmen mit Ja, Vielleicht oder Nein ab.</p>
-              </div>
-            </label>
-            <label class="mode-option">
-              <input type="radio" name="mode" value="free" />
-              <div>
-                <strong>Freie Wahl</strong>
-                <p>Du gibst nur Titel und Beschreibung vor. Teilnehmende wählen danach selbst beliebige Tage im Kalender.</p>
-              </div>
-            </label>
-          </fieldset>
-
-          <div id="fixed-mode-fields" class="calendar-section">
-            <div class="calendar-header">
-              <div>
-                <h3>Wähle Termine</h3>
-                <p id="calendar-label" class="calendar-meta"></p>
-              </div>
-              <div class="calendar-actions">
-                <button id="prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
-                  <i class="fa-solid fa-chevron-left"></i>
-                </button>
-                <button id="next-month" class="ghost-button compact-button" type="button" aria-label="Nächster Monat">
-                  <i class="fa-solid fa-chevron-right"></i>
-                </button>
-              </div>
+      <section class="dashboard-layout">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Meine Umfragen</p>
+              <h2>Letzte Eintraege</h2>
             </div>
+          </div>
+          <div id="dashboard-polls" class="poll-list"></div>
+        </article>
 
-            <div id="calendar-grid" class="calendar-grid" aria-live="polite"></div>
-            <div class="selected-dates-box">
-              <div class="selected-header">
-                <span>Ausgewählte Termine</span>
-                <button id="clear-dates" class="text-button" type="button">Leeren</button>
-              </div>
-              <div id="selected-dates" class="selected-dates"></div>
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Neue Umfrage</p>
+              <h2>Termin-Abstimmung erstellen</h2>
             </div>
           </div>
 
-          <div id="form-feedback" class="feedback" role="status" aria-live="polite"></div>
+          <form id="create-poll-form" class="stack-form">
+            <label>
+              <span>Titel</span>
+              <input id="poll-title" name="title" maxlength="120" required placeholder="Team-Offsite Mai" />
+            </label>
 
-          <button class="primary-button" type="submit">
-            <i class="fa-solid fa-wand-magic-sparkles"></i>
-            Poll erstellen
-          </button>
-        </form>
+            <label>
+              <span>Beschreibung</span>
+              <textarea
+                id="poll-description"
+                name="description"
+                maxlength="1000"
+                rows="4"
+                required
+                placeholder="Kontext, Ort oder Hinweise zur Terminwahl"
+              ></textarea>
+            </label>
+
+            <fieldset class="mode-fieldset">
+              <legend>Modus</legend>
+              <label class="mode-option">
+                <input type="radio" name="mode" value="fixed" checked />
+                <div>
+                  <strong>Festgelegte Termine</strong>
+                  <p>Du waehlst konkrete Tage. Teilnehmende stimmen mit Ja, Vielleicht oder Nein ab.</p>
+                </div>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="mode" value="free" />
+                <div>
+                  <strong>Freie Wahl</strong>
+                  <p>Teilnehmende markieren danach beliebige Kalendertage selbst.</p>
+                </div>
+              </label>
+            </fieldset>
+
+            <div id="fixed-mode-fields" class="calendar-section">
+              <div class="calendar-header">
+                <div>
+                  <h3>Termine auswaehlen</h3>
+                  <p id="calendar-label" class="calendar-meta"></p>
+                </div>
+                <div class="calendar-actions">
+                  <button id="prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
+                    <i class="fa-solid fa-chevron-left"></i>
+                  </button>
+                  <button id="next-month" class="ghost-button compact-button" type="button" aria-label="Naechster Monat">
+                    <i class="fa-solid fa-chevron-right"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div id="calendar-grid" class="calendar-grid" aria-live="polite"></div>
+              <div class="selected-dates-box">
+                <div class="selected-header">
+                  <span>Ausgewaehlte Termine</span>
+                  <button id="clear-dates" class="text-button" type="button">Leeren</button>
+                </div>
+                <div id="selected-dates" class="selected-dates"></div>
+              </div>
+            </div>
+
+            <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+            <button class="primary-button" type="submit">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              Umfrage erstellen
+            </button>
+          </form>
+        </article>
       </section>
     </template>
 
@@ -174,7 +372,7 @@
         <article class="panel">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Deine Verfügbarkeit</p>
+              <p class="eyebrow">Deine Verfuegbarkeit</p>
               <h2>Antwort eintragen</h2>
             </div>
           </div>
@@ -212,7 +410,7 @@
           <div class="panel-header">
             <div>
               <p id="results-panel-eyebrow" class="eyebrow">Heatmap</p>
-              <h2 id="results-panel-title">Beste Überschneidungen</h2>
+              <h2 id="results-panel-title">Beste Ueberschneidungen</h2>
             </div>
           </div>
           <div id="heatmap-grid" class="heatmap-grid"></div>
@@ -221,7 +419,7 @@
         <article class="panel">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Übersicht</p>
+              <p class="eyebrow">Uebersicht</p>
               <h2>Wer wann kann</h2>
             </div>
           </div>

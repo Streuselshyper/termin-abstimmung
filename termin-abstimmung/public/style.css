@@ -77,7 +77,13 @@ a {
 .calendar-header,
 .selected-header,
 .hero-card,
-.poll-layout {
+.poll-layout,
+.topbar-actions,
+.topbar-nav,
+.auth-layout,
+.dashboard-layout,
+.poll-card-head,
+.poll-card-actions {
   display: flex;
   gap: 1rem;
 }
@@ -85,7 +91,9 @@ a {
 .topbar,
 .panel-header,
 .calendar-header,
-.selected-header {
+.selected-header,
+.poll-card-head,
+.poll-card-actions {
   align-items: center;
   justify-content: space-between;
 }
@@ -101,6 +109,12 @@ a {
   background: color-mix(in srgb, var(--panel-strong) 88%, transparent);
   backdrop-filter: blur(18px);
   box-shadow: var(--shadow);
+}
+
+.topbar-actions,
+.topbar-nav {
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .brand {
@@ -145,7 +159,8 @@ h3 {
 .best-date-meta,
 .feedback,
 .pill,
-.legend-item {
+.legend-item,
+.nav-user {
   color: var(--muted);
 }
 
@@ -177,20 +192,56 @@ h3 {
 }
 
 .icon-button,
-.ghost-button,
-.text-button,
-.primary-button,
-.status-chip {
-  cursor: pointer;
-}
-
-.icon-button,
 .ghost-button {
   width: 2.75rem;
   height: 2.75rem;
   border-radius: 0.9rem;
   color: var(--text);
   flex-shrink: 0;
+}
+
+.wide-button {
+  width: auto;
+  min-width: 7rem;
+  padding: 0 1rem;
+}
+
+.primary-link,
+.ghost-link,
+.inline-link {
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.primary-link,
+.ghost-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.7rem 1rem;
+  border-radius: 999px;
+}
+
+.primary-link {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: #f8fafc;
+  box-shadow: 0 16px 40px rgba(13, 148, 136, 0.28);
+}
+
+.ghost-link {
+  border: 1px solid var(--border);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.inline-link {
+  color: var(--accent);
+}
+
+.nav-user {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #app,
@@ -200,7 +251,9 @@ h3 {
 .poll-layout,
 .best-date-meta,
 .availability-grid,
-.heatmap-grid {
+.heatmap-grid,
+.hero-cta-row,
+.poll-list {
   display: grid;
   gap: 0.85rem;
 }
@@ -229,13 +282,13 @@ h3 {
 }
 
 .hero-copy {
-  max-width: 640px;
+  max-width: 720px;
 }
 
 .hero-text {
-  max-width: 34ch;
+  max-width: 42ch;
   margin: 0.4rem 0 0;
-  line-height: 1.35;
+  line-height: 1.45;
   font-size: 0.94rem;
 }
 
@@ -245,11 +298,17 @@ h3 {
   gap: 0.6rem;
 }
 
+.auth-stats {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
 .hero-stats article,
 .best-date-card,
 .selected-dates-box,
 .availability-card,
-.heatmap-cell {
+.heatmap-cell,
+.poll-card,
+.auth-panel-highlight {
   background: var(--panel-strong);
   border: 1px solid var(--border);
   border-radius: 1.2rem;
@@ -259,7 +318,8 @@ h3 {
 .selected-dates-box,
 .best-date-card,
 .availability-card,
-.heatmap-cell {
+.heatmap-cell,
+.auth-panel-highlight {
   padding: 1rem;
 }
 
@@ -376,7 +436,8 @@ textarea:focus {
 
 .calendar-actions,
 .info-pills,
-.legend {
+.legend,
+.hero-cta-row {
   display: flex;
   gap: 0.6rem;
   flex-wrap: wrap;
@@ -483,8 +544,18 @@ textarea:focus {
   box-shadow: 0 16px 40px rgba(13, 148, 136, 0.28);
 }
 
-.poll-layout {
+.poll-layout,
+.dashboard-layout {
+  display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.dashboard-layout > .panel:first-child {
+  grid-column: span 5;
+}
+
+.dashboard-layout > .panel:last-child {
+  grid-column: span 7;
 }
 
 .poll-layout > .panel:nth-child(1),
@@ -508,11 +579,55 @@ textarea:focus {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
+.auth-layout {
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.auth-layout > * {
+  flex: 1 1 320px;
+}
+
+.single-column {
+  max-width: 640px;
+}
+
+.auth-panel {
+  min-height: 100%;
+}
+
+.auth-panel-highlight {
+  display: grid;
+  align-content: start;
+}
+
+.poll-list,
 .free-text-list,
 .free-response-list,
 .result-list {
   display: grid;
   gap: 0.7rem;
+}
+
+.poll-card {
+  padding: 1rem;
+}
+
+.poll-card h3 {
+  margin: 0.2rem 0 0;
+}
+
+.poll-card .description {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.poll-card-actions {
+  margin-top: 0.8rem;
+}
+
+.empty-state {
+  text-align: center;
 }
 
 .free-mode-intro {
@@ -548,10 +663,7 @@ textarea:focus {
   justify-content: center;
 }
 
-.free-response-card {
-  align-content: start;
-}
-
+.free-response-card,
 .free-ranking-card {
   align-content: start;
 }
@@ -654,11 +766,13 @@ textarea:focus {
 }
 
 @media (max-width: 900px) {
-  .hero-card,
+  .dashboard-layout,
   .poll-layout {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-layout > .panel:first-child,
+  .dashboard-layout > .panel:last-child,
   .poll-layout > .panel:nth-child(1),
   .poll-layout > .panel:nth-child(2),
   .poll-layout > .panel:nth-child(3),
@@ -683,8 +797,18 @@ textarea:focus {
     border-radius: 1rem;
   }
 
+  .topbar-actions {
+    justify-content: flex-end;
+  }
+
+  .topbar-nav {
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
   .panel,
-  .hero-card {
+  .hero-card,
+  .poll-card {
     padding: 0.9rem;
     border-radius: 1.3rem;
   }
@@ -696,19 +820,21 @@ textarea:focus {
   .poll-layout,
   .best-date-meta,
   .availability-grid,
-  .heatmap-grid {
+  .heatmap-grid,
+  .poll-list {
     gap: 0.7rem;
   }
 
   .panel-header,
   .calendar-header,
   .selected-header,
-  .topbar {
+  .topbar,
+  .auth-layout {
     gap: 0.65rem;
   }
 
   .hero-card h1 {
-    font-size: clamp(1.6rem, 8vw, 2.1rem);
+    font-size: clamp(1.6rem, 8vw, 2.3rem);
     max-width: 11ch;
   }
 
@@ -718,7 +844,7 @@ textarea:focus {
   }
 
   .hero-stats {
-    display: none;
+    grid-template-columns: 1fr;
   }
 
   .calendar-header {
@@ -759,7 +885,9 @@ textarea:focus {
   .primary-button,
   .icon-button,
   .ghost-button,
-  .status-chip {
+  .status-chip,
+  .primary-link,
+  .ghost-link {
     min-height: 2.75rem;
   }
 
@@ -797,11 +925,14 @@ textarea:focus {
 
   .selected-dates-box,
   .best-date-card,
-  .heatmap-cell {
+  .heatmap-cell,
+  .auth-panel-highlight {
     padding: 0.85rem;
   }
 
-  .best-date-card {
+  .best-date-card,
+  .poll-card-head,
+  .poll-card-actions {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.7rem;

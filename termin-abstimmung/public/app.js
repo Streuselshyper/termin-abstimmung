@@ -1,4 +1,5 @@
 const appElement = document.querySelector("#app");
+const navElement = document.querySelector("#topbar-nav");
 const themeToggle = document.querySelector("#theme-toggle");
 const weekdayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const statusLabels = {
@@ -8,6 +9,12 @@ const statusLabels = {
 };
 
 const state = {
+  auth: {
+    user: null,
+    csrfToken: "",
+    sessionTimeoutMinutes: 30,
+  },
+  dashboardPolls: [],
   selectedDates: new Set(),
   currentMonth: startOfMonth(new Date()),
   participantSelectedDates: new Set(),
@@ -27,13 +34,137 @@ themeToggle.addEventListener("click", toggleTheme);
 applyStoredTheme();
 
 async function initializeApp() {
-  const pollId = getPollIdFromPath();
-  if (pollId) {
-    await renderPollPage(pollId);
+  await refreshAuthState();
+  renderTopbarNav();
+
+  const route = getRoute();
+  if (state.auth.user && ["login", "register", "set-password", "verify"].includes(route.type)) {
+    window.location.href = "/dashboard";
     return;
   }
 
-  renderHomePage();
+  if (route.type === "poll") {
+    await renderPollPage(route.pollId);
+    return;
+  }
+
+  if (route.type === "login") {
+    renderLoginPage();
+    return;
+  }
+
+  if (route.type === "register") {
+    renderRegisterPage();
+    return;
+  }
+
+  if (route.type === "verify") {
+    await renderVerifyPage(route.token);
+    return;
+  }
+
+  if (route.type === "set-password") {
+    renderSetPasswordPage(route.token);
+    return;
+  }
+
+  if (route.type === "dashboard" && !state.auth.user) {
+    window.location.href = "/login";
+    return;
+  }
+
+  if (!state.auth.user) {
+    renderLandingPage();
+    return;
+  }
+
+  await renderDashboardPage();
+}
+
+async function refreshAuthState() {
+  const response = await fetch("/api/auth/me", { credentials: "same-origin" });
+  const data = await response.json();
+  state.auth.user = data.user;
+  state.auth.csrfToken = data.csrfToken;
+  state.auth.sessionTimeoutMinutes = data.sessionTimeoutMinutes;
+}
+
+async function apiFetch(url, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const headers = new Headers(options.headers || {});
+
+  if (method !== "GET" && method !== "HEAD") {
+    headers.set("x-csrf-token", state.auth.csrfToken);
+  }
+
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...options,
+    method,
+    headers,
+  });
+
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json") ? await response.json() : null;
+  if (!response.ok) {
+    const error = new Error(data?.error || "Die Anfrage ist fehlgeschlagen.");
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
+function renderTopbarNav() {
+  navElement.innerHTML = "";
+
+  if (!state.auth.user) {
+    navElement.innerHTML = `
+      <a class="ghost-link" href="/register">Registrieren</a>
+      <a class="primary-link" href="/login">Login</a>
+    `;
+    return;
+  }
+
+  navElement.innerHTML = `
+    <a class="ghost-link" href="/dashboard">Dashboard</a>
+    <span class="nav-user">${escapeHtml(state.auth.user.email)}</span>
+    <button id="logout-button" class="ghost-button wide-button" type="button">Logout</button>
+  `;
+
+  document.querySelector("#logout-button").addEventListener("click", handleLogout);
+}
+
+function getRoute() {
+  const pathname = window.location.pathname;
+  const verifyMatch = pathname.match(/^\/verify\/([a-z0-9]+)$/i);
+  const pollMatch = pathname.match(/^\/poll\/([a-z0-9]+)$/i);
+
+  if (pollMatch) {
+    return { type: "poll", pollId: pollMatch[1] };
+  }
+  if (verifyMatch) {
+    return { type: "verify", token: verifyMatch[1] };
+  }
+  if (pathname === "/login") {
+    return { type: "login" };
+  }
+  if (pathname === "/register") {
+    return { type: "register" };
+  }
+  if (pathname === "/set-password") {
+    return { type: "set-password", token: new URLSearchParams(window.location.search).get("token") || "" };
+  }
+  if (pathname === "/dashboard") {
+    return { type: "dashboard" };
+  }
+
+  return { type: "home" };
 }
 
 function applyStoredTheme() {
@@ -58,15 +189,64 @@ function toggleTheme() {
   themeToggle.innerHTML = '<i class="fa-regular fa-moon"></i>';
 }
 
-function getPollIdFromPath() {
-  const match = window.location.pathname.match(/^\/poll\/([a-z0-9]+)$/i);
-  return match ? match[1] : null;
-}
-
-function renderHomePage() {
-  const template = document.querySelector("#home-template");
+function renderLandingPage() {
+  const template = document.querySelector("#landing-template");
   appElement.innerHTML = "";
   appElement.appendChild(template.content.cloneNode(true));
+}
+
+function renderLoginPage() {
+  const template = document.querySelector("#login-template");
+  appElement.innerHTML = "";
+  appElement.appendChild(template.content.cloneNode(true));
+
+  document.querySelector("#login-form").addEventListener("submit", handleLogin);
+}
+
+function renderRegisterPage() {
+  const template = document.querySelector("#register-template");
+  appElement.innerHTML = "";
+  appElement.appendChild(template.content.cloneNode(true));
+
+  document.querySelector("#register-form").addEventListener("submit", handleRegister);
+}
+
+async function renderVerifyPage(token) {
+  const template = document.querySelector("#verify-template");
+  appElement.innerHTML = "";
+  appElement.appendChild(template.content.cloneNode(true));
+
+  const status = document.querySelector("#verify-status");
+  setFeedback(status, "Link wird geprueft ...");
+
+  try {
+    const data = await apiFetch(`/api/auth/verify/${token}`);
+    document.querySelector("#verify-email").textContent = data.email;
+    document.querySelector("#set-password-token").value = data.token;
+    setFeedback(status, data.message, "success");
+    document.querySelector("#verify-result").classList.remove("is-hidden");
+    document.querySelector("#set-password-form-inline").addEventListener("submit", handleSetPassword);
+  } catch (error) {
+    setFeedback(status, error.message, "error");
+  }
+}
+
+function renderSetPasswordPage(token) {
+  const template = document.querySelector("#set-password-template");
+  appElement.innerHTML = "";
+  appElement.appendChild(template.content.cloneNode(true));
+
+  document.querySelector("#set-password-token-page").value = token;
+  document.querySelector("#set-password-form-page").addEventListener("submit", handleSetPassword);
+}
+
+async function renderDashboardPage() {
+  const template = document.querySelector("#dashboard-template");
+  appElement.innerHTML = "";
+  appElement.appendChild(template.content.cloneNode(true));
+
+  document.querySelector("#dashboard-email").textContent = state.auth.user.email;
+  document.querySelector("#dashboard-timeout").textContent = `${state.auth.sessionTimeoutMinutes} Minuten`;
 
   renderCalendar();
   renderSelectedDates();
@@ -96,6 +276,66 @@ function renderHomePage() {
   });
 
   document.querySelector("#create-poll-form").addEventListener("submit", handleCreatePoll);
+
+  await loadDashboardPolls();
+}
+
+async function loadDashboardPolls() {
+  const list = document.querySelector("#dashboard-polls");
+  const stats = document.querySelector("#dashboard-poll-count");
+  list.innerHTML = '<p class="description">Deine Umfragen werden geladen ...</p>';
+
+  try {
+    const data = await apiFetch("/api/user/polls");
+    state.dashboardPolls = data.polls;
+    stats.textContent = `${data.polls.length} eigene Umfragen`;
+
+    if (data.polls.length === 0) {
+      list.innerHTML = `
+        <article class="poll-card empty-state">
+          <strong>Noch keine Umfragen</strong>
+          <p class="description">Lege unten deine erste Termin-Abstimmung an.</p>
+        </article>
+      `;
+      return;
+    }
+
+    list.innerHTML = data.polls
+      .map(
+        (poll) => `
+          <article class="poll-card">
+            <div class="poll-card-head">
+              <div>
+                <p class="eyebrow">${poll.mode === "fixed" ? "Festgelegte Termine" : "Freie Wahl"}</p>
+                <h3>${escapeHtml(poll.title)}</h3>
+              </div>
+              <span class="pill">${formatDateTime(poll.createdAt)}</span>
+            </div>
+            <p class="description">${escapeHtml(poll.description)}</p>
+            <div class="poll-card-actions">
+              <a class="ghost-link" href="${poll.shareUrl}">Umfrage oeffnen</a>
+              <button class="text-button copy-link-button" type="button" data-share-url="${poll.shareUrl}">Link kopieren</button>
+            </div>
+          </article>
+        `
+      )
+      .join("");
+
+    document.querySelectorAll(".copy-link-button").forEach((button) => {
+      button.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(`${window.location.origin}${button.dataset.shareUrl}`);
+        const feedback = document.querySelector("#dashboard-feedback");
+        setFeedback(feedback, "Link wurde in die Zwischenablage kopiert.", "success");
+      });
+    });
+  } catch (error) {
+    if (error.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
+
+    list.innerHTML = `<p class="feedback error">${escapeHtml(error.message)}</p>`;
+  }
 }
 
 function syncCreateModeUi() {
@@ -104,8 +344,7 @@ function syncCreateModeUi() {
     return;
   }
 
-  const isFixed = state.createMode === "fixed";
-  fixedFields.classList.toggle("is-hidden", !isFixed);
+  fixedFields.classList.toggle("is-hidden", state.createMode !== "fixed");
 }
 
 function renderCalendar() {
@@ -162,7 +401,7 @@ function renderSelectedDates() {
 
   const dates = Array.from(state.selectedDates).sort();
   if (dates.length === 0) {
-    container.innerHTML = '<p class="description">Noch keine Termine ausgewählt.</p>';
+    container.innerHTML = '<p class="description">Noch keine Termine ausgewaehlt.</p>';
     return;
   }
 
@@ -185,24 +424,108 @@ function renderSelectedDates() {
   }
 }
 
+async function handleRegister(event) {
+  event.preventDefault();
+  const feedback = document.querySelector("#register-feedback");
+  const email = document.querySelector("#register-email").value.trim();
+  const fallback = document.querySelector("#register-fallback");
+
+  try {
+    setFeedback(feedback, "Registrierung wird gespeichert ...");
+    const data = await apiFetch("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+
+    setFeedback(feedback, data.message, data.emailDelivery === "sendgrid" ? "success" : "");
+    if (data.verificationUrl) {
+      fallback.innerHTML = `
+        <a class="primary-link" href="${data.verificationUrl}">Manuell verifizieren</a>
+        <p class="description">SendGrid war nicht verfuegbar. Der Link wurde direkt angezeigt.</p>
+      `;
+    } else {
+      fallback.innerHTML = "";
+    }
+  } catch (error) {
+    setFeedback(feedback, error.message, "error");
+  }
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const feedback = document.querySelector("#login-feedback");
+  const email = document.querySelector("#login-email").value.trim();
+  const password = document.querySelector("#login-password").value;
+
+  try {
+    setFeedback(feedback, "Login wird geprueft ...");
+    await apiFetch("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    await refreshAuthState();
+    window.location.href = "/dashboard";
+  } catch (error) {
+    setFeedback(feedback, error.message, "error");
+  }
+}
+
+async function handleSetPassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const feedback = form.querySelector(".feedback");
+  const passwordInput = form.querySelector('input[name="password"]');
+  const confirmInput = form.querySelector('input[name="password_confirm"]');
+  const tokenInput = form.querySelector('input[name="token"]');
+
+  if (passwordInput.value !== confirmInput.value) {
+    setFeedback(feedback, "Die Passwoerter stimmen nicht ueberein.", "error");
+    return;
+  }
+
+  try {
+    setFeedback(feedback, "Passwort wird gespeichert ...");
+    await apiFetch("/api/auth/set-password", {
+      method: "POST",
+      body: JSON.stringify({
+        token: tokenInput.value,
+        password: passwordInput.value,
+      }),
+    });
+    setFeedback(feedback, "Passwort gespeichert. Du wirst zum Login weitergeleitet.", "success");
+    window.setTimeout(() => {
+      window.location.href = "/login";
+    }, 900);
+  } catch (error) {
+    setFeedback(feedback, error.message, "error");
+  }
+}
+
+async function handleLogout() {
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST" });
+  } finally {
+    window.location.href = "/login";
+  }
+}
+
 async function handleCreatePoll(event) {
   event.preventDefault();
 
-  const feedback = document.querySelector("#form-feedback");
+  const feedback = document.querySelector("#dashboard-feedback");
   const title = document.querySelector("#poll-title").value.trim();
   const description = document.querySelector("#poll-description").value.trim();
   const dates = Array.from(state.selectedDates).sort();
 
   if (state.createMode === "fixed" && dates.length === 0) {
-    setFeedback(feedback, "Bitte wähle mindestens ein Datum aus.", "error");
+    setFeedback(feedback, "Bitte waehle mindestens ein Datum aus.", "error");
     return;
   }
 
   try {
-    setFeedback(feedback, "Poll wird erstellt ...");
-    const response = await fetch("/api/polls", {
+    setFeedback(feedback, "Umfrage wird erstellt ...");
+    const data = await apiFetch("/api/polls", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
         description,
@@ -211,13 +534,13 @@ async function handleCreatePoll(event) {
       }),
     });
 
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Der Poll konnte nicht erstellt werden.");
-    }
-
     window.location.href = data.poll.shareUrl;
   } catch (error) {
+    if (error.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
+
     setFeedback(feedback, error.message, "error");
   }
 }
@@ -227,27 +550,25 @@ async function renderPollPage(pollId) {
   appElement.innerHTML =
     '<section class="panel"><p class="description">Poll wird geladen ...</p></section>';
 
-  const response = await fetch(`/api/polls/${pollId}`);
-  const data = await response.json();
-  if (!response.ok) {
+  try {
+    const data = await apiFetch(`/api/polls/${pollId}`);
+    state.pollData = data;
+    appElement.innerHTML = "";
+    appElement.appendChild(template.content.cloneNode(true));
+
+    initializeDraftFromPoll(data.poll);
+    fillPollSummary();
+    renderAvailabilityForm();
+    renderHeatmap();
+    renderResultsTable();
+
+    document.querySelector("#response-form").addEventListener("submit", handleResponseSubmit);
+    document.querySelector("#share-button").addEventListener("click", sharePollLink);
+  } catch (error) {
     appElement.innerHTML = `<section class="panel"><h1>Nicht gefunden</h1><p>${escapeHtml(
-      data.error || "Der Poll existiert nicht."
+      error.message
     )}</p></section>`;
-    return;
   }
-
-  state.pollData = data;
-  appElement.innerHTML = "";
-  appElement.appendChild(template.content.cloneNode(true));
-
-  initializeDraftFromPoll(data.poll);
-  fillPollSummary();
-  renderAvailabilityForm();
-  renderHeatmap();
-  renderResultsTable();
-
-  document.querySelector("#response-form").addEventListener("submit", handleResponseSubmit);
-  document.querySelector("#share-button").addEventListener("click", sharePollLink);
 }
 
 function initializeDraftFromPoll(poll) {
@@ -280,7 +601,7 @@ function fillPollSummary() {
   document.querySelector("#poll-response-count").textContent = `${responses.length} Antworten`;
   document.querySelector("#poll-mode-description").textContent = isFixed
     ? "Teilnehmende stimmen pro festem Termin mit Ja, Vielleicht oder Nein ab."
-    : "Teilnehmende wählen selbst beliebige Kalendertage. Das Ergebnis zeigt die am häufigsten gewählten Termine.";
+    : "Teilnehmende waehlen selbst beliebige Kalendertage. Das Ergebnis zeigt die am haeufigsten gewaehlten Termine.";
 
   const bestDateEyebrow = document.querySelector("#best-date-eyebrow");
   const bestDateLabel = document.querySelector("#best-date-label");
@@ -290,13 +611,13 @@ function fillPollSummary() {
   bestDateMeta.innerHTML = "";
 
   if (!isFixed) {
-    bestDateEyebrow.textContent = "Am häufigsten genannt";
+    bestDateEyebrow.textContent = "Am haeufigsten genannt";
     resultsPanelEyebrow.textContent = "Ranking";
     resultsPanelTitle.textContent = "Beliebteste Tage";
 
     if (results.bestDates.length === 0) {
       bestDateLabel.textContent = "Noch keine Antworten";
-      bestDateMeta.innerHTML = '<span class="pill">Noch keine Vorschläge eingegangen</span>';
+      bestDateMeta.innerHTML = '<span class="pill">Noch keine Vorschlaege eingegangen</span>';
       return;
     }
 
@@ -312,7 +633,7 @@ function fillPollSummary() {
 
   bestDateEyebrow.textContent = "Beste Termine";
   resultsPanelEyebrow.textContent = "Heatmap";
-  resultsPanelTitle.textContent = "Beste Überschneidungen";
+  resultsPanelTitle.textContent = "Beste Ueberschneidungen";
 
   if (results.bestDates.length === 0 || responses.length === 0) {
     bestDateLabel.textContent = "Noch keine Antworten";
@@ -376,7 +697,7 @@ function renderFreeChoiceForm(grid) {
   const intro = document.createElement("div");
   intro.className = "free-mode-intro";
   intro.innerHTML = `
-    <strong>Wähle alle Tage, an denen du kannst</strong>
+    <strong>Waehle alle Tage, an denen du kannst</strong>
     <p class="description">Du kannst beliebige Tage im Kalender markieren, auch in anderen Monaten oder Jahren.</p>
   `;
 
@@ -392,7 +713,7 @@ function renderFreeChoiceForm(grid) {
         <button id="participant-prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
           <i class="fa-solid fa-chevron-left"></i>
         </button>
-        <button id="participant-next-month" class="ghost-button compact-button" type="button" aria-label="Nächster Monat">
+        <button id="participant-next-month" class="ghost-button compact-button" type="button" aria-label="Naechster Monat">
           <i class="fa-solid fa-chevron-right"></i>
         </button>
       </div>
@@ -400,7 +721,7 @@ function renderFreeChoiceForm(grid) {
     <div id="participant-calendar-grid" class="calendar-grid" aria-live="polite"></div>
     <div class="selected-dates-box">
       <div class="selected-header">
-        <span>Deine gewählten Tage</span>
+        <span>Deine gewaehlten Tage</span>
         <button id="participant-clear-dates" class="text-button" type="button">Leeren</button>
       </div>
       <div id="participant-selected-dates" class="selected-dates"></div>
@@ -482,7 +803,7 @@ function renderParticipantSelectedDates() {
 
   const dates = Array.from(state.participantSelectedDates).sort();
   if (dates.length === 0) {
-    container.innerHTML = '<p class="description">Noch keine Tage ausgewählt.</p>';
+    container.innerHTML = '<p class="description">Noch keine Tage ausgewaehlt.</p>';
     return;
   }
 
@@ -511,15 +832,14 @@ function renderHeatmap() {
 
   if (poll.mode === "free") {
     if (results.summary.length === 0) {
-      grid.innerHTML = '<p class="description">Noch keine Tagesvorschläge vorhanden.</p>';
+      grid.innerHTML = '<p class="description">Noch keine Tagesvorschlaege vorhanden.</p>';
       return;
     }
 
     for (const entry of results.summary) {
       const card = document.createElement("article");
       card.className = "heatmap-cell high free-ranking-card";
-      const participantLabel =
-        entry.count === 1 ? "1 Person" : `${entry.count} Personen`;
+      const participantLabel = entry.count === 1 ? "1 Person" : `${entry.count} Personen`;
       card.innerHTML = `
         <strong>${formatDateLong(entry.date)}</strong>
         <span>${participantLabel}</span>
@@ -637,16 +957,10 @@ async function handleResponseSubmit(event) {
 
   try {
     setFeedback(feedback, "Antwort wird gespeichert ...");
-    const response = await fetch(`/api/polls/${state.pollData.poll.id}/responses`, {
+    const data = await apiFetch(`/api/polls/${state.pollData.poll.id}/responses`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Die Antwort konnte nicht gespeichert werden.");
-    }
 
     state.pollData = data;
     if (!isFixed) {
@@ -686,6 +1000,10 @@ async function sharePollLink() {
 }
 
 function setFeedback(element, message, type = "") {
+  if (!element) {
+    return;
+  }
+
   element.textContent = message;
   element.className = `feedback ${type}`.trim();
 }
@@ -751,6 +1069,16 @@ function formatDateShort(date) {
     day: "2-digit",
     month: "2-digit",
   }).format(new Date(`${date}T00:00:00`));
+}
+
+function formatDateTime(date) {
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(date));
 }
 
 function escapeHtml(value) {
