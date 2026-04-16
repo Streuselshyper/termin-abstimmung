@@ -630,6 +630,13 @@ select:focus {
   box-shadow: none;
 }
 
+.poll-list-row > * {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  min-height: 100%;
+}
+
 .poll-list-main,
 .poll-list-actions {
   min-width: 0;
@@ -660,12 +667,13 @@ select:focus {
 }
 
 .poll-list-meta {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 0.55rem;
   flex: 0 0 auto;
   min-width: 0;
+  align-self: center;
 }
 
 .dashboard-status-badge,
@@ -731,6 +739,7 @@ select:focus {
   flex: 0 0 auto;
   margin-top: 0;
   flex-wrap: nowrap;
+  align-self: center;
 }
 
 .poll-open-link {
@@ -745,6 +754,12 @@ select:focus {
   font-size: 0.82rem;
   line-height: 1;
   margin: 0;
+  align-self: center;
+}
+
+.poll-type-pill {
+  align-self: center;
+  margin-block: auto;
 }
 
 .create-mode-card.is-active {
