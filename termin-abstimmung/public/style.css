@@ -617,7 +617,7 @@ select:focus {
 .poll-response-overlay {
   position: fixed;
   inset: 0;
-  z-index: 39;
+  z-index: 200;
   background: rgba(7, 17, 31, 0.52);
   backdrop-filter: blur(6px);
 }
@@ -627,7 +627,7 @@ select:focus {
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 40;
+  z-index: 201;
   width: min(32rem, 100vw);
   padding: 0.8rem;
   transform: translateX(104%);
