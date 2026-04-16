@@ -1108,3 +1108,30 @@ select:focus {
     font-size: 0.9rem;
   }
 }
+
+/* DASHBOARD ALIGNMENT FIX - Overrides all previous styles */
+.poll-list-row {
+  display: flex !important;
+  align-items: center !important;
+}
+
+.poll-list-row > * {
+  display: flex !important;
+  align-items: center !important;
+  align-self: center !important;
+}
+
+.poll-list-main,
+.poll-list-meta,
+.poll-list-actions {
+  display: flex !important;
+  align-items: center !important;
+  align-self: center !important;
+}
+
+.poll-list-actions > * {
+  display: inline-flex !important;
+  align-items: center !important;
+  align-self: center !important;
+  margin: 0 !important;
+}
