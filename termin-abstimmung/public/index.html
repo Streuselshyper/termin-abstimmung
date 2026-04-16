@@ -6,12 +6,12 @@
     <title>Termin-Abstimmung</title>
     <meta
       name="description"
-      content="Termin-Abstimmung mit User-Login, Dashboard und mobiler Poll-Auswertung."
+      content="Moderne Termin-Abstimmung mit Login, Dashboard, Einladungen, Kalenderexport und responsiver Auswertung."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;700;800&display=swap"
       rel="stylesheet"
     />
     <link
@@ -21,15 +21,243 @@
       referrerpolicy="no-referrer"
     />
     <link rel="stylesheet" href="/style.css" />
+    <style>
+      :root {
+        --accent-strong: #0f766e;
+        --accent-soft: rgba(15, 118, 110, 0.12);
+        --surface-strong: rgba(9, 14, 24, 0.82);
+        --surface-soft: rgba(255, 255, 255, 0.06);
+        --border-soft: rgba(255, 255, 255, 0.1);
+        --text-soft: rgba(233, 239, 244, 0.72);
+      }
+
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(14, 165, 233, 0.15), transparent 28%),
+          radial-gradient(circle at 85% 15%, rgba(16, 185, 129, 0.18), transparent 24%),
+          linear-gradient(180deg, #07111f 0%, #0b1325 48%, #111827 100%);
+      }
+
+      body[data-theme="light"] {
+        --surface-strong: rgba(255, 255, 255, 0.88);
+        --surface-soft: rgba(15, 23, 42, 0.04);
+        --border-soft: rgba(15, 23, 42, 0.08);
+        --text-soft: rgba(15, 23, 42, 0.72);
+        background:
+          radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 30%),
+          radial-gradient(circle at 85% 15%, rgba(45, 212, 191, 0.16), transparent 22%),
+          linear-gradient(180deg, #f5f7fb 0%, #edf4f7 48%, #e7eef4 100%);
+      }
+
+      .page-shell {
+        max-width: 1260px;
+      }
+
+      .topbar,
+      .panel,
+      .hero-card {
+        backdrop-filter: blur(18px);
+        border: 1px solid var(--border-soft);
+        box-shadow: 0 28px 60px rgba(15, 23, 42, 0.18);
+      }
+
+      .dashboard-shell,
+      .poll-shell {
+        gap: 1.5rem;
+      }
+
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+        gap: 1.5rem;
+      }
+
+      .dashboard-hero {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .dashboard-hero::after {
+        content: "";
+        position: absolute;
+        inset: auto -10% -30% auto;
+        width: 18rem;
+        aspect-ratio: 1;
+        background: radial-gradient(circle, rgba(45, 212, 191, 0.3), transparent 70%);
+        pointer-events: none;
+      }
+
+      .hero-copy.compact-copy {
+        max-width: 42rem;
+      }
+
+      .dashboard-stats-grid,
+      .poll-list {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .dashboard-stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      }
+
+      .dashboard-stat,
+      .poll-card,
+      .quick-action-card,
+      .email-preferences-card {
+        border-radius: 1.1rem;
+        border: 1px solid var(--border-soft);
+        background: var(--surface-soft);
+      }
+
+      .dashboard-stat {
+        padding: 1rem 1.1rem;
+      }
+
+      .dashboard-stat strong {
+        display: block;
+        font-size: 1.6rem;
+        margin-bottom: 0.3rem;
+      }
+
+      .dashboard-stat span,
+      .muted-copy {
+        color: var(--text-soft);
+      }
+
+      .dashboard-section-head,
+      .poll-card-head,
+      .quick-action-head,
+      .inline-action-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .poll-card {
+        padding: 1.1rem;
+      }
+
+      .poll-card-meta,
+      .poll-card-actions,
+      .action-cluster,
+      .owner-action-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .poll-card-meta {
+        margin: 0.9rem 0 0.4rem;
+      }
+
+      .poll-card-actions {
+        margin-top: 1rem;
+      }
+
+      .poll-card-actions > * {
+        flex: 0 0 auto;
+      }
+
+      .poll-empty-state {
+        padding: 1.4rem;
+        text-align: center;
+      }
+
+      .editor-side-stack {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .quick-action-card,
+      .email-preferences-card {
+        padding: 1.1rem;
+      }
+
+      .quick-action-card ul {
+        margin: 0.8rem 0 0;
+        padding-left: 1.1rem;
+        color: var(--text-soft);
+      }
+
+      .inline-input-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.75rem;
+        align-items: end;
+      }
+
+      .owner-actions {
+        margin-top: 1.4rem;
+      }
+
+      .owner-action-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .owner-action-card {
+        padding: 1rem;
+        border-radius: 1rem;
+        border: 1px solid var(--border-soft);
+        background: var(--surface-soft);
+      }
+
+      .share-link-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.75rem;
+        margin-top: 0.8rem;
+      }
+
+      .share-link-output {
+        padding: 0.8rem 0.9rem;
+        border-radius: 0.85rem;
+        border: 1px solid var(--border-soft);
+        background: rgba(255, 255, 255, 0.04);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .export-row {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 0.8rem;
+      }
+
+      .export-row select {
+        min-width: 0;
+        flex: 1 1 12rem;
+      }
+
+      @media (max-width: 920px) {
+        .dashboard-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .inline-input-row,
+        .share-link-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
     <div class="page-shell">
       <header class="topbar">
         <a class="brand" href="/">
           <span class="brand-mark"><i class="fa-regular fa-calendar-check"></i></span>
           <span class="brand-copy">
             <strong>Termin-Abstimmung</strong>
-            <small>User-System MVP</small>
+            <small>Einladungen, Export, Dashboard</small>
           </span>
         </a>
 
@@ -43,31 +271,36 @@
 
       <main id="app">
         <div id="landing-view" class="app-view is-hidden">
-          <section class="hero-card auth-hero">
+          <section class="hero-card landing-hero">
             <div class="hero-copy">
-              <p class="eyebrow">Login zuerst</p>
-              <h1>Dein Dashboard fuer Termin-Abstimmungen</h1>
+              <p class="eyebrow">Schneller abstimmen</p>
+              <h1>Umfragen erstellen, teilen und direkt auswerten</h1>
               <p class="hero-text">
-                Registriere dich mit E-Mail-Adresse und Passwort und verwalte danach deine eigenen Umfragen zentral im
-                mobilen Dashboard.
+                Erstelle Termin-Abstimmungen mit festen Terminen oder freier Wahl, teile Einladungslinks, exportiere
+                gewaehlte Tage nach iCal und behalte alle Antworten in deinem Dashboard im Blick.
               </p>
               <div class="hero-cta-row">
                 <a class="primary-link" href="/register">Konto erstellen</a>
-                <a class="ghost-link" href="/login">Zum Login</a>
+                <a class="ghost-link" href="/login">Anmelden</a>
               </div>
             </div>
-            <div class="hero-stats auth-stats">
+
+            <div class="hero-stats">
               <article class="hero-stat">
-                <strong>30 Minuten</strong>
-                <span>Session-Timeout bei Inaktivitaet</span>
+                <strong>2 Modi</strong>
+                <span>Feste Termine oder freie Wahl</span>
               </article>
               <article class="hero-stat">
-                <strong>Eigenes Dashboard</strong>
-                <span>Alle erstellten Polls an einem Ort</span>
+                <strong>Share-Links</strong>
+                <span>Einladen ohne separates Konto</span>
               </article>
               <article class="hero-stat">
-                <strong>E-Mail als Login</strong>
-                <span>Keine Verifizierung, kein Zusatzschritt</span>
+                <strong>iCal Export</strong>
+                <span>Mit einem Klick in den Kalender</span>
+              </article>
+              <article class="hero-stat">
+                <strong>Dashboard</strong>
+                <span>Bearbeiten, duplizieren, loeschen</span>
               </article>
             </div>
           </section>
@@ -76,11 +309,10 @@
         <div id="login-view" class="app-view is-hidden">
           <section class="auth-layout">
             <article class="auth-panel auth-panel-highlight">
-              <p class="eyebrow">Sicherer Zugang</p>
-              <h1>Login</h1>
+              <p class="eyebrow">Sicher anmelden</p>
+              <h1>Zurueck ins Dashboard</h1>
               <p class="description">
-                Melde dich mit deiner E-Mail-Adresse und deinem Passwort an und erstelle neue Termin-Abstimmungen
-                direkt aus dem Dashboard.
+                Verwalte deine Umfragen, verschicke Einladungen und exportiere passende Termine direkt als Kalenderdatei.
               </p>
             </article>
 
@@ -88,14 +320,7 @@
               <form id="login-form" class="stack-form">
                 <label>
                   <span>E-Mail</span>
-                  <input
-                    id="login-email"
-                    type="email"
-                    name="email"
-                    autocomplete="email"
-                    required
-                    placeholder="du@firma.de"
-                  />
+                  <input id="login-email" type="email" name="email" autocomplete="email" required placeholder="du@firma.de" />
                 </label>
 
                 <label>
@@ -127,26 +352,23 @@
         <div id="register-view" class="app-view is-hidden">
           <section class="auth-layout">
             <article class="auth-panel auth-panel-highlight">
-              <p class="eyebrow">Registrierung</p>
-              <h1>Konto anlegen</h1>
+              <p class="eyebrow">Neues Konto</p>
+              <h1>In wenigen Sekunden startklar</h1>
               <p class="description">
-                Lege dein Konto direkt mit E-Mail-Adresse und Passwort an. Danach landest du sofort in deinem
-                Dashboard.
+                Nutze deine E-Mail-Adresse fuer Login, Einladungs-Management, Benachrichtigungen und Poll-Verwaltung.
               </p>
             </article>
 
             <article class="panel auth-panel">
               <form id="register-form" class="stack-form">
                 <label>
+                  <span>Name</span>
+                  <input id="register-name" name="name" maxlength="120" placeholder="Dein Name" />
+                </label>
+
+                <label>
                   <span>E-Mail</span>
-                  <input
-                    id="register-email"
-                    type="email"
-                    name="email"
-                    autocomplete="email"
-                    required
-                    placeholder="du@firma.de"
-                  />
+                  <input id="register-email" type="email" name="email" autocomplete="email" required placeholder="du@firma.de" />
                 </label>
 
                 <label>
@@ -191,10 +413,10 @@
         <div id="forgot-password-view" class="app-view is-hidden">
           <section class="auth-layout">
             <article class="auth-panel auth-panel-highlight">
-              <p class="eyebrow">Passwort vergessen</p>
-              <h1>Reset-Link anfordern</h1>
+              <p class="eyebrow">Reset</p>
+              <h1>Neuen Passwort-Link erzeugen</h1>
               <p class="description">
-                Gib deine E-Mail-Adresse ein. In dieser lokalen Version wird der Token-Link direkt angezeigt.
+                In dieser Umgebung wird der erzeugte Link direkt angezeigt und parallel im Mail-Log protokolliert.
               </p>
             </article>
 
@@ -230,18 +452,19 @@
       </main>
     </div>
 
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
     <template id="reset-password-template">
       <section class="auth-layout">
         <article class="auth-panel auth-panel-highlight">
-          <p class="eyebrow">Neues Passwort</p>
-          <h1>Passwort zuruecksetzen</h1>
-          <p class="description">Der Link ist zeitlich begrenzt. Nach dem Speichern wirst du direkt eingeloggt.</p>
+          <p class="eyebrow">Passwort erneuern</p>
+          <h1>Neues Passwort setzen</h1>
+          <p class="description">Der Link ist begrenzt gueltig. Nach dem Speichern wirst du direkt angemeldet.</p>
         </article>
 
         <article class="panel auth-panel">
           <form id="reset-password-form" class="stack-form">
             <input id="reset-password-token" type="hidden" name="token" />
-
             <div id="reset-password-details"></div>
 
             <label>
@@ -258,7 +481,7 @@
             </label>
 
             <label>
-              <span>Passwort wiederholen</span>
+              <span>Passwort bestaetigen</span>
               <input
                 id="reset-password-confirm"
                 type="password"
@@ -276,155 +499,205 @@
               <i class="fa-solid fa-rotate-right"></i>
               Passwort speichern
             </button>
-
-            <p class="description"><a class="inline-link" href="/forgot-password">Neuen Link anfordern</a></p>
           </form>
         </article>
       </section>
     </template>
 
     <template id="dashboard-template">
-      <section class="hero-card dashboard-hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Dashboard</p>
-          <h1>Eigene Polls anlegen und verwalten</h1>
-          <p class="hero-text">
-            Angemeldet als <strong id="dashboard-email"></strong>. Deine Session bleibt bei Aktivitaet offen und endet
-            nach <span id="dashboard-timeout"></span> Inaktivitaet.
-          </p>
-        </div>
-        <div class="hero-stats auth-stats">
-          <article class="hero-stat">
-            <strong id="dashboard-poll-count">0 eigene Umfragen</strong>
-            <span>Direkt aus deinem Konto erstellt</span>
-          </article>
-          <article class="hero-stat">
-            <strong>Mobile First</strong>
-            <span>Funktioniert auf Smartphone und Desktop</span>
-          </article>
-        </div>
-      </section>
-
-      <section class="dashboard-layout">
-        <article class="panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Meine Umfragen</p>
-              <h2>Letzte Eintraege</h2>
-            </div>
-          </div>
-          <div id="dashboard-polls" class="poll-list"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Konto</p>
-              <h2>Schnellzugriff</h2>
-            </div>
-          </div>
-
-          <div class="stack-form">
-            <p class="description">Du bist als <strong id="dashboard-email-inline"></strong> eingeloggt.</p>
-            <p class="description">
-              Falls du dein Passwort neu setzen willst, kannst du jederzeit einen frischen Reset-Link anfordern.
+      <section class="dashboard-shell">
+        <section class="hero-card dashboard-hero">
+          <div class="hero-copy compact-copy">
+            <p class="eyebrow">Dashboard</p>
+            <h1>Umfragen verwalten, teilen und sofort weitergeben</h1>
+            <p class="hero-text">
+              Erstelle neue Abstimmungen, behalte Antworten im Blick und verteile Share-Links oder Kalenderexporte ohne
+              Umwege aus einer kompakten Admin-Ansicht.
             </p>
-            <a class="ghost-link" href="/forgot-password">Passwort-Reset oeffnen</a>
           </div>
-        </article>
+          <div id="dashboard-stats" class="dashboard-stats-grid"></div>
+        </section>
 
-        <article class="panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Neue Umfrage</p>
-              <h2>Termin-Abstimmung erstellen</h2>
-            </div>
-          </div>
-
-          <form id="create-poll-form" class="stack-form">
-            <label>
-              <span>Titel</span>
-              <input id="poll-title" name="title" maxlength="120" required placeholder="Team-Offsite Mai" />
-            </label>
-
-            <label>
-              <span>Beschreibung</span>
-              <textarea
-                id="poll-description"
-                name="description"
-                maxlength="1000"
-                rows="4"
-                required
-                placeholder="Kontext, Ort oder Hinweise zur Terminwahl"
-              ></textarea>
-            </label>
-
-            <fieldset class="mode-fieldset">
-              <legend>Modus</legend>
-              <label class="mode-option">
-                <input type="radio" name="mode" value="fixed" checked />
-                <div>
-                  <strong>Festgelegte Termine</strong>
-                  <p>Du waehlst konkrete Tage. Teilnehmende stimmen mit Ja, Vielleicht oder Nein ab.</p>
-                </div>
-              </label>
-              <label class="mode-option">
-                <input type="radio" name="mode" value="free" />
-                <div>
-                  <strong>Freie Wahl</strong>
-                  <p>Teilnehmende markieren danach beliebige Kalendertage selbst.</p>
-                </div>
-              </label>
-            </fieldset>
-
-            <div id="fixed-mode-fields" class="calendar-section">
-              <div class="calendar-header">
-                <div>
-                  <h3>Termine auswaehlen</h3>
-                  <p id="calendar-label" class="calendar-meta"></p>
-                </div>
-                <div class="calendar-actions">
-                  <button id="prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
-                    <i class="fa-solid fa-chevron-left"></i>
-                  </button>
-                  <button id="next-month" class="ghost-button compact-button" type="button" aria-label="Naechster Monat">
-                    <i class="fa-solid fa-chevron-right"></i>
-                  </button>
-                </div>
+        <section class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Eigene Umfragen</p>
+                <h2>Uebersicht</h2>
               </div>
-
-              <div id="calendar-grid" class="calendar-grid" aria-live="polite"></div>
-              <div class="selected-dates-box">
-                <div class="selected-header">
-                  <span>Ausgewaehlte Termine</span>
-                  <button id="clear-dates" class="text-button" type="button">Leeren</button>
-                </div>
-                <div id="selected-dates" class="selected-dates"></div>
-              </div>
+              <button id="refresh-dashboard" class="ghost-button compact-button" type="button" aria-label="Aktualisieren">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
             </div>
-
             <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
+            <div class="dashboard-section-head">
+              <p class="muted-copy">Hier verwaltest du Freigabe, Duplikate, Export und Loeschungen.</p>
+              <span id="dashboard-list-summary" class="pill">0 Umfragen</span>
+            </div>
+            <div id="dashboard-polls" class="poll-list"></div>
+          </article>
 
-            <button class="primary-button" type="submit">
-              <i class="fa-solid fa-wand-magic-sparkles"></i>
-              Umfrage erstellen
-            </button>
-          </form>
-        </article>
+          <article class="panel editor-side-stack">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Umfrage-Editor</p>
+                <h2 id="editor-title">Neue Umfrage</h2>
+              </div>
+              <button id="cancel-edit-button" class="text-button is-hidden" type="button">Bearbeitung abbrechen</button>
+            </div>
+
+            <form id="create-poll-form" class="stack-form">
+              <label>
+                <span>Titel</span>
+                <input id="poll-title" name="title" maxlength="120" required placeholder="Team-Offsite Mai" />
+              </label>
+
+              <label>
+                <span>Beschreibung</span>
+                <textarea
+                  id="poll-description"
+                  name="description"
+                  maxlength="1200"
+                  rows="4"
+                  required
+                  placeholder="Kontext, Ort, Zweck oder Moderationshinweise"
+                ></textarea>
+              </label>
+
+              <fieldset class="mode-fieldset">
+                <legend>Modus</legend>
+                <label class="mode-option">
+                  <input type="radio" name="mode" value="fixed" checked />
+                  <div>
+                    <strong>Feste Termine</strong>
+                    <p>Du gibst konkrete Tage vor, Teilnehmende stimmen mit Ja, Vielleicht oder Nein ab.</p>
+                  </div>
+                </label>
+                <label class="mode-option">
+                  <input type="radio" name="mode" value="free" />
+                  <div>
+                    <strong>Freie Wahl</strong>
+                    <p>Teilnehmende markieren danach beliebige Tage selbst im Kalender.</p>
+                  </div>
+                </label>
+              </fieldset>
+
+              <div id="fixed-mode-fields" class="calendar-section">
+                <div class="calendar-header">
+                  <div>
+                    <h3>Termine auswaehlen</h3>
+                    <p id="calendar-label" class="calendar-meta"></p>
+                  </div>
+                  <div class="calendar-actions">
+                    <button id="prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
+                      <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <button id="next-month" class="ghost-button compact-button" type="button" aria-label="Naechster Monat">
+                      <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div id="calendar-grid" class="calendar-grid" aria-live="polite"></div>
+                <div class="selected-dates-box">
+                  <div class="selected-header">
+                    <span>Ausgewaehlte Termine</span>
+                    <button id="clear-dates" class="text-button" type="button">Leeren</button>
+                  </div>
+                  <div id="selected-dates" class="selected-dates"></div>
+                </div>
+              </div>
+
+              <label>
+                <span>Einladungsnachricht</span>
+                <textarea
+                  id="poll-invite-message"
+                  name="inviteMessage"
+                  maxlength="500"
+                  rows="3"
+                  placeholder="Optionaler Zusatztext fuer Einladungen"
+                ></textarea>
+              </label>
+
+              <label>
+                <span>Einladungs-E-Mails</span>
+                <textarea
+                  id="poll-invite-emails"
+                  name="inviteEmails"
+                  rows="3"
+                  placeholder="anna@firma.de, max@firma.de"
+                ></textarea>
+              </label>
+
+              <label class="check-row">
+                <input id="poll-send-invites" type="checkbox" />
+                <span>Einladungen nach dem Speichern protokollieren</span>
+              </label>
+
+              <label class="check-row">
+                <input id="poll-notify-responses" type="checkbox" checked />
+                <span>Mich bei neuen Antworten per E-Mail benachrichtigen</span>
+              </label>
+
+              <label class="check-row">
+                <input id="poll-allow-invite-emails" type="checkbox" checked />
+                <span>E-Mail-Einladungen fuer diese Umfrage aktivieren</span>
+              </label>
+
+              <div id="poll-form-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+              <button id="submit-poll-button" class="primary-button" type="submit">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                Umfrage erstellen
+              </button>
+            </form>
+
+            <section class="quick-action-card">
+              <div class="quick-action-head">
+                <div>
+                  <p class="eyebrow">Schnellstart</p>
+                  <h3>Was nach dem Erstellen bereitsteht</h3>
+                </div>
+                <span class="pill">Live</span>
+              </div>
+              <ul>
+                <li>Direkter Share-Link fuer Teilnehmende</li>
+                <li>Duplikat-Funktion fuer wiederkehrende Abstimmungen</li>
+                <li>ICS-Export fuer den besten oder ausgewaehlten Termin</li>
+              </ul>
+            </section>
+
+            <section class="email-preferences-card">
+              <div class="quick-action-head">
+                <div>
+                  <p class="eyebrow">E-Mail-Optionen</p>
+                  <h3>Vorbereitung fuer Einladungen</h3>
+                </div>
+                <span class="pill">UI</span>
+              </div>
+              <p class="description">
+                Lege beim Erstellen optional Einladungstext, Empfaenger und Benachrichtigungslogik fest. Der Versand
+                bleibt in dieser Umgebung protokolliert.
+              </p>
+            </section>
+          </article>
+        </section>
       </section>
     </template>
 
     <template id="poll-template">
-      <section class="poll-layout">
+      <section class="poll-shell">
         <article class="panel poll-summary">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Teilnahmelink</p>
               <h1 id="poll-title-view"></h1>
             </div>
-            <button id="share-button" class="icon-button" type="button" aria-label="Link teilen">
-              <i class="fa-solid fa-share-nodes"></i>
-            </button>
+            <div class="header-action-row">
+              <button id="share-button" class="icon-button" type="button" aria-label="Link teilen">
+                <i class="fa-solid fa-share-nodes"></i>
+              </button>
+            </div>
           </div>
 
           <p id="poll-description-view" class="description"></p>
@@ -443,19 +716,32 @@
             </div>
             <div id="best-date-meta" class="best-date-meta"></div>
           </div>
+
+          <div class="action-strip">
+            <a id="share-link-anchor" class="ghost-link" href="#" target="_blank" rel="noreferrer">Share-Link oeffnen</a>
+            <button id="calendar-download-button" class="ghost-button wide-button" type="button">
+              <i class="fa-regular fa-calendar-plus"></i>
+              ICS exportieren
+            </button>
+            <button id="calendar-open-button" class="ghost-button wide-button" type="button">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i>
+              Zu Kalender hinzufuegen
+            </button>
+          </div>
+
+          <div id="poll-owner-actions" class="owner-actions is-hidden"></div>
         </article>
 
         <article class="panel">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Deine Verfuegbarkeit</p>
-              <h2>Antwort eintragen</h2>
+              <p class="eyebrow">Antwort</p>
+              <h2>Deine Verfuegbarkeit</h2>
             </div>
           </div>
 
           <form id="response-form" class="stack-form">
             <div id="participant-identity"></div>
-
             <div id="availability-grid" class="availability-grid"></div>
             <div id="availability-legend" class="legend">
               <span class="legend-item yes">Ja</span>
@@ -465,7 +751,7 @@
 
             <div id="response-feedback" class="feedback" role="status" aria-live="polite"></div>
 
-            <button class="primary-button" type="submit">
+            <button id="submit-response-button" class="primary-button" type="submit">
               <i class="fa-regular fa-paper-plane"></i>
               Antwort speichern
             </button>
