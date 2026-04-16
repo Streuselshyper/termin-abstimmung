@@ -24,6 +24,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
     password_hash TEXT,
     created_at TEXT NOT NULL
   );
@@ -66,11 +67,14 @@ ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
 ensureColumn("polls", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
 ensureColumn("responses", "suggested_dates", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("responses", "free_text_availabilities", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("responses", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
+ensureColumn("users", "name", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "reset_token", "TEXT");
 ensureColumn("users", "reset_token_expires_at", "TEXT");
 dropColumnIfExists("polls", "time_range_text");
 db.exec("CREATE INDEX IF NOT EXISTS idx_polls_user_id ON polls(user_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token)");
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_responses_poll_user_id ON responses(poll_id, user_id) WHERE user_id IS NOT NULL");
 
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
@@ -115,6 +119,7 @@ function dropColumnIfExists(tableName, columnName) {
 
 function migrateUsersTable() {
   const columns = db.prepare("PRAGMA table_info(users)").all();
+  const hasName = columns.some((column) => column.name === "name");
   const hasVerified = columns.some((column) => column.name === "verified");
   const hasVerificationToken = columns.some((column) => column.name === "verification_token");
 
@@ -135,12 +140,13 @@ function migrateUsersTable() {
         CREATE TABLE users_migrated (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           email TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL DEFAULT '',
           password_hash TEXT,
           created_at TEXT NOT NULL
         );
 
-        INSERT INTO users_migrated (id, email, password_hash, created_at)
-        SELECT id, email, password_hash, created_at
+        INSERT INTO users_migrated (id, email, name, password_hash, created_at)
+        SELECT id, email, ${hasName ? "COALESCE(name, '')" : "''"}, password_hash, created_at
         FROM users;
 
         DROP TABLE users;
@@ -239,6 +245,7 @@ function mapUserRow(row) {
   return {
     id: row.id,
     email: row.email,
+    name: row.name || "",
     createdAt: row.created_at,
   };
 }
@@ -270,6 +277,7 @@ function mapResponseRow(row) {
   return {
     id: row.id,
     pollId: row.poll_id,
+    userId: row.user_id ?? null,
     name: row.name,
     availabilities: JSON.parse(row.availabilities),
     suggestedDates: suggestedDates.length > 0 ? suggestedDates : legacySuggestedDates,
@@ -354,7 +362,7 @@ function calculateSuggestedDatesRanking(responses) {
   return { summary, bestDates };
 }
 
-function loadPollWithResponses(pollId) {
+function loadPollWithResponses(pollId, currentUser = null) {
   const pollRow = db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId);
   if (!pollRow) {
     return null;
@@ -371,7 +379,17 @@ function loadPollWithResponses(pollId) {
       ? calculateBestDates(poll.dates, responses)
       : calculateSuggestedDatesRanking(responses);
 
-  return { poll, responses, results };
+  return {
+    poll,
+    responses,
+    results,
+    user: currentUser
+      ? {
+          id: currentUser.id,
+          email: currentUser.email,
+        }
+      : null,
+  };
 }
 
 function parseCookies(headerValue) {
@@ -662,6 +680,7 @@ app.get("/api/auth/me", (req, res) => {
       ? {
           id: req.currentUser.id,
           email: req.currentUser.email,
+          name: req.currentUser.name || "",
         }
       : null,
     csrfToken: req.csrfToken,
@@ -854,6 +873,90 @@ app.get("/api/user/polls", requireAuth, (req, res) => {
   }
 });
 
+app.get("/api/user/profile", requireAuth, (req, res) => {
+  try {
+    const user = db
+      .prepare("SELECT id, email, name, created_at FROM users WHERE id = ?")
+      .get(req.currentUser.id);
+
+    return res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name || "",
+      createdAt: user.created_at,
+    });
+  } catch (error) {
+    console.error("Fehler beim Laden des Profils:", error);
+    return res.status(500).json({ error: "Das Profil konnte nicht geladen werden." });
+  }
+});
+
+app.put("/api/user/profile", requireCsrf, requireAuth, (req, res) => {
+  try {
+    const name = normalizeText(req.body?.name, 120);
+    if (name.length < 2) {
+      return res.status(400).json({ error: "Der Name muss mindestens 2 Zeichen lang sein." });
+    }
+
+    db.prepare("UPDATE users SET name = ? WHERE id = ?").run(name, req.currentUser.id);
+    return res.json({ success: true, name });
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren des Profils:", error);
+    return res.status(500).json({ error: "Das Profil konnte nicht gespeichert werden." });
+  }
+});
+
+app.put("/api/user/password", requireCsrf, requireAuth, (req, res) => {
+  try {
+    const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
+    const newPasswordCheck = validatePassword(req.body?.newPassword);
+
+    if (!currentPassword) {
+      return res.status(400).json({ error: "Bitte gib dein aktuelles Passwort ein." });
+    }
+
+    if (!newPasswordCheck.ok) {
+      return res.status(400).json({ error: newPasswordCheck.message });
+    }
+
+    const user = db.prepare("SELECT password_hash FROM users WHERE id = ?").get(req.currentUser.id);
+    if (!user?.password_hash || !bcrypt.compareSync(currentPassword, user.password_hash)) {
+      return res.status(400).json({ error: "Aktuelles Passwort falsch." });
+    }
+
+    const newHash = bcrypt.hashSync(newPasswordCheck.value, 12);
+    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(newHash, req.currentUser.id);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Fehler beim Aendern des Passworts:", error);
+    return res.status(500).json({ error: "Das Passwort konnte nicht geaendert werden." });
+  }
+});
+
+app.delete("/api/user/account", requireCsrf, requireAuth, (req, res) => {
+  try {
+    const userId = req.currentUser.id;
+    const polls = db.prepare("SELECT id FROM polls WHERE user_id = ?").all(userId);
+
+    const deleteAccount = db.transaction(() => {
+      for (const poll of polls) {
+        db.prepare("DELETE FROM responses WHERE poll_id = ?").run(poll.id);
+        db.prepare("DELETE FROM polls WHERE id = ?").run(poll.id);
+      }
+
+      db.prepare("DELETE FROM responses WHERE user_id = ?").run(userId);
+      db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    });
+
+    deleteAccount();
+    destroySession(res, req);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Fehler beim Loeschen des Kontos:", error);
+    return res.status(500).json({ error: "Das Konto konnte nicht geloescht werden." });
+  }
+});
+
 app.post("/api/polls", requireCsrf, requireAuth, (req, res) => {
   try {
     const title = normalizeText(req.body?.title, 120);
@@ -900,7 +1003,7 @@ app.post("/api/polls", requireCsrf, requireAuth, (req, res) => {
 
 app.get("/api/polls/:pollId", (req, res) => {
   try {
-    const data = loadPollWithResponses(req.params.pollId);
+    const data = loadPollWithResponses(req.params.pollId, req.currentUser);
     if (!data) {
       return res.status(404).json({ error: "Poll nicht gefunden." });
     }
@@ -914,13 +1017,15 @@ app.get("/api/polls/:pollId", (req, res) => {
 
 app.post("/api/polls/:pollId/responses", requireCsrf, (req, res) => {
   try {
-    const data = loadPollWithResponses(req.params.pollId);
+    const data = loadPollWithResponses(req.params.pollId, req.currentUser);
     if (!data) {
       return res.status(404).json({ error: "Poll nicht gefunden." });
     }
 
-    const name = normalizeText(req.body?.name, 80);
-    if (name.length < 2) {
+    const isLoggedIn = Boolean(req.session?.userId && req.currentUser);
+    const name = isLoggedIn ? req.currentUser.email : normalizeText(req.body?.name, 80);
+
+    if (!isLoggedIn && name.length < 2) {
       return res.status(400).json({ error: "Bitte gib einen Namen mit mindestens 2 Zeichen ein." });
     }
 
@@ -942,6 +1047,51 @@ app.post("/api/polls/:pollId/responses", requireCsrf, (req, res) => {
     }
 
     const timestamp = new Date().toISOString();
+    const serializedAvailabilities = JSON.stringify(availabilities);
+    const serializedSuggestedDates = JSON.stringify(suggestedDates);
+
+    if (isLoggedIn) {
+      const existing = db
+        .prepare(`
+          SELECT id
+          FROM responses
+          WHERE poll_id = ?
+            AND (user_id = ? OR lower(name) = lower(?))
+          ORDER BY CASE WHEN user_id = ? THEN 0 ELSE 1 END, id DESC
+          LIMIT 1
+        `)
+        .get(data.poll.id, req.session.userId, name, req.session.userId);
+
+      if (existing) {
+        db.prepare(`
+          UPDATE responses
+          SET name = ?, user_id = ?, availabilities = ?, suggested_dates = ?, updated_at = ?
+          WHERE id = ?
+        `).run(
+          name,
+          req.session.userId,
+          serializedAvailabilities,
+          serializedSuggestedDates,
+          timestamp,
+          existing.id
+        );
+      } else {
+        db.prepare(`
+          INSERT INTO responses (poll_id, user_id, name, availabilities, suggested_dates, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          data.poll.id,
+          req.session.userId,
+          name,
+          serializedAvailabilities,
+          serializedSuggestedDates,
+          timestamp,
+          timestamp
+        );
+      }
+
+      return res.status(201).json(loadPollWithResponses(req.params.pollId, req.currentUser));
+    }
 
     db.prepare(`
       INSERT INTO responses (poll_id, name, availabilities, suggested_dates, created_at, updated_at)
@@ -953,20 +1103,39 @@ app.post("/api/polls/:pollId/responses", requireCsrf, (req, res) => {
     `).run(
       data.poll.id,
       name,
-      JSON.stringify(availabilities),
-      JSON.stringify(suggestedDates),
+      serializedAvailabilities,
+      serializedSuggestedDates,
       timestamp,
       timestamp
     );
 
-    return res.status(201).json(loadPollWithResponses(req.params.pollId));
+    return res.status(201).json(loadPollWithResponses(req.params.pollId, req.currentUser));
   } catch (error) {
     console.error("Fehler beim Speichern der Antwort:", error);
     return res.status(500).json({ error: "Die Antwort konnte nicht gespeichert werden." });
   }
 });
 
-app.get(["/", "/login", "/register", "/forgot-password", "/reset-password", "/dashboard", "/poll/:pollId"], (_req, res) => {
+app.delete("/api/polls/:pollId", requireAuth, (req, res) => {
+  try {
+    const poll = db.prepare("SELECT user_id FROM polls WHERE id = ?").get(req.params.pollId);
+    if (!poll) {
+      return res.status(404).json({ error: "Nicht gefunden" });
+    }
+    if (poll.user_id !== req.session.userId) {
+      return res.status(403).json({ error: "Nicht erlaubt" });
+    }
+
+    db.prepare("DELETE FROM responses WHERE poll_id = ?").run(req.params.pollId);
+    db.prepare("DELETE FROM polls WHERE id = ?").run(req.params.pollId);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Fehler beim Loeschen des Polls:", error);
+    return res.status(500).json({ error: "Der Poll konnte nicht geloescht werden." });
+  }
+});
+
+app.get(["/", "/login", "/register", "/forgot-password", "/reset-password", "/dashboard", "/account", "/poll/:pollId"], (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 

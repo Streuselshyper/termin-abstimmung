@@ -1,6 +1,7 @@
-const appElement = document.querySelector("#app");
 const navElement = document.querySelector("#topbar-nav");
 const themeToggle = document.querySelector("#theme-toggle");
+const dynamicViewElement = document.querySelector("#dynamic-view");
+const staticViewIds = ["landing-view", "login-view", "register-view", "forgot-password-view", "dynamic-view"];
 const weekdayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const statusLabels = {
   yes: "Ja",
@@ -24,11 +25,10 @@ const state = {
   createMode: "fixed",
 };
 
-initializeApp().catch((error) => {
-  console.error(error);
-  appElement.innerHTML =
-    '<section class="panel"><h1>Fehler</h1><p>Die Ansicht konnte nicht geladen werden.</p></section>';
-});
+initializeRouting();
+bindStaticEventHandlers();
+
+initializeApp().catch(handleRenderError);
 
 themeToggle.addEventListener("click", toggleTheme);
 applyStoredTheme();
@@ -36,10 +36,13 @@ applyStoredTheme();
 async function initializeApp() {
   await refreshAuthState();
   renderTopbarNav();
+  await renderCurrentRoute();
+}
 
+async function renderCurrentRoute() {
   const route = getRoute();
   if (state.auth.user && ["login", "register", "forgot-password"].includes(route.type)) {
-    window.location.href = "/dashboard";
+    await navigateTo("/dashboard", { replace: true });
     return;
   }
 
@@ -63,13 +66,18 @@ async function initializeApp() {
     return;
   }
 
+  if (route.type === "account") {
+    await renderAccountPage();
+    return;
+  }
+
   if (route.type === "reset-password") {
     await renderResetPasswordPage(route.token);
     return;
   }
 
   if (route.type === "dashboard" && !state.auth.user) {
-    window.location.href = "/login";
+    await navigateTo("/login", { replace: true });
     return;
   }
 
@@ -79,6 +87,84 @@ async function initializeApp() {
   }
 
   await renderDashboardPage();
+}
+
+function initializeRouting() {
+  window.addEventListener("popstate", () => {
+    renderCurrentRoute().catch(handleRenderError);
+  });
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a[href]");
+    if (!link || event.defaultPrevented || (link.target && link.target !== "_self") || link.hasAttribute("download")) {
+      return;
+    }
+
+    const url = new URL(link.href, window.location.origin);
+    if (url.origin !== window.location.origin || !isSpaPath(url.pathname)) {
+      return;
+    }
+
+    event.preventDefault();
+    navigateTo(`${url.pathname}${url.search}${url.hash}`).catch(handleRenderError);
+  });
+}
+
+function bindStaticEventHandlers() {
+  document.querySelector("#login-form").addEventListener("submit", handleLogin);
+  document.querySelector("#register-form").addEventListener("submit", handleRegister);
+  document.querySelector("#forgot-password-form").addEventListener("submit", handleForgotPassword);
+}
+
+function isSpaPath(pathname) {
+  return (
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/forgot-password" ||
+    pathname === "/account" ||
+    pathname === "/reset-password" ||
+    pathname === "/dashboard" ||
+    /^\/poll\/[a-z0-9]+$/i.test(pathname)
+  );
+}
+
+async function navigateTo(path, options = {}) {
+  const nextUrl = new URL(path, window.location.origin);
+  const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+  const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+  if (nextPath !== currentPath) {
+    const method = options.replace ? "replaceState" : "pushState";
+    window.history[method]({}, "", nextPath);
+  }
+
+  await renderCurrentRoute();
+}
+
+function hideAllViews() {
+  for (const viewId of staticViewIds) {
+    document.querySelector(`#${viewId}`)?.classList.add("is-hidden");
+  }
+}
+
+function showStaticView(viewId) {
+  hideAllViews();
+  document.querySelector(`#${viewId}`)?.classList.remove("is-hidden");
+}
+
+function showDynamicView() {
+  hideAllViews();
+  dynamicViewElement.classList.remove("is-hidden");
+  dynamicViewElement.innerHTML = "";
+}
+
+function handleRenderError(error) {
+  console.error(error);
+  showDynamicView();
+  dynamicViewElement.innerHTML = `<section class="panel"><h1>Fehler</h1><p>${escapeHtml(
+    error?.message || "Die Ansicht konnte nicht geladen werden."
+  )}</p></section>`;
 }
 
 async function refreshAuthState() {
@@ -133,6 +219,7 @@ function renderTopbarNav() {
 
   navElement.innerHTML = `
     <a class="ghost-link" href="/dashboard">Dashboard</a>
+    <a class="ghost-link" href="/account"><i class="fa-regular fa-user"></i> Konto</a>
     <span class="nav-user">${escapeHtml(state.auth.user.email)}</span>
     <button id="logout-button" class="ghost-button wide-button" type="button">Logout</button>
   `;
@@ -155,6 +242,9 @@ function getRoute() {
   }
   if (pathname === "/forgot-password") {
     return { type: "forgot-password" };
+  }
+  if (pathname === "/account") {
+    return { type: "account" };
   }
   if (pathname === "/reset-password") {
     return { type: "reset-password", token: new URLSearchParams(window.location.search).get("token") || "" };
@@ -189,39 +279,29 @@ function toggleTheme() {
 }
 
 function renderLandingPage() {
-  const template = document.querySelector("#landing-template");
-  appElement.innerHTML = "";
-  appElement.appendChild(template.content.cloneNode(true));
+  showStaticView("landing-view");
 }
 
 function renderLoginPage() {
-  const template = document.querySelector("#login-template");
-  appElement.innerHTML = "";
-  appElement.appendChild(template.content.cloneNode(true));
-
-  document.querySelector("#login-form").addEventListener("submit", handleLogin);
+  showStaticView("login-view");
+  setFeedback(document.querySelector("#login-feedback"), "");
 }
 
 function renderRegisterPage() {
-  const template = document.querySelector("#register-template");
-  appElement.innerHTML = "";
-  appElement.appendChild(template.content.cloneNode(true));
-
-  document.querySelector("#register-form").addEventListener("submit", handleRegister);
+  showStaticView("register-view");
+  setFeedback(document.querySelector("#register-feedback"), "");
 }
 
 function renderForgotPasswordPage() {
-  const template = document.querySelector("#forgot-password-template");
-  appElement.innerHTML = "";
-  appElement.appendChild(template.content.cloneNode(true));
-
-  document.querySelector("#forgot-password-form").addEventListener("submit", handleForgotPassword);
+  showStaticView("forgot-password-view");
+  setFeedback(document.querySelector("#forgot-password-feedback"), "");
+  document.querySelector("#forgot-password-link").innerHTML = "";
 }
 
 async function renderResetPasswordPage(token) {
   const template = document.querySelector("#reset-password-template");
-  appElement.innerHTML = "";
-  appElement.appendChild(template.content.cloneNode(true));
+  showDynamicView();
+  dynamicViewElement.appendChild(template.content.cloneNode(true));
 
   const feedback = document.querySelector("#reset-password-feedback");
   const details = document.querySelector("#reset-password-details");
@@ -253,12 +333,37 @@ async function renderResetPasswordPage(token) {
 
 async function renderDashboardPage() {
   const template = document.querySelector("#dashboard-template");
-  appElement.innerHTML = "";
-  appElement.appendChild(template.content.cloneNode(true));
+  showDynamicView();
+  dynamicViewElement.appendChild(template.content.cloneNode(true));
 
   document.querySelector("#dashboard-email").textContent = state.auth.user.email;
-  document.querySelector("#dashboard-email-inline").textContent = state.auth.user.email;
   document.querySelector("#dashboard-timeout").textContent = `${state.auth.sessionTimeoutMinutes} Minuten`;
+
+  const emailInline = document.querySelector("#dashboard-email-inline");
+  const accountPanel = emailInline?.closest(".panel");
+  if (accountPanel) {
+    accountPanel.innerHTML = `
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Konto</p>
+          <h2>Profil verwalten</h2>
+        </div>
+      </div>
+
+      <div class="stack-form">
+        <p class="description">Du bist als <strong>${escapeHtml(state.auth.user.email)}</strong> eingeloggt.</p>
+        <p class="description">Bearbeite dort deinen Namen, aendere dein Passwort oder loesche dein Konto.</p>
+        <button id="open-account-page" class="ghost-button wide-button" type="button">
+          <i class="fa-regular fa-user"></i>
+          Konto oeffnen
+        </button>
+      </div>
+    `;
+
+    document.querySelector("#open-account-page").addEventListener("click", async () => {
+      await navigateTo("/account");
+    });
+  }
 
   renderCalendar();
   renderSelectedDates();
@@ -290,6 +395,165 @@ async function renderDashboardPage() {
   document.querySelector("#create-poll-form").addEventListener("submit", handleCreatePoll);
 
   await loadDashboardPolls();
+}
+
+async function renderAccountPage() {
+  showDynamicView();
+  dynamicViewElement.innerHTML = '<section class="panel"><p class="description">Profil wird geladen ...</p></section>';
+
+  try {
+    const profile = await apiFetch("/api/user/profile");
+
+    dynamicViewElement.innerHTML = `
+      <section class="hero-card dashboard-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Konto</p>
+          <h1>Profil und Sicherheit</h1>
+          <p class="hero-text">
+            Verwalte hier deinen Namen, dein Passwort und auf Wunsch dein gesamtes Konto.
+          </p>
+        </div>
+        <div class="hero-stats auth-stats">
+          <article class="hero-stat">
+            <strong>${escapeHtml(profile.email)}</strong>
+            <span>E-Mail-Adresse bleibt unveraenderlich</span>
+          </article>
+          <article class="hero-stat">
+            <strong id="account-display-name">${escapeHtml(profile.name || "Kein Name gesetzt")}</strong>
+            <span>Aktueller Anzeigename</span>
+          </article>
+          <article class="hero-stat">
+            <strong>${escapeHtml(formatDateTime(profile.createdAt))}</strong>
+            <span>Konto erstellt</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="dashboard-layout">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Profil</p>
+              <h2>Persoenliche Daten</h2>
+            </div>
+          </div>
+
+          <form id="account-profile-form" class="stack-form">
+            <label>
+              <span>E-Mail</span>
+              <input value="${escapeHtml(profile.email)}" type="email" readonly disabled />
+            </label>
+
+            <label>
+              <span>Name</span>
+              <input
+                id="account-name"
+                name="name"
+                maxlength="120"
+                required
+                placeholder="Dein Name"
+                value="${escapeHtml(profile.name || "")}"
+              />
+            </label>
+
+            <div id="account-profile-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+            <button class="primary-button" type="submit">
+              <i class="fa-regular fa-floppy-disk"></i>
+              Speichern
+            </button>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Sicherheit</p>
+              <h2>Passwort aendern</h2>
+            </div>
+          </div>
+
+          <form id="account-password-form" class="stack-form">
+            <label>
+              <span>Aktuelles Passwort</span>
+              <input
+                id="account-current-password"
+                type="password"
+                name="currentPassword"
+                autocomplete="current-password"
+                required
+                placeholder="Aktuelles Passwort"
+              />
+            </label>
+
+            <label>
+              <span>Neues Passwort</span>
+              <input
+                id="account-new-password"
+                type="password"
+                name="newPassword"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Mindestens 8 Zeichen"
+              />
+            </label>
+
+            <label>
+              <span>Neues Passwort bestaetigen</span>
+              <input
+                id="account-confirm-password"
+                type="password"
+                name="confirmPassword"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Neues Passwort bestaetigen"
+              />
+            </label>
+
+            <div id="account-password-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+            <button class="primary-button" type="submit">
+              <i class="fa-solid fa-key"></i>
+              Passwort aendern
+            </button>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Gefahrenzone</p>
+              <h2>Konto loeschen</h2>
+            </div>
+          </div>
+
+          <div class="stack-form">
+            <p class="description">
+              Beim Loeschen werden dein Konto, deine Antworten und alle von dir erstellten Umfragen dauerhaft entfernt.
+            </p>
+            <div id="account-delete-feedback" class="feedback" role="status" aria-live="polite"></div>
+            <button id="account-delete-button" class="ghost-button wide-button" type="button">
+              <i class="fa-regular fa-trash-can"></i>
+              Konto loeschen
+            </button>
+          </div>
+        </article>
+      </section>
+    `;
+
+    document.querySelector("#account-profile-form").addEventListener("submit", handleProfileSave);
+    document.querySelector("#account-password-form").addEventListener("submit", handlePasswordChange);
+    document.querySelector("#account-delete-button").addEventListener("click", handleAccountDelete);
+  } catch (error) {
+    if (error.status === 401) {
+      await navigateTo("/login", { replace: true });
+      return;
+    }
+
+    dynamicViewElement.innerHTML = `<section class="panel"><h1>Fehler</h1><p>${escapeHtml(error.message)}</p></section>`;
+  }
 }
 
 async function loadDashboardPolls() {
@@ -326,6 +590,11 @@ async function loadDashboardPolls() {
             <p class="description">${escapeHtml(poll.description)}</p>
             <div class="poll-card-actions">
               <a class="ghost-link" href="${poll.shareUrl}">Umfrage oeffnen</a>
+              ${
+                poll.userId === state.auth.user.id
+                  ? `<button class="btn-delete" type="button" data-poll-id="${poll.id}">🗑️</button>`
+                  : ""
+              }
               <button class="text-button copy-link-button" type="button" data-share-url="${poll.shareUrl}">Link kopieren</button>
             </div>
           </article>
@@ -340,9 +609,25 @@ async function loadDashboardPolls() {
         setFeedback(feedback, "Link wurde in die Zwischenablage kopiert.", "success");
       });
     });
+
+    document.querySelectorAll(".btn-delete").forEach((button) => {
+      button.addEventListener("click", async (event) => {
+        const pollId = event.currentTarget.dataset.pollId;
+        if (!confirm("Umfrage loeschen?")) {
+          return;
+        }
+
+        try {
+          await apiFetch(`/api/polls/${pollId}`, { method: "DELETE" });
+          await loadDashboardPolls();
+        } catch (_error) {
+          alert("Fehler beim Loeschen");
+        }
+      });
+    });
   } catch (error) {
     if (error.status === 401) {
-      window.location.href = "/login";
+      await navigateTo("/login", { replace: true });
       return;
     }
 
@@ -455,7 +740,8 @@ async function handleRegister(event) {
       body: JSON.stringify({ email, password }),
     });
     await refreshAuthState();
-    window.location.href = "/dashboard";
+    renderTopbarNav();
+    await navigateTo("/dashboard", { replace: true });
   } catch (error) {
     setFeedback(feedback, error.message, "error");
   }
@@ -474,7 +760,8 @@ async function handleLogin(event) {
       body: JSON.stringify({ email, password }),
     });
     await refreshAuthState();
-    window.location.href = "/dashboard";
+    renderTopbarNav();
+    await navigateTo("/dashboard", { replace: true });
   } catch (error) {
     setFeedback(feedback, error.message, "error");
   }
@@ -494,12 +781,34 @@ async function handleForgotPassword(event) {
     });
 
     setFeedback(feedback, data.message, "success");
-    fallback.innerHTML = data.resetUrl
-      ? `
-        <a class="primary-link" href="${data.resetUrl}">Reset-Seite oeffnen</a>
-        <p class="description">Lokale Entwicklungsumgebung: der Link wird direkt angezeigt.</p>
-      `
-      : '<p class="description">Wenn die Adresse existiert, wurde ein Reset-Link erzeugt.</p>';
+    fallback.innerHTML = "";
+
+    if (data.resetUrl) {
+      const openButton = document.createElement("button");
+      openButton.type = "button";
+      openButton.className = "primary-button";
+      openButton.textContent = "Reset-Seite oeffnen";
+      openButton.addEventListener("click", async () => {
+        const resetUrl = new URL(data.resetUrl, window.location.origin);
+        const token = resetUrl.searchParams.get("token") || "";
+
+        if (resetUrl.pathname === "/forgot-password") {
+          await navigateTo("/forgot-password");
+          return;
+        }
+
+        await navigateTo(`/reset-password?token=${encodeURIComponent(token)}`);
+      });
+
+      const note = document.createElement("p");
+      note.className = "description";
+      note.textContent = "Lokale Entwicklungsumgebung: der Link wird direkt angezeigt.";
+
+      fallback.append(openButton, note);
+      return;
+    }
+
+    fallback.innerHTML = '<p class="description">Wenn die Adresse existiert, wurde ein Reset-Link erzeugt.</p>';
   } catch (error) {
     fallback.innerHTML = "";
     setFeedback(feedback, error.message, "error");
@@ -526,7 +835,7 @@ async function handleResetPassword(event) {
     });
     await refreshAuthState();
     renderTopbarNav();
-    window.location.href = "/dashboard";
+    await navigateTo("/dashboard", { replace: true });
   } catch (error) {
     setFeedback(feedback, error.message, "error");
   }
@@ -536,7 +845,80 @@ async function handleLogout() {
   try {
     await apiFetch("/api/auth/logout", { method: "POST" });
   } finally {
-    window.location.href = "/login";
+    await refreshAuthState();
+    renderTopbarNav();
+    await navigateTo("/login", { replace: true });
+  }
+}
+
+async function handleProfileSave(event) {
+  event.preventDefault();
+  const feedback = document.querySelector("#account-profile-feedback");
+  const name = document.querySelector("#account-name").value.trim();
+
+  if (name.length < 2) {
+    setFeedback(feedback, "Der Name muss mindestens 2 Zeichen lang sein.", "error");
+    return;
+  }
+
+  try {
+    setFeedback(feedback, "Profil wird gespeichert ...");
+    const data = await apiFetch("/api/user/profile", {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    });
+    state.auth.user = { ...state.auth.user, name: data.name };
+    const displayNameElement = document.querySelector("#account-display-name");
+    if (displayNameElement) {
+      displayNameElement.textContent = data.name;
+    }
+    renderTopbarNav();
+    setFeedback(feedback, "Profil gespeichert.", "success");
+  } catch (error) {
+    setFeedback(feedback, error.message, "error");
+  }
+}
+
+async function handlePasswordChange(event) {
+  event.preventDefault();
+  const feedback = document.querySelector("#account-password-feedback");
+  const currentPassword = document.querySelector("#account-current-password").value;
+  const newPassword = document.querySelector("#account-new-password").value;
+  const confirmPassword = document.querySelector("#account-confirm-password").value;
+
+  if (newPassword !== confirmPassword) {
+    setFeedback(feedback, "Die neuen Passwoerter stimmen nicht ueberein.", "error");
+    return;
+  }
+
+  try {
+    setFeedback(feedback, "Passwort wird geaendert ...");
+    await apiFetch("/api/user/password", {
+      method: "PUT",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    document.querySelector("#account-password-form").reset();
+    setFeedback(feedback, "Passwort erfolgreich geaendert.", "success");
+  } catch (error) {
+    setFeedback(feedback, error.message, "error");
+  }
+}
+
+async function handleAccountDelete() {
+  const feedback = document.querySelector("#account-delete-feedback");
+  const confirmed = confirm("Willst du dein Konto wirklich dauerhaft loeschen?");
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setFeedback(feedback, "Konto wird geloescht ...");
+    await apiFetch("/api/user/account", { method: "DELETE" });
+    await refreshAuthState();
+    renderTopbarNav();
+    await navigateTo("/", { replace: true });
+  } catch (error) {
+    setFeedback(feedback, error.message, "error");
   }
 }
 
@@ -565,10 +947,10 @@ async function handleCreatePoll(event) {
       }),
     });
 
-    window.location.href = data.poll.shareUrl;
+    await navigateTo(data.poll.shareUrl);
   } catch (error) {
     if (error.status === 401) {
-      window.location.href = "/login";
+      await navigateTo("/login", { replace: true });
       return;
     }
 
@@ -578,14 +960,15 @@ async function handleCreatePoll(event) {
 
 async function renderPollPage(pollId) {
   const template = document.querySelector("#poll-template");
-  appElement.innerHTML =
+  showDynamicView();
+  dynamicViewElement.innerHTML =
     '<section class="panel"><p class="description">Poll wird geladen ...</p></section>';
 
   try {
     const data = await apiFetch(`/api/polls/${pollId}`);
     state.pollData = data;
-    appElement.innerHTML = "";
-    appElement.appendChild(template.content.cloneNode(true));
+    dynamicViewElement.innerHTML = "";
+    dynamicViewElement.appendChild(template.content.cloneNode(true));
 
     initializeDraftFromPoll(data.poll);
     fillPollSummary();
@@ -596,7 +979,7 @@ async function renderPollPage(pollId) {
     document.querySelector("#response-form").addEventListener("submit", handleResponseSubmit);
     document.querySelector("#share-button").addEventListener("click", sharePollLink);
   } catch (error) {
-    appElement.innerHTML = `<section class="panel"><h1>Nicht gefunden</h1><p>${escapeHtml(
+    dynamicViewElement.innerHTML = `<section class="panel"><h1>Nicht gefunden</h1><p>${escapeHtml(
       error.message
     )}</p></section>`;
   }
@@ -684,6 +1067,7 @@ function fillPollSummary() {
 function renderAvailabilityForm() {
   const grid = document.querySelector("#availability-grid");
   const legend = document.querySelector("#availability-legend");
+  renderParticipantIdentity();
   grid.innerHTML = "";
 
   if (state.pollData.poll.mode === "free") {
@@ -722,6 +1106,40 @@ function renderAvailabilityForm() {
     card.appendChild(row);
     grid.appendChild(card);
   }
+}
+
+function renderParticipantIdentity() {
+  const container = document.querySelector("#participant-identity");
+  if (!container || !state.pollData) {
+    return;
+  }
+
+  const sessionUser = state.pollData.user;
+  if (sessionUser) {
+    container.innerHTML = `
+      <div class="selected-dates-box">
+        <div class="selected-header">
+          <span>Antwort wird mit deinem Account gespeichert</span>
+        </div>
+        <p class="description"><strong>${escapeHtml(sessionUser.email)}</strong></p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <label>
+      <span>Name</span>
+      <input
+        id="participant-name"
+        class="prominent-input"
+        name="name"
+        maxlength="80"
+        required
+        placeholder="Dein Name"
+      />
+    </label>
+  `;
 }
 
 function renderFreeChoiceForm(grid) {
@@ -976,9 +1394,13 @@ async function handleResponseSubmit(event) {
   event.preventDefault();
 
   const feedback = document.querySelector("#response-feedback");
-  const name = document.querySelector("#participant-name").value.trim();
   const isFixed = state.pollData.poll.mode === "fixed";
-  const payload = { name };
+  const payload = {};
+
+  if (!state.pollData.user) {
+    const name = document.querySelector("#participant-name")?.value.trim() || "";
+    payload.name = name;
+  }
 
   if (isFixed) {
     payload.availabilities = state.responseDraft;
