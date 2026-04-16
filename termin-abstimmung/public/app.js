@@ -776,19 +776,16 @@ function renderDashboardPollCard(poll) {
       <div class="poll-list-main">
         <h3 class="poll-list-title">${escapeHtml(poll.title)}</h3>
       </div>
-      <div class="poll-list-date" aria-label="Zuletzt aktualisiert">
-        ${escapeHtml(lastUpdatedDate ? formatDateShort(lastUpdatedDate) : "-")}
-      </div>
-      <div class="poll-list-meta">
+      <div class="poll-list-meta" aria-label="Zuletzt aktualisiert und Status">
+        <span class="poll-list-date">
+          ${escapeHtml(lastUpdatedDate ? formatDateShort(lastUpdatedDate) : "-")}
+        </span>
         <span class="dashboard-status-badge dashboard-status-${status.tone}">${escapeHtml(status.label)}</span>
       </div>
-      <div class="poll-list-type" aria-label="Umfragetyp">
-        <span class="poll-type-pill">
-          <i class="${escapeHtml(type.icon)}" aria-hidden="true"></i>
-          <span>${escapeHtml(type.label)}</span>
-        </span>
-      </div>
       <div class="poll-card-actions poll-list-actions">
+        <span class="poll-type-pill" aria-label="${escapeHtml(type.label)}" title="${escapeHtml(type.label)}">
+          <i class="${escapeHtml(type.icon)}" aria-hidden="true"></i>
+        </span>
         <a class="primary-link poll-open-link" href="${poll.shareUrl}">Oeffnen</a>
       </div>
     </article>
