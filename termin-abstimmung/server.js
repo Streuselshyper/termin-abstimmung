@@ -1732,6 +1732,15 @@ app.delete("/api/polls/:pollId/responses/:responseId", requireCsrf, requireAuth,
       return res.status(404).json({ error: "Antwort nicht gefunden." });
     }
 
+    const latestResponse = db
+      .prepare("SELECT MAX(updated_at) AS latest_response_at FROM responses WHERE poll_id = ?")
+      .get(req.params.pollId);
+    db.prepare("UPDATE polls SET last_response_at = ?, updated_at = ? WHERE id = ?").run(
+      latestResponse?.latest_response_at || null,
+      new Date().toISOString(),
+      req.params.pollId
+    );
+
     res.json(loadPollWithResponses(req.params.pollId, req.currentUser, req));
   } catch (error) {
     console.error("Fehler beim Loeschen der Antwort:", error);

@@ -237,6 +237,139 @@
         flex: 1 1 12rem;
       }
 
+      .settings-action-participants {
+        display: grid;
+        gap: 0.75rem;
+      }
+
+      .settings-action-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        padding: 0;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .participants-admin-panel {
+        display: grid;
+        gap: 0.75rem;
+        padding: 0.85rem;
+        border-radius: 0.9rem;
+        border: 1px solid var(--border-soft);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .participants-admin-list {
+        display: grid;
+        gap: 0.6rem;
+      }
+
+      .participants-admin-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) repeat(3, auto) auto;
+        gap: 0.75rem;
+        align-items: center;
+        padding: 0.8rem 0.9rem;
+        border-radius: 0.85rem;
+        background: var(--surface-soft);
+        border: 1px solid var(--border-soft);
+      }
+
+      .participants-admin-meta {
+        display: grid;
+        min-width: 0;
+      }
+
+      .participants-admin-meta span {
+        color: var(--text-soft);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .participants-admin-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.92rem;
+      }
+
+      .participant-role-badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+
+      .participant-role-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        background: rgba(245, 158, 11, 0.14);
+        color: #f59e0b;
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+
+      .participant-role-badge.blocked {
+        background: rgba(239, 68, 68, 0.14);
+        color: #ef4444;
+      }
+
+      .matrix-name-cell {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+
+      .matrix-name-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+
+      .participant-inline-icon {
+        color: #f59e0b;
+      }
+
+      .matrix-action-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+
+      .matrix-delete-button,
+      .matrix-edit-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255, 255, 255, 0.04);
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .matrix-delete-button {
+        color: #f87171;
+      }
+
+      .is-disabled {
+        opacity: 0.6;
+        pointer-events: none;
+      }
+
       @media (max-width: 920px) {
         .topbar {
           grid-template-columns: 1fr;
@@ -247,10 +380,18 @@
         .topbar-actions {
           justify-content: flex-start;
         }
+
+        .participants-admin-row {
+          grid-template-columns: 1fr 1fr;
+        }
       }
 
       @media (max-width: 640px) {
         .share-link-row {
+          grid-template-columns: 1fr;
+        }
+
+        .participants-admin-row {
           grid-template-columns: 1fr;
         }
       }
