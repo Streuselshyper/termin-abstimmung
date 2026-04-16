@@ -5,6 +5,7 @@
   --bg-elevated: rgba(11, 22, 39, 0.88);
   --surface: rgba(14, 27, 46, 0.82);
   --surface-strong: rgba(13, 24, 41, 0.94);
+  --surface-strong-solid: #0d1829;
   --surface-muted: rgba(148, 163, 184, 0.08);
   --border: rgba(148, 163, 184, 0.16);
   --text: #e5eefc;
@@ -33,6 +34,7 @@ body[data-theme="light"] {
   --bg-elevated: rgba(255, 255, 255, 0.92);
   --surface: rgba(255, 255, 255, 0.8);
   --surface-strong: rgba(255, 255, 255, 0.95);
+  --surface-strong-solid: #ffffff;
   --surface-muted: rgba(15, 23, 42, 0.05);
   --border: rgba(15, 23, 42, 0.1);
   --text: #0f172a;
@@ -745,12 +747,14 @@ body.poll-drawer-open {
 .owner-actions {
   position: absolute;
   top: calc(100% + 0.6rem);
-  right: 0;
-  width: min(22rem, 82vw);
-  padding: 0.8rem 1.55rem;
+  right: -0.75rem;
+  width: min(28rem, calc(100vw - 1rem));
+  max-width: calc(100vw - 1.5rem);
+  min-width: min(24rem, calc(100vw - 1.5rem));
+  padding: 0.8rem;
   border-radius: 1rem;
   border: 1px solid var(--border);
-  background: var(--surface-strong);
+  background: var(--surface-strong-solid);
   box-shadow: 0 18px 48px rgba(2, 6, 23, 0.55);
   z-index: 130;
 }
