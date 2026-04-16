@@ -25,7 +25,6 @@ const state = {
   participantCalendarExpanded: !window.matchMedia("(max-width: 720px)").matches,
   pollData: null,
   responseDraft: {},
-  responseParticipantName: "",
   pollDrawerOpen: false,
   createMode: "fixed",
 };
@@ -1025,6 +1024,11 @@ async function handleAccountDelete() {
 }
 
 async function renderPollPage(pollId) {
+  if (!state.auth.user) {
+    await navigateTo("/login", { replace: true });
+    return;
+  }
+
   const template = document.querySelector("#poll-template");
   showDynamicView();
   dynamicViewElement.innerHTML =
@@ -1060,7 +1064,6 @@ async function renderPollPage(pollId) {
 function initializeDraftFromPoll(poll) {
   const editableResponse = getEditableResponse();
   state.participantCalendarExpanded = !window.matchMedia("(max-width: 720px)").matches;
-  state.responseParticipantName = !state.pollData?.user && editableResponse ? editableResponse.name : "";
 
   if (poll.mode === "free") {
     state.responseDraft = {};
@@ -1080,23 +1083,15 @@ function initializeDraftFromPoll(poll) {
 }
 
 function getEditableResponse() {
-  if (!state.pollData) {
+  if (!state.pollData?.user?.id) {
     return null;
   }
 
-  if (state.pollData.user?.id) {
-    return state.pollData.responses.find((response) => response.userId === state.pollData.user.id) || null;
-  }
-
-  if (state.pollData.editToken && state.pollData.userHasVoted) {
-    return state.pollData.responses.find((response) => response.editToken === state.pollData.editToken) || null;
-  }
-
-  return null;
+  return state.pollData.responses.find((response) => response.userId === state.pollData.user.id) || null;
 }
 
 function hasEditableResponse() {
-  return Boolean(getEditableResponse() || (state.pollData?.userHasVoted && state.pollData?.editToken));
+  return Boolean(getEditableResponse());
 }
 
 function isCompactPollLayout() {
@@ -1361,6 +1356,25 @@ function renderPollOwnerActions() {
 function renderAvailabilityForm() {
   const grid = document.querySelector("#availability-grid");
   const legend = document.querySelector("#availability-legend");
+  const panel = document.querySelector("#poll-response-panel");
+  const cta = document.querySelector("#poll-open-response");
+  const form = document.querySelector("#response-form");
+
+  if (!grid || !legend || !panel || !cta || !form) {
+    return;
+  }
+
+  if (!state.auth.user) {
+    panel.classList.add("is-hidden");
+    cta.classList.add("is-hidden");
+    form.reset();
+    grid.innerHTML = "";
+    legend.classList.add("is-hidden");
+    return;
+  }
+
+  panel.classList.remove("is-hidden");
+  cta.classList.remove("is-hidden");
   renderParticipantIdentity();
   updatePollResponseCta();
   syncPollResponsePanelState();
@@ -1406,41 +1420,18 @@ function renderAvailabilityForm() {
 
 function renderParticipantIdentity() {
   const container = document.querySelector("#participant-identity");
-  if (!container || !state.pollData) {
-    return;
-  }
-
-  const sessionUser = state.pollData.user;
-  if (sessionUser) {
-    container.innerHTML = `
-      <div class="selected-dates-box">
-        <div class="selected-header">
-          <span>Antwort wird mit deinem Account gespeichert</span>
-        </div>
-        <p class="description"><strong>${escapeHtml(sessionUser.email)}</strong></p>
-      </div>
-    `;
+  if (!container || !state.pollData?.user) {
     return;
   }
 
   container.innerHTML = `
-    <label>
-      <span>Name</span>
-      <input
-        id="participant-name"
-        class="prominent-input"
-        name="name"
-        maxlength="80"
-        required
-        placeholder="Dein Name"
-        value="${escapeHtml(state.responseParticipantName)}"
-      />
-    </label>
+    <div class="selected-dates-box">
+      <div class="selected-header">
+        <span>Antwort wird mit deinem Account gespeichert</span>
+      </div>
+      <p class="description"><strong>${escapeHtml(state.pollData.user.email)}</strong></p>
+    </div>
   `;
-
-  document.querySelector("#participant-name")?.addEventListener("input", (event) => {
-    state.responseParticipantName = event.target.value;
-  });
 }
 
 function renderFreeChoiceForm(grid) {
@@ -1805,12 +1796,6 @@ async function handleResponseSubmit(event) {
   const feedback = document.querySelector("#response-feedback");
   const isFixed = state.pollData.poll.mode === "fixed";
   const payload = {};
-
-  if (!state.pollData.user) {
-    const name = (document.querySelector("#participant-name")?.value.trim() || state.responseParticipantName || "").trim();
-    state.responseParticipantName = name;
-    payload.name = name;
-  }
 
   if (isFixed) {
     payload.availabilities = state.responseDraft;

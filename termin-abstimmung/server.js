@@ -378,11 +378,12 @@ function mapPollRow(row, req) {
 function mapResponseRow(row) {
   const suggestedDates = parseJsonArray(row.suggested_dates);
   const legacySuggestedDates = parseJsonArray(row.free_text_availabilities);
+  const displayName = normalizeText(row.user_name || row.user_email || row.name || "", 320) || "Unbekannt";
   return {
     id: row.id,
     pollId: row.poll_id,
     userId: row.user_id ?? null,
-    name: row.name,
+    name: displayName,
     availabilities: JSON.parse(row.availabilities),
     suggestedDates: suggestedDates.length > 0 ? suggestedDates : legacySuggestedDates,
     createdAt: row.created_at,
@@ -462,7 +463,16 @@ function loadPollWithResponses(pollId, currentUser = null, req = null) {
   }
 
   const responseRows = db
-    .prepare("SELECT * FROM responses WHERE poll_id = ? ORDER BY updated_at DESC, id DESC")
+    .prepare(`
+      SELECT
+        responses.*,
+        users.email AS user_email,
+        users.name AS user_name
+      FROM responses
+      LEFT JOIN users ON users.id = responses.user_id
+      WHERE responses.poll_id = ?
+      ORDER BY responses.updated_at DESC, responses.id DESC
+    `)
     .all(pollId);
 
   const poll = mapPollRow(pollRow, req);
@@ -1403,15 +1413,13 @@ app.post("/api/polls/:pollId/invitations", requireCsrf, requireAuth, (req, res) 
 
 app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefix: "responses", limit: 30 }), (req, res) => {
   try {
+    if (!req.session?.userId || !req.currentUser) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     const data = loadPollWithResponses(req.params.pollId, req.currentUser, req);
     if (!data) {
       return res.status(404).json({ error: "Poll nicht gefunden." });
-    }
-
-    const isLoggedIn = Boolean(req.session?.userId && req.currentUser);
-    const name = isLoggedIn ? (req.currentUser.name || req.currentUser.email) : normalizeText(req.body?.name, 80);
-    if (!isLoggedIn && name.length < 2) {
-      return res.status(400).json({ error: "Bitte gib einen Namen mit mindestens 2 Zeichen ein." });
     }
 
     let availabilities = {};
@@ -1433,48 +1441,33 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
     const timestamp = new Date().toISOString();
     const serializedAvailabilities = JSON.stringify(availabilities);
     const serializedSuggestedDates = JSON.stringify(suggestedDates);
-    let isUpdate = false;
+    const responseName = req.currentUser.name || req.currentUser.email;
+    const existing = db
+      .prepare(`
+        SELECT id
+        FROM responses
+        WHERE poll_id = ?
+          AND user_id = ?
+        LIMIT 1
+      `)
+      .get(data.poll.id, req.session.userId);
 
-    if (isLoggedIn) {
-      const existing = db
-        .prepare(`
-          SELECT id
-          FROM responses
-          WHERE poll_id = ?
-            AND (user_id = ? OR lower(name) = lower(?))
-          ORDER BY CASE WHEN user_id = ? THEN 0 ELSE 1 END, id DESC
-          LIMIT 1
-        `)
-        .get(data.poll.id, req.session.userId, name, req.session.userId);
-
-      if (existing) {
-        isUpdate = true;
-        db.prepare(`
-          UPDATE responses
-          SET name = ?, user_id = ?, availabilities = ?, suggested_dates = ?, updated_at = ?
-          WHERE id = ?
-        `).run(name, req.session.userId, serializedAvailabilities, serializedSuggestedDates, timestamp, existing.id);
-      } else {
-        db.prepare(`
-          INSERT INTO responses (poll_id, user_id, name, availabilities, suggested_dates, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(data.poll.id, req.session.userId, name, serializedAvailabilities, serializedSuggestedDates, timestamp, timestamp);
-      }
-    } else {
-      const existing = db.prepare("SELECT id FROM responses WHERE poll_id = ? AND lower(name) = lower(?)").get(data.poll.id, name);
-      isUpdate = Boolean(existing);
+    const isUpdate = Boolean(existing);
+    if (existing) {
       db.prepare(`
-        INSERT INTO responses (poll_id, name, availabilities, suggested_dates, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(poll_id, name) DO UPDATE SET
-          availabilities = excluded.availabilities,
-          suggested_dates = excluded.suggested_dates,
-          updated_at = excluded.updated_at
-      `).run(data.poll.id, name, serializedAvailabilities, serializedSuggestedDates, timestamp, timestamp);
+        UPDATE responses
+        SET name = ?, user_id = ?, availabilities = ?, suggested_dates = ?, updated_at = ?
+        WHERE id = ?
+      `).run(responseName, req.session.userId, serializedAvailabilities, serializedSuggestedDates, timestamp, existing.id);
+    } else {
+      db.prepare(`
+        INSERT INTO responses (poll_id, user_id, name, availabilities, suggested_dates, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(data.poll.id, req.session.userId, responseName, serializedAvailabilities, serializedSuggestedDates, timestamp, timestamp);
     }
 
     db.prepare("UPDATE polls SET last_response_at = ?, updated_at = ? WHERE id = ?").run(timestamp, timestamp, data.poll.id);
-    sendOwnerResponseNotification(req, data.poll.id, name, isUpdate);
+    sendOwnerResponseNotification(req, data.poll.id, responseName, isUpdate);
 
     res.status(201).json(loadPollWithResponses(req.params.pollId, req.currentUser, req));
   } catch (error) {
