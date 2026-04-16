@@ -38,7 +38,7 @@ async function initializeApp() {
   renderTopbarNav();
 
   const route = getRoute();
-  if (state.auth.user && ["login", "register", "set-password", "verify"].includes(route.type)) {
+  if (state.auth.user && ["login", "register", "forgot-password"].includes(route.type)) {
     window.location.href = "/dashboard";
     return;
   }
@@ -58,13 +58,13 @@ async function initializeApp() {
     return;
   }
 
-  if (route.type === "verify") {
-    await renderVerifyPage(route.token);
+  if (route.type === "forgot-password") {
+    renderForgotPasswordPage();
     return;
   }
 
-  if (route.type === "set-password") {
-    renderSetPasswordPage(route.token);
+  if (route.type === "reset-password") {
+    await renderResetPasswordPage(route.token);
     return;
   }
 
@@ -142,14 +142,10 @@ function renderTopbarNav() {
 
 function getRoute() {
   const pathname = window.location.pathname;
-  const verifyMatch = pathname.match(/^\/verify\/([a-z0-9]+)$/i);
   const pollMatch = pathname.match(/^\/poll\/([a-z0-9]+)$/i);
 
   if (pollMatch) {
     return { type: "poll", pollId: pollMatch[1] };
-  }
-  if (verifyMatch) {
-    return { type: "verify", token: verifyMatch[1] };
   }
   if (pathname === "/login") {
     return { type: "login" };
@@ -157,8 +153,11 @@ function getRoute() {
   if (pathname === "/register") {
     return { type: "register" };
   }
-  if (pathname === "/set-password") {
-    return { type: "set-password", token: new URLSearchParams(window.location.search).get("token") || "" };
+  if (pathname === "/forgot-password") {
+    return { type: "forgot-password" };
+  }
+  if (pathname === "/reset-password") {
+    return { type: "reset-password", token: new URLSearchParams(window.location.search).get("token") || "" };
   }
   if (pathname === "/dashboard") {
     return { type: "dashboard" };
@@ -211,33 +210,45 @@ function renderRegisterPage() {
   document.querySelector("#register-form").addEventListener("submit", handleRegister);
 }
 
-async function renderVerifyPage(token) {
-  const template = document.querySelector("#verify-template");
+function renderForgotPasswordPage() {
+  const template = document.querySelector("#forgot-password-template");
   appElement.innerHTML = "";
   appElement.appendChild(template.content.cloneNode(true));
 
-  const status = document.querySelector("#verify-status");
-  setFeedback(status, "Link wird geprueft ...");
-
-  try {
-    const data = await apiFetch(`/api/auth/verify/${token}`);
-    document.querySelector("#verify-email").textContent = data.email;
-    document.querySelector("#set-password-token").value = data.token;
-    setFeedback(status, data.message, "success");
-    document.querySelector("#verify-result").classList.remove("is-hidden");
-    document.querySelector("#set-password-form-inline").addEventListener("submit", handleSetPassword);
-  } catch (error) {
-    setFeedback(status, error.message, "error");
-  }
+  document.querySelector("#forgot-password-form").addEventListener("submit", handleForgotPassword);
 }
 
-function renderSetPasswordPage(token) {
-  const template = document.querySelector("#set-password-template");
+async function renderResetPasswordPage(token) {
+  const template = document.querySelector("#reset-password-template");
   appElement.innerHTML = "";
   appElement.appendChild(template.content.cloneNode(true));
 
-  document.querySelector("#set-password-token-page").value = token;
-  document.querySelector("#set-password-form-page").addEventListener("submit", handleSetPassword);
+  const feedback = document.querySelector("#reset-password-feedback");
+  const details = document.querySelector("#reset-password-details");
+  const tokenField = document.querySelector("#reset-password-token");
+
+  tokenField.value = token;
+
+  if (!token) {
+    setFeedback(feedback, "Es fehlt ein gueltiger Reset-Token.", "error");
+    details.innerHTML = '<p class="description">Fordere zuerst einen neuen Link an.</p>';
+    return;
+  }
+
+  setFeedback(feedback, "Reset-Link wird geprueft ...");
+
+  try {
+    const data = await apiFetch(`/api/auth/reset-password/${encodeURIComponent(token)}`);
+    details.innerHTML = `
+      <p class="description">Konto: <strong>${escapeHtml(data.email)}</strong></p>
+      <p class="description">Gueltig bis ${escapeHtml(formatDateTime(data.expiresAt))}</p>
+    `;
+    setFeedback(feedback, "Link ist gueltig. Du kannst jetzt ein neues Passwort setzen.", "success");
+    document.querySelector("#reset-password-form").addEventListener("submit", handleResetPassword);
+  } catch (error) {
+    details.innerHTML = '<p class="description">Der Link muss neu angefordert werden.</p>';
+    setFeedback(feedback, error.message, "error");
+  }
 }
 
 async function renderDashboardPage() {
@@ -246,6 +257,7 @@ async function renderDashboardPage() {
   appElement.appendChild(template.content.cloneNode(true));
 
   document.querySelector("#dashboard-email").textContent = state.auth.user.email;
+  document.querySelector("#dashboard-email-inline").textContent = state.auth.user.email;
   document.querySelector("#dashboard-timeout").textContent = `${state.auth.sessionTimeoutMinutes} Minuten`;
 
   renderCalendar();
@@ -428,24 +440,22 @@ async function handleRegister(event) {
   event.preventDefault();
   const feedback = document.querySelector("#register-feedback");
   const email = document.querySelector("#register-email").value.trim();
-  const fallback = document.querySelector("#register-fallback");
+  const password = document.querySelector("#register-password").value;
+  const passwordConfirm = document.querySelector("#register-password-confirm").value;
+
+  if (password !== passwordConfirm) {
+    setFeedback(feedback, "Die Passwoerter stimmen nicht ueberein.", "error");
+    return;
+  }
 
   try {
-    setFeedback(feedback, "Registrierung wird gespeichert ...");
-    const data = await apiFetch("/api/auth/register", {
+    setFeedback(feedback, "Konto wird erstellt ...");
+    await apiFetch("/api/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, password }),
     });
-
-    setFeedback(feedback, data.message, data.emailDelivery === "sendgrid" ? "success" : "");
-    if (data.verificationUrl) {
-      fallback.innerHTML = `
-        <a class="primary-link" href="${data.verificationUrl}">Manuell verifizieren</a>
-        <p class="description">SendGrid war nicht verfuegbar. Der Link wurde direkt angezeigt.</p>
-      `;
-    } else {
-      fallback.innerHTML = "";
-    }
+    await refreshAuthState();
+    window.location.href = "/dashboard";
   } catch (error) {
     setFeedback(feedback, error.message, "error");
   }
@@ -470,32 +480,53 @@ async function handleLogin(event) {
   }
 }
 
-async function handleSetPassword(event) {
+async function handleForgotPassword(event) {
   event.preventDefault();
-  const form = event.currentTarget;
-  const feedback = form.querySelector(".feedback");
-  const passwordInput = form.querySelector('input[name="password"]');
-  const confirmInput = form.querySelector('input[name="password_confirm"]');
-  const tokenInput = form.querySelector('input[name="token"]');
+  const feedback = document.querySelector("#forgot-password-feedback");
+  const fallback = document.querySelector("#forgot-password-link");
+  const email = document.querySelector("#forgot-password-email").value.trim();
 
-  if (passwordInput.value !== confirmInput.value) {
+  try {
+    setFeedback(feedback, "Reset-Link wird erzeugt ...");
+    const data = await apiFetch("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+
+    setFeedback(feedback, data.message, "success");
+    fallback.innerHTML = data.resetUrl
+      ? `
+        <a class="primary-link" href="${data.resetUrl}">Reset-Seite oeffnen</a>
+        <p class="description">Lokale Entwicklungsumgebung: der Link wird direkt angezeigt.</p>
+      `
+      : '<p class="description">Wenn die Adresse existiert, wurde ein Reset-Link erzeugt.</p>';
+  } catch (error) {
+    fallback.innerHTML = "";
+    setFeedback(feedback, error.message, "error");
+  }
+}
+
+async function handleResetPassword(event) {
+  event.preventDefault();
+  const feedback = document.querySelector("#reset-password-feedback");
+  const password = document.querySelector("#reset-password-new").value;
+  const passwordConfirm = document.querySelector("#reset-password-confirm").value;
+  const token = document.querySelector("#reset-password-token").value;
+
+  if (password !== passwordConfirm) {
     setFeedback(feedback, "Die Passwoerter stimmen nicht ueberein.", "error");
     return;
   }
 
   try {
     setFeedback(feedback, "Passwort wird gespeichert ...");
-    await apiFetch("/api/auth/set-password", {
+    await apiFetch("/api/auth/reset-password", {
       method: "POST",
-      body: JSON.stringify({
-        token: tokenInput.value,
-        password: passwordInput.value,
-      }),
+      body: JSON.stringify({ token, password }),
     });
-    setFeedback(feedback, "Passwort gespeichert. Du wirst zum Login weitergeleitet.", "success");
-    window.setTimeout(() => {
-      window.location.href = "/login";
-    }, 900);
+    await refreshAuthState();
+    renderTopbarNav();
+    window.location.href = "/dashboard";
   } catch (error) {
     setFeedback(feedback, error.message, "error");
   }

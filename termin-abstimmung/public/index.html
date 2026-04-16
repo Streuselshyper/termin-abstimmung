@@ -50,8 +50,8 @@
           <p class="eyebrow">Login zuerst</p>
           <h1>Dein Dashboard fuer Termin-Abstimmungen</h1>
           <p class="hero-text">
-            Registriere dich mit deiner E-Mail-Adresse, bestaetige den Link und verwalte danach deine eigenen
-            Umfragen zentral im mobilen Dashboard.
+            Registriere dich mit E-Mail-Adresse und Passwort und verwalte danach deine eigenen Umfragen zentral im
+            mobilen Dashboard.
           </p>
           <div class="hero-cta-row">
             <a class="primary-link" href="/register">Konto erstellen</a>
@@ -68,8 +68,8 @@
             <span>Alle erstellten Polls an einem Ort</span>
           </article>
           <article class="hero-stat">
-            <strong>Verifizierung</strong>
-            <span>SendGrid oder DB-Fallback-Link</span>
+            <strong>E-Mail als Login</strong>
+            <span>Keine Verifizierung, kein Zusatzschritt</span>
           </article>
         </div>
       </section>
@@ -81,8 +81,8 @@
           <p class="eyebrow">Sicherer Zugang</p>
           <h1>Login</h1>
           <p class="description">
-            Melde dich mit deiner verifizierten E-Mail-Adresse an und erstelle neue Termin-Abstimmungen direkt aus dem
-            Dashboard.
+            Melde dich mit deiner E-Mail-Adresse und deinem Passwort an und erstelle neue Termin-Abstimmungen direkt
+            aus dem Dashboard.
           </p>
         </article>
 
@@ -112,6 +112,7 @@
               Einloggen
             </button>
 
+            <p class="description"><a class="inline-link" href="/forgot-password">Passwort vergessen?</a></p>
             <p class="description">Noch kein Konto? <a class="inline-link" href="/register">Jetzt registrieren</a></p>
           </form>
         </article>
@@ -124,8 +125,7 @@
           <p class="eyebrow">Registrierung</p>
           <h1>Konto anlegen</h1>
           <p class="description">
-            Gib nur deine E-Mail-Adresse an. Nach der Verifizierung setzt du dein Passwort und gelangst danach ins
-            Dashboard.
+            Lege dein Konto direkt mit E-Mail-Adresse und Passwort an. Danach landest du sofort in deinem Dashboard.
           </p>
         </article>
 
@@ -143,82 +143,131 @@
               />
             </label>
 
+            <label>
+              <span>Passwort</span>
+              <input
+                id="register-password"
+                type="password"
+                name="password"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Mindestens 8 Zeichen"
+              />
+            </label>
+
+            <label>
+              <span>Passwort wiederholen</span>
+              <input
+                id="register-password-confirm"
+                type="password"
+                name="password_confirm"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Passwort bestaetigen"
+              />
+            </label>
+
             <div id="register-feedback" class="feedback" role="status" aria-live="polite"></div>
-            <div id="register-fallback" class="stack-form"></div>
 
             <button class="primary-button" type="submit">
-              <i class="fa-regular fa-envelope"></i>
-              Registrierung starten
+              <i class="fa-regular fa-user"></i>
+              Konto erstellen
             </button>
 
-            <p class="description">Schon verifiziert? <a class="inline-link" href="/login">Zum Login</a></p>
+            <p class="description">Schon registriert? <a class="inline-link" href="/login">Zum Login</a></p>
           </form>
         </article>
       </section>
     </template>
 
-    <template id="verify-template">
-      <section class="auth-layout single-column">
+    <template id="forgot-password-template">
+      <section class="auth-layout">
+        <article class="auth-panel auth-panel-highlight">
+          <p class="eyebrow">Passwort vergessen</p>
+          <h1>Reset-Link anfordern</h1>
+          <p class="description">
+            Gib deine E-Mail-Adresse ein. In dieser lokalen Version wird der Token-Link direkt angezeigt.
+          </p>
+        </article>
+
         <article class="panel auth-panel">
-          <p class="eyebrow">Verifizierung</p>
-          <h1>E-Mail bestaetigen</h1>
-          <div id="verify-status" class="feedback" role="status" aria-live="polite"></div>
+          <form id="forgot-password-form" class="stack-form">
+            <label>
+              <span>E-Mail</span>
+              <input
+                id="forgot-password-email"
+                type="email"
+                name="email"
+                autocomplete="email"
+                required
+                placeholder="du@firma.de"
+              />
+            </label>
 
-          <div id="verify-result" class="stack-form is-hidden">
-            <p class="description">
-              Die Adresse <strong id="verify-email"></strong> wurde bestaetigt. Setze jetzt direkt dein Passwort.
-            </p>
+            <div id="forgot-password-feedback" class="feedback" role="status" aria-live="polite"></div>
+            <div id="forgot-password-link"></div>
 
-            <form id="set-password-form-inline" class="stack-form">
-              <input id="set-password-token" type="hidden" name="token" />
+            <button class="primary-button" type="submit">
+              <i class="fa-solid fa-key"></i>
+              Reset-Link erzeugen
+            </button>
 
-              <label>
-                <span>Passwort</span>
-                <input type="password" name="password" autocomplete="new-password" required minlength="8" />
-              </label>
-
-              <label>
-                <span>Passwort wiederholen</span>
-                <input type="password" name="password_confirm" autocomplete="new-password" required minlength="8" />
-              </label>
-
-              <div class="feedback" role="status" aria-live="polite"></div>
-
-              <button class="primary-button" type="submit">
-                <i class="fa-solid fa-key"></i>
-                Passwort setzen
-              </button>
-            </form>
-          </div>
+            <p class="description"><a class="inline-link" href="/login">Zurueck zum Login</a></p>
+          </form>
         </article>
       </section>
     </template>
 
-    <template id="set-password-template">
-      <section class="auth-layout single-column">
-        <article class="panel auth-panel">
-          <p class="eyebrow">Passwort setzen</p>
-          <h1>Neues Passwort speichern</h1>
+    <template id="reset-password-template">
+      <section class="auth-layout">
+        <article class="auth-panel auth-panel-highlight">
+          <p class="eyebrow">Neues Passwort</p>
+          <h1>Passwort zuruecksetzen</h1>
+          <p class="description">Der Link ist zeitlich begrenzt. Nach dem Speichern wirst du direkt eingeloggt.</p>
+        </article>
 
-          <form id="set-password-form-page" class="stack-form">
-            <input id="set-password-token-page" type="hidden" name="token" />
+        <article class="panel auth-panel">
+          <form id="reset-password-form" class="stack-form">
+            <input id="reset-password-token" type="hidden" name="token" />
+
+            <div id="reset-password-details"></div>
 
             <label>
-              <span>Passwort</span>
-              <input type="password" name="password" autocomplete="new-password" required minlength="8" />
+              <span>Neues Passwort</span>
+              <input
+                id="reset-password-new"
+                type="password"
+                name="password"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Mindestens 8 Zeichen"
+              />
             </label>
 
             <label>
               <span>Passwort wiederholen</span>
-              <input type="password" name="password_confirm" autocomplete="new-password" required minlength="8" />
+              <input
+                id="reset-password-confirm"
+                type="password"
+                name="password_confirm"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Passwort bestaetigen"
+              />
             </label>
 
-            <div class="feedback" role="status" aria-live="polite"></div>
+            <div id="reset-password-feedback" class="feedback" role="status" aria-live="polite"></div>
 
             <button class="primary-button" type="submit">
-              <i class="fa-solid fa-key"></i>
+              <i class="fa-solid fa-rotate-right"></i>
               Passwort speichern
             </button>
+
+            <p class="description"><a class="inline-link" href="/forgot-password">Neuen Link anfordern</a></p>
           </form>
         </article>
       </section>
@@ -255,6 +304,23 @@
             </div>
           </div>
           <div id="dashboard-polls" class="poll-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Konto</p>
+              <h2>Schnellzugriff</h2>
+            </div>
+          </div>
+
+          <div class="stack-form">
+            <p class="description">Du bist als <strong id="dashboard-email-inline"></strong> eingeloggt.</p>
+            <p class="description">
+              Falls du dein Passwort neu setzen willst, kannst du jederzeit einen frischen Reset-Link anfordern.
+            </p>
+            <a class="ghost-link" href="/forgot-password">Passwort-Reset oeffnen</a>
+          </div>
         </article>
 
         <article class="panel">

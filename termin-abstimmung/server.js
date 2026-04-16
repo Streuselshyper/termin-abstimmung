@@ -10,6 +10,7 @@ const DB_PATH = path.join(__dirname, "data", "terminabstimmung.db");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const LOGIN_LIMIT = 5;
 const LOGIN_WINDOW_MS = 60 * 1000;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
 const VALID_POLL_MODES = new Set(["fixed", "free"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
@@ -24,8 +25,6 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT,
-    verified INTEGER NOT NULL DEFAULT 0,
-    verification_token TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -62,12 +61,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 `);
 
+migrateUsersTable();
 ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
 ensureColumn("polls", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
 ensureColumn("responses", "suggested_dates", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("responses", "free_text_availabilities", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("users", "reset_token", "TEXT");
+ensureColumn("users", "reset_token_expires_at", "TEXT");
 dropColumnIfExists("polls", "time_range_text");
 db.exec("CREATE INDEX IF NOT EXISTS idx_polls_user_id ON polls(user_id)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token)");
 
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
@@ -107,6 +110,47 @@ function dropColumnIfExists(tableName, columnName) {
     db.exec(`ALTER TABLE ${tableName} DROP COLUMN ${columnName}`);
   } catch (error) {
     console.warn(`Spalte ${tableName}.${columnName} konnte nicht entfernt werden:`, error.message);
+  }
+}
+
+function migrateUsersTable() {
+  const columns = db.prepare("PRAGMA table_info(users)").all();
+  const hasVerified = columns.some((column) => column.name === "verified");
+  const hasVerificationToken = columns.some((column) => column.name === "verification_token");
+
+  if (!hasVerified && !hasVerificationToken) {
+    return;
+  }
+
+  if (hasVerified) {
+    db.exec("UPDATE users SET verified = 1 WHERE verified IS NULL OR verified != 1");
+  }
+
+  const foreignKeysEnabled = db.pragma("foreign_keys", { simple: true });
+  db.pragma("foreign_keys = OFF");
+
+  try {
+    const migrate = db.transaction(() => {
+      db.exec(`
+        CREATE TABLE users_migrated (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          email TEXT NOT NULL UNIQUE,
+          password_hash TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        INSERT INTO users_migrated (id, email, password_hash, created_at)
+        SELECT id, email, password_hash, created_at
+        FROM users;
+
+        DROP TABLE users;
+        ALTER TABLE users_migrated RENAME TO users;
+      `);
+    });
+
+    migrate();
+  } finally {
+    db.pragma(`foreign_keys = ${foreignKeysEnabled ? "ON" : "OFF"}`);
   }
 }
 
@@ -195,9 +239,12 @@ function mapUserRow(row) {
   return {
     id: row.id,
     email: row.email,
-    verified: Boolean(row.verified),
     createdAt: row.created_at,
   };
+}
+
+function getBaseUrl(req) {
+  return `${isSecureRequest(req) ? "https" : "http"}://${req.get("host")}`;
 }
 
 function mapPollRow(row) {
@@ -504,7 +551,7 @@ function sessionMiddleware(req, res, next) {
 
   const row = db
     .prepare(`
-      SELECT sessions.id, sessions.user_id, sessions.created_at, sessions.last_activity_at, users.email, users.verified
+      SELECT sessions.id, sessions.user_id, sessions.created_at, sessions.last_activity_at, users.email
       FROM sessions
       JOIN users ON users.id = sessions.user_id
       WHERE sessions.id = ?
@@ -546,7 +593,6 @@ function sessionMiddleware(req, res, next) {
   req.currentUser = {
     id: row.user_id,
     email: row.email,
-    verified: Boolean(row.verified),
   };
 
   next();
@@ -576,59 +622,34 @@ function requireAuth(req, res, next) {
   next();
 }
 
-function getBaseUrl(req) {
-  const protocol = isSecureRequest(req) ? "https" : "http";
-  return `${protocol}://${req.get("host")}`;
+function clearExpiredResetTokens() {
+  db.prepare(`
+    UPDATE users
+    SET reset_token = NULL, reset_token_expires_at = NULL
+    WHERE reset_token IS NOT NULL
+      AND reset_token_expires_at IS NOT NULL
+      AND reset_token_expires_at < ?
+  `).run(new Date().toISOString());
 }
 
-function buildVerificationMailHtml({ verificationUrl, email }) {
-  return `
-    <div style="font-family:Arial,sans-serif;background:#f4f8fb;padding:32px 16px;color:#0f172a;">
-      <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:24px;padding:32px;border:1px solid #dbe6f0;">
-        <p style="margin:0 0 12px;color:#0f766e;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:12px;">Termin-Abstimmung</p>
-        <h1 style="margin:0 0 16px;font-size:30px;line-height:1.1;">E-Mail-Adresse bestaetigen</h1>
-        <p style="margin:0 0 16px;font-size:16px;line-height:1.6;">Hallo, fuer <strong>${email}</strong> wurde ein Zugang zur Termin-Abstimmung angelegt.</p>
-        <p style="margin:0 0 24px;font-size:16px;line-height:1.6;">Bitte bestaetige jetzt deine Adresse und vergebe danach dein Passwort.</p>
-        <a href="${verificationUrl}" style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:700;">Jetzt bestaetigen</a>
-        <p style="margin:24px 0 0;color:#475569;font-size:14px;line-height:1.6;">Falls der Button nicht funktioniert, oeffne diesen Link im Browser:<br /><span style="word-break:break-all;">${verificationUrl}</span></p>
-      </div>
-    </div>
-  `;
+function issuePasswordResetToken(userId) {
+  const token = createToken(24);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString();
+  db.prepare("UPDATE users SET reset_token = ?, reset_token_expires_at = ? WHERE id = ?").run(token, expiresAt, userId);
+  return { token, expiresAt };
 }
 
-async function sendVerificationEmail({ to, verificationUrl }) {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL;
-
-  if (!apiKey || !fromEmail) {
-    return { delivered: false, reason: "SendGrid ist nicht konfiguriert." };
-  }
-
-  const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from: { email: fromEmail, name: "Termin-Abstimmung" },
-      subject: "Bitte bestaetige deine E-Mail-Adresse",
-      content: [
-        {
-          type: "text/html",
-          value: buildVerificationMailHtml({ verificationUrl, email: to }),
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`SendGrid-Fehler (${response.status}): ${body.slice(0, 200)}`);
-  }
-
-  return { delivered: true };
+function loadUserByResetToken(token) {
+  clearExpiredResetTokens();
+  return db
+    .prepare(`
+      SELECT *
+      FROM users
+      WHERE reset_token = ?
+        AND reset_token_expires_at IS NOT NULL
+        AND reset_token_expires_at >= ?
+    `)
+    .get(token, new Date().toISOString());
 }
 
 app.get("/api/health", (_req, res) => {
@@ -641,7 +662,6 @@ app.get("/api/auth/me", (req, res) => {
       ? {
           id: req.currentUser.id,
           email: req.currentUser.email,
-          verified: req.currentUser.verified,
         }
       : null,
     csrfToken: req.csrfToken,
@@ -649,15 +669,20 @@ app.get("/api/auth/me", (req, res) => {
   });
 });
 
-app.post("/api/auth/register", requireCsrf, async (req, res) => {
+app.post("/api/auth/register", requireCsrf, (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
+    const passwordCheck = validatePassword(req.body?.password);
+
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: "Bitte gib eine gueltige E-Mail-Adresse ein." });
     }
+    if (!passwordCheck.ok) {
+      return res.status(400).json({ error: passwordCheck.message });
+    }
 
     const createdAt = new Date().toISOString();
-    const verificationToken = createToken(24);
+    const passwordHash = bcrypt.hashSync(passwordCheck.value, 12);
     const existingUser = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
 
     if (existingUser?.password_hash) {
@@ -665,97 +690,30 @@ app.post("/api/auth/register", requireCsrf, async (req, res) => {
     }
 
     if (existingUser) {
-      db.prepare(
-        "UPDATE users SET verified = 0, verification_token = ?, created_at = COALESCE(created_at, ?) WHERE id = ?"
-      ).run(verificationToken, createdAt, existingUser.id);
+      db.prepare("UPDATE users SET password_hash = ?, created_at = COALESCE(created_at, ?) WHERE id = ?").run(
+        passwordHash,
+        createdAt,
+        existingUser.id
+      );
     } else {
-      db.prepare(
-        "INSERT INTO users (email, password_hash, verified, verification_token, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).run(email, null, 0, verificationToken, createdAt);
+      db.prepare("INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)").run(
+        email,
+        passwordHash,
+        createdAt
+      );
     }
 
-    const verificationUrl = `${getBaseUrl(req)}/verify/${verificationToken}`;
-    let delivery = { delivered: false, reason: "Noch nicht versucht." };
-
-    try {
-      delivery = await sendVerificationEmail({ to: email, verificationUrl });
-    } catch (error) {
-      delivery = { delivered: false, reason: error.message };
-      console.warn("Verifizierungs-Mail konnte nicht versendet werden:", error.message);
-    }
+    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+    destroySession(res, req);
+    createSession(res, req, user.id);
 
     return res.status(201).json({
-      message: delivery.delivered
-        ? "Registrierung gespeichert. Bitte pruefe dein E-Mail-Postfach."
-        : "Registrierung gespeichert. SendGrid war nicht verfuegbar, der Verifizierungslink wurde nur intern erzeugt.",
-      verificationRequired: true,
-      emailDelivery: delivery.delivered ? "sendgrid" : "database",
-      verificationUrl: delivery.delivered ? null : verificationUrl,
+      message: "Konto erstellt. Du bist jetzt eingeloggt.",
+      user: mapUserRow(user),
     });
   } catch (error) {
     console.error("Fehler bei der Registrierung:", error);
     return res.status(500).json({ error: "Die Registrierung konnte nicht gespeichert werden." });
-  }
-});
-
-app.get("/api/auth/verify/:token", (req, res) => {
-  try {
-    const token = normalizeText(req.params.token, 128);
-    const user = db.prepare("SELECT * FROM users WHERE verification_token = ?").get(token);
-
-    if (!user) {
-      return res.status(404).json({ error: "Der Verifizierungslink ist ungueltig oder abgelaufen." });
-    }
-
-    if (!user.verified) {
-      db.prepare("UPDATE users SET verified = 1 WHERE id = ?").run(user.id);
-    }
-
-    return res.json({
-      message: "E-Mail-Adresse bestaetigt. Du kannst jetzt dein Passwort setzen.",
-      email: user.email,
-      token,
-      verified: true,
-      hasPassword: Boolean(user.password_hash),
-    });
-  } catch (error) {
-    console.error("Fehler bei der Verifizierung:", error);
-    return res.status(500).json({ error: "Die Verifizierung konnte nicht abgeschlossen werden." });
-  }
-});
-
-app.post("/api/auth/set-password", requireCsrf, (req, res) => {
-  try {
-    const token = normalizeText(req.body?.token, 128);
-    const passwordCheck = validatePassword(req.body?.password);
-
-    if (!token) {
-      return res.status(400).json({ error: "Es fehlt ein gueltiger Token." });
-    }
-
-    if (!passwordCheck.ok) {
-      return res.status(400).json({ error: passwordCheck.message });
-    }
-
-    const user = db.prepare("SELECT * FROM users WHERE verification_token = ?").get(token);
-    if (!user) {
-      return res.status(404).json({ error: "Der Link zum Passwort-Setzen ist ungueltig." });
-    }
-
-    if (!user.verified) {
-      return res.status(400).json({ error: "Bitte bestaetige zuerst deine E-Mail-Adresse." });
-    }
-
-    const passwordHash = bcrypt.hashSync(passwordCheck.value, 12);
-    db.prepare("UPDATE users SET password_hash = ?, verification_token = NULL WHERE id = ?").run(
-      passwordHash,
-      user.id
-    );
-
-    return res.json({ message: "Passwort gespeichert. Du kannst dich jetzt einloggen." });
-  } catch (error) {
-    console.error("Fehler beim Passwort-Setzen:", error);
-    return res.status(500).json({ error: "Das Passwort konnte nicht gesetzt werden." });
   }
 });
 
@@ -775,10 +733,6 @@ app.post("/api/auth/login", requireCsrf, (req, res) => {
       return res.status(401).json({ error: "E-Mail oder Passwort ist falsch." });
     }
 
-    if (!user.verified) {
-      return res.status(403).json({ error: "Bitte bestaetige zuerst deine E-Mail-Adresse." });
-    }
-
     clearFailedLogins(rateLimitKey);
     destroySession(res, req);
     createSession(res, req, user.id);
@@ -790,6 +744,93 @@ app.post("/api/auth/login", requireCsrf, (req, res) => {
   } catch (error) {
     console.error("Fehler beim Login:", error);
     return res.status(500).json({ error: "Der Login konnte nicht abgeschlossen werden." });
+  }
+});
+
+app.post("/api/auth/forgot-password", requireCsrf, (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: "Bitte gib eine gueltige E-Mail-Adresse ein." });
+    }
+
+    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+    if (!user || !user.password_hash) {
+      return res.json({
+        message: "Falls ein Konto existiert, wurde ein Reset-Link erzeugt.",
+      });
+    }
+
+    const { token, expiresAt } = issuePasswordResetToken(user.id);
+
+    return res.json({
+      message: "Reset-Link erzeugt. In dieser lokalen Version wird der Link direkt angezeigt.",
+      resetUrl: `${getBaseUrl(req)}/reset-password?token=${token}`,
+      expiresAt,
+    });
+  } catch (error) {
+    console.error("Fehler beim Erzeugen des Passwort-Reset-Links:", error);
+    return res.status(500).json({ error: "Der Reset-Link konnte nicht erzeugt werden." });
+  }
+});
+
+app.get("/api/auth/reset-password/:token", (req, res) => {
+  try {
+    const token = normalizeText(req.params.token, 128);
+    if (!token) {
+      return res.status(400).json({ error: "Es fehlt ein gueltiger Token." });
+    }
+
+    const user = loadUserByResetToken(token);
+    if (!user) {
+      return res.status(404).json({ error: "Der Reset-Link ist ungueltig oder abgelaufen." });
+    }
+
+    return res.json({
+      email: user.email,
+      expiresAt: user.reset_token_expires_at,
+    });
+  } catch (error) {
+    console.error("Fehler beim Pruefen des Reset-Tokens:", error);
+    return res.status(500).json({ error: "Der Reset-Link konnte nicht geprueft werden." });
+  }
+});
+
+app.post("/api/auth/reset-password", requireCsrf, (req, res) => {
+  try {
+    const token = normalizeText(req.body?.token, 128);
+    const passwordCheck = validatePassword(req.body?.password);
+
+    if (!token) {
+      return res.status(400).json({ error: "Es fehlt ein gueltiger Token." });
+    }
+
+    if (!passwordCheck.ok) {
+      return res.status(400).json({ error: passwordCheck.message });
+    }
+
+    const user = loadUserByResetToken(token);
+    if (!user) {
+      return res.status(404).json({ error: "Der Reset-Link ist ungueltig oder abgelaufen." });
+    }
+
+    const passwordHash = bcrypt.hashSync(passwordCheck.value, 12);
+    db.prepare("UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires_at = NULL WHERE id = ?").run(
+      passwordHash,
+      user.id
+    );
+
+    destroySession(res, req);
+    createSession(res, req, user.id);
+
+    return res.json({
+      message: "Passwort gespeichert. Du bist jetzt eingeloggt.",
+      user: mapUserRow(db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)),
+    });
+  } catch (error) {
+    console.error("Fehler beim Zuruecksetzen des Passworts:", error);
+    return res.status(500).json({ error: "Das Passwort konnte nicht zurueckgesetzt werden." });
   }
 });
 
@@ -925,7 +966,7 @@ app.post("/api/polls/:pollId/responses", requireCsrf, (req, res) => {
   }
 });
 
-app.get(["/", "/login", "/register", "/dashboard", "/set-password", "/verify/:token", "/poll/:pollId"], (_req, res) => {
+app.get(["/", "/login", "/register", "/forgot-password", "/reset-password", "/dashboard", "/poll/:pollId"], (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
