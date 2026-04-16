@@ -758,6 +758,7 @@ body.poll-drawer-open {
 .owner-action-stack {
   display: grid;
   gap: 0.6rem;
+  padding-inline: 0.75rem;
 }
 
 .settings-action {
