@@ -569,14 +569,8 @@ function calculateSuggestedDatesRanking(responses) {
     }
   }
 
-  const summary = Array.from(counts.values()).sort((left, right) => {
-    if (right.count !== left.count) {
-      return right.count - left.count;
-    }
-    return left.date.localeCompare(right.date);
-  });
-
-  const bestCount = summary[0]?.count ?? 0;
+  const summary = Array.from(counts.values()).sort((left, right) => left.date.localeCompare(right.date));
+  const bestCount = summary.reduce((maxCount, entry) => Math.max(maxCount, entry.count), 0);
   return {
     summary,
     bestDates: summary.filter((entry) => entry.count === bestCount && summary.length > 0),

@@ -1844,6 +1844,17 @@ function renderResultsTable() {
   bindMatrixEditButtons();
 }
 
+function refreshPollView() {
+  initializeDraftFromPoll(state.pollData.poll);
+  fillPollSummary();
+  renderAvailabilityForm();
+  renderResultsTable();
+
+  if (state.adminParticipantsVisible) {
+    renderParticipantsAdminPanel();
+  }
+}
+
 function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
   const isOwnRow = Boolean(showEditIcon && editableResponse && response.id === editableResponse.id);
   const canManage = Boolean(state.pollData?.permissions?.canManage);
@@ -1915,10 +1926,7 @@ async function handleResponseSubmit(event) {
     });
 
     state.pollData = data;
-    initializeDraftFromPoll(data.poll);
-    fillPollSummary();
-    renderAvailabilityForm();
-    renderResultsTable();
+    refreshPollView();
     setFeedback(document.querySelector("#response-feedback"), "Antwort gespeichert.", "success");
 
     if (!isCompactPollLayout()) {
@@ -1995,7 +2003,7 @@ function getSelectedExportDate() {
 }
 
 function getTopMatrixDates(summary, limit = 8) {
-  return (summary || []).slice(0, limit);
+  return [...(summary || [])].sort((left, right) => left.date.localeCompare(right.date)).slice(0, limit);
 }
 
 function getFixedDateStats(dates, responses) {
@@ -2053,7 +2061,9 @@ function getPollFavorite(poll, responses, results) {
     return winnerEntry ? { date: winnerEntry.date, votes: winnerEntry.yes, score: winnerEntry.score } : null;
   }
 
-  const favorite = (results?.summary || [])[0];
+  const favorite = (results?.bestDates || [])
+    .slice()
+    .sort((left, right) => left.date.localeCompare(right.date))[0];
   return favorite ? { date: favorite.date, votes: favorite.count, score: favorite.count } : null;
 }
 
@@ -2219,12 +2229,9 @@ async function handleParticipantRightsChange(userId, row) {
       hasVeto: data.participant.hasVeto,
       isBlocked: data.participant.isBlocked,
     };
-    fillPollSummary();
-    renderAvailabilityForm();
   }
 
-  renderParticipantsAdminPanel();
-  renderResultsTable();
+  refreshPollView();
   setFeedback(document.querySelector("#response-feedback"), "Teilnehmerrechte gespeichert.", "success");
 }
 
@@ -2241,11 +2248,11 @@ async function handleAdminDeleteResponse(responseId) {
     method: "DELETE",
   });
 
-  state.pollData = data;
-  initializeDraftFromPoll(data.poll);
-  fillPollSummary();
-  renderAvailabilityForm();
-  renderResultsTable();
+  state.pollData = {
+    ...data,
+    responses: (data.responses || []).filter((response) => String(response.id) !== String(responseId)),
+  };
+  refreshPollView();
 
   if (state.adminParticipantsVisible) {
     await loadPollParticipants();
