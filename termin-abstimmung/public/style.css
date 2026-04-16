@@ -762,6 +762,9 @@ select:focus {
 .poll-type-pill {
   align-self: center;
   margin-block: auto;
+  min-height: 1.55rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 .create-mode-card.is-active {
