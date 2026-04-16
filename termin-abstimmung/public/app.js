@@ -337,34 +337,10 @@ async function renderDashboardPage() {
   dynamicViewElement.appendChild(template.content.cloneNode(true));
 
   document.querySelector("#dashboard-email").textContent = state.auth.user.email;
+  document.querySelector("#dashboard-email-inline").textContent = state.auth.user.email;
   document.querySelector("#dashboard-timeout").textContent = `${state.auth.sessionTimeoutMinutes} Minuten`;
 
-  const emailInline = document.querySelector("#dashboard-email-inline");
-  const accountPanel = emailInline?.closest(".panel");
-  if (accountPanel) {
-    accountPanel.innerHTML = `
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Konto</p>
-          <h2>Profil verwalten</h2>
-        </div>
-      </div>
-
-      <div class="stack-form">
-        <p class="description">Du bist als <strong>${escapeHtml(state.auth.user.email)}</strong> eingeloggt.</p>
-        <p class="description">Bearbeite dort deinen Namen, aendere dein Passwort oder loesche dein Konto.</p>
-        <button id="open-account-page" class="ghost-button wide-button" type="button">
-          <i class="fa-regular fa-user"></i>
-          Konto oeffnen
-        </button>
-      </div>
-    `;
-
-    document.querySelector("#open-account-page").addEventListener("click", async () => {
-      await navigateTo("/account");
-    });
-  }
-
+  hydrateCreateModeInputs();
   renderCalendar();
   renderSelectedDates();
   syncCreateModeUi();
@@ -642,6 +618,14 @@ function syncCreateModeUi() {
   }
 
   fixedFields.classList.toggle("is-hidden", state.createMode !== "fixed");
+}
+
+function hydrateCreateModeInputs() {
+  const validMode = state.createMode === "free" ? "free" : "fixed";
+  state.createMode = validMode;
+  document.querySelectorAll('input[name="mode"]').forEach((input) => {
+    input.checked = input.value === validMode;
+  });
 }
 
 function renderCalendar() {

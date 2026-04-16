@@ -57,6 +57,15 @@ sessions_spawn({
 
 ### Modell-Konfiguration & Wechsel in Codex
 
+**ERZWUNGEN: Nur diese beiden Modelle verwenden!**
+
+| Modell | Verwendung |
+|--------|------------|
+| `gpt-5.4` | Maximum Performance, komplexe Architektur-Entscheidungen |
+| `gpt-5.3-codex` | Standard für Coding-Tasks (optimiert für Code) |
+
+**NIE ohne Modell-Flag starten!** Immer explizit `-m` angeben.
+
 **Globale Config:**
 ```bash
 # ~/.codex/config.json
@@ -66,11 +75,21 @@ sessions_spawn({
 }
 ```
 
-**Slash-Commands (immer als einzelne Nachricht senden):**
+**CLI-Befehle (IMMER Modell angeben!):**
+
+```bash
+# Standard für Coding (empfohlen)
+codex exec -m gpt-5.3-codex --full-auto "task"
+
+# Für komplexe Aufgaben
+ncodex exec -m gpt-5.4 --full-auto "task"
+```
+
+**Slash-Commands im interaktiven Modus (immer als einzelne Nachricht senden):**
 
 | Befehl | Beschreibung | Beispiel |
 |--------|--------------|----------|
-| `/model <name>` | Modell wechseln | `/model gpt-5.4` → Antwort: `gpt-5.4 selected.` |
+| `/model <name>` | Modell wechseln | `/model gpt-5.4` oder `/model gpt-5.3-codex` |
 | `/context` | Aktuellen Kontext anzeigen | `/context` |
 | `/reset` | Session zurücksetzen | `/reset` |
 | `/run <cmd>` | Befehl/Code ausführen | `/run python main.py` |

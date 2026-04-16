@@ -6,7 +6,9 @@ const Database = require("better-sqlite3");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
 const DB_PATH = path.join(__dirname, "data", "terminabstimmung.db");
+const APP_BASE_URL = normalizeConfiguredBaseUrl(process.env.APP_BASE_URL || "");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const LOGIN_LIMIT = 5;
 const LOGIN_WINDOW_MS = 60 * 1000;
@@ -93,6 +95,42 @@ function normalizeText(value, maxLength) {
 
 function normalizeEmail(value) {
   return normalizeText(value, 320).toLowerCase();
+}
+
+function normalizeConfiguredBaseUrl(value) {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return "";
+    }
+
+    return `${url.protocol}//${url.host}`;
+  } catch (_error) {
+    return "";
+  }
+}
+
+function normalizeHostHeader(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const host = value.trim().toLowerCase();
+  if (!host || /[\s/\\]/.test(host)) {
+    return "";
+  }
+
+  const ipv4OrHostname = /^[a-z0-9.-]+(?::\d{1,5})?$/;
+  const ipv6WithPort = /^\[[0-9a-f:]+\](?::\d{1,5})?$/i;
+  if (!ipv4OrHostname.test(host) && !ipv6WithPort.test(host)) {
+    return "";
+  }
+
+  return host;
 }
 
 function ensureColumn(tableName, columnName, definition) {
@@ -251,7 +289,17 @@ function mapUserRow(row) {
 }
 
 function getBaseUrl(req) {
-  return `${isSecureRequest(req) ? "https" : "http"}://${req.get("host")}`;
+  if (APP_BASE_URL) {
+    return APP_BASE_URL;
+  }
+
+  const protocol = isSecureRequest(req) ? "https" : "http";
+  const normalizedHost = normalizeHostHeader(req.get("host") || "");
+  if (normalizedHost) {
+    return `${protocol}://${normalizedHost}`;
+  }
+
+  return `${protocol}://${req.hostname}`;
 }
 
 function mapPollRow(row) {
@@ -406,7 +454,11 @@ function parseCookies(headerValue) {
 
     const key = chunk.slice(0, index).trim();
     const value = chunk.slice(index + 1).trim();
-    cookies[key] = decodeURIComponent(value);
+    try {
+      cookies[key] = decodeURIComponent(value);
+    } catch (_error) {
+      cookies[key] = value;
+    }
   }
 
   return cookies;
@@ -569,7 +621,7 @@ function sessionMiddleware(req, res, next) {
 
   const row = db
     .prepare(`
-      SELECT sessions.id, sessions.user_id, sessions.created_at, sessions.last_activity_at, users.email
+      SELECT sessions.id, sessions.user_id, sessions.created_at, sessions.last_activity_at, users.email, users.name
       FROM sessions
       JOIN users ON users.id = sessions.user_id
       WHERE sessions.id = ?
@@ -611,6 +663,7 @@ function sessionMiddleware(req, res, next) {
   req.currentUser = {
     id: row.user_id,
     email: row.email,
+    name: row.name || "",
   };
 
   next();
@@ -684,7 +737,7 @@ app.get("/api/auth/me", (req, res) => {
         }
       : null,
     csrfToken: req.csrfToken,
-    sessionTimeoutMinutes: 30,
+    sessionTimeoutMinutes: Math.floor(SESSION_TIMEOUT_MS / 60000),
   });
 });
 
@@ -1116,7 +1169,7 @@ app.post("/api/polls/:pollId/responses", requireCsrf, (req, res) => {
   }
 });
 
-app.delete("/api/polls/:pollId", requireAuth, (req, res) => {
+app.delete("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
   try {
     const poll = db.prepare("SELECT user_id FROM polls WHERE id = ?").get(req.params.pollId);
     if (!poll) {
@@ -1148,9 +1201,9 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: "Interner Serverfehler." });
 });
 
-function startServer(port = PORT) {
-  return app.listen(port, () => {
-    console.log(`Termin-Abstimmung läuft auf http://localhost:${port}`);
+function startServer(port = PORT, host = HOST) {
+  return app.listen(port, host, () => {
+    console.log(`Termin-Abstimmung läuft auf http://${host}:${port}`);
   });
 }
 

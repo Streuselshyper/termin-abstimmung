@@ -41,184 +41,194 @@
         </div>
       </header>
 
-      <main id="app"></main>
+      <main id="app">
+        <div id="landing-view" class="app-view is-hidden">
+          <section class="hero-card auth-hero">
+            <div class="hero-copy">
+              <p class="eyebrow">Login zuerst</p>
+              <h1>Dein Dashboard fuer Termin-Abstimmungen</h1>
+              <p class="hero-text">
+                Registriere dich mit E-Mail-Adresse und Passwort und verwalte danach deine eigenen Umfragen zentral im
+                mobilen Dashboard.
+              </p>
+              <div class="hero-cta-row">
+                <a class="primary-link" href="/register">Konto erstellen</a>
+                <a class="ghost-link" href="/login">Zum Login</a>
+              </div>
+            </div>
+            <div class="hero-stats auth-stats">
+              <article class="hero-stat">
+                <strong>30 Minuten</strong>
+                <span>Session-Timeout bei Inaktivitaet</span>
+              </article>
+              <article class="hero-stat">
+                <strong>Eigenes Dashboard</strong>
+                <span>Alle erstellten Polls an einem Ort</span>
+              </article>
+              <article class="hero-stat">
+                <strong>E-Mail als Login</strong>
+                <span>Keine Verifizierung, kein Zusatzschritt</span>
+              </article>
+            </div>
+          </section>
+        </div>
+
+        <div id="login-view" class="app-view is-hidden">
+          <section class="auth-layout">
+            <article class="auth-panel auth-panel-highlight">
+              <p class="eyebrow">Sicherer Zugang</p>
+              <h1>Login</h1>
+              <p class="description">
+                Melde dich mit deiner E-Mail-Adresse und deinem Passwort an und erstelle neue Termin-Abstimmungen
+                direkt aus dem Dashboard.
+              </p>
+            </article>
+
+            <article class="panel auth-panel">
+              <form id="login-form" class="stack-form">
+                <label>
+                  <span>E-Mail</span>
+                  <input
+                    id="login-email"
+                    type="email"
+                    name="email"
+                    autocomplete="email"
+                    required
+                    placeholder="du@firma.de"
+                  />
+                </label>
+
+                <label>
+                  <span>Passwort</span>
+                  <input
+                    id="login-password"
+                    type="password"
+                    name="password"
+                    autocomplete="current-password"
+                    required
+                    placeholder="Dein Passwort"
+                  />
+                </label>
+
+                <div id="login-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+                <button class="primary-button" type="submit">
+                  <i class="fa-solid fa-right-to-bracket"></i>
+                  Einloggen
+                </button>
+
+                <p class="description"><a class="inline-link" href="/forgot-password">Passwort vergessen?</a></p>
+                <p class="description">Noch kein Konto? <a class="inline-link" href="/register">Jetzt registrieren</a></p>
+              </form>
+            </article>
+          </section>
+        </div>
+
+        <div id="register-view" class="app-view is-hidden">
+          <section class="auth-layout">
+            <article class="auth-panel auth-panel-highlight">
+              <p class="eyebrow">Registrierung</p>
+              <h1>Konto anlegen</h1>
+              <p class="description">
+                Lege dein Konto direkt mit E-Mail-Adresse und Passwort an. Danach landest du sofort in deinem
+                Dashboard.
+              </p>
+            </article>
+
+            <article class="panel auth-panel">
+              <form id="register-form" class="stack-form">
+                <label>
+                  <span>E-Mail</span>
+                  <input
+                    id="register-email"
+                    type="email"
+                    name="email"
+                    autocomplete="email"
+                    required
+                    placeholder="du@firma.de"
+                  />
+                </label>
+
+                <label>
+                  <span>Passwort</span>
+                  <input
+                    id="register-password"
+                    type="password"
+                    name="password"
+                    autocomplete="new-password"
+                    required
+                    minlength="8"
+                    placeholder="Mindestens 8 Zeichen"
+                  />
+                </label>
+
+                <label>
+                  <span>Passwort wiederholen</span>
+                  <input
+                    id="register-password-confirm"
+                    type="password"
+                    name="password_confirm"
+                    autocomplete="new-password"
+                    required
+                    minlength="8"
+                    placeholder="Passwort bestaetigen"
+                  />
+                </label>
+
+                <div id="register-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+                <button class="primary-button" type="submit">
+                  <i class="fa-regular fa-user"></i>
+                  Konto erstellen
+                </button>
+
+                <p class="description">Schon registriert? <a class="inline-link" href="/login">Zum Login</a></p>
+              </form>
+            </article>
+          </section>
+        </div>
+
+        <div id="forgot-password-view" class="app-view is-hidden">
+          <section class="auth-layout">
+            <article class="auth-panel auth-panel-highlight">
+              <p class="eyebrow">Passwort vergessen</p>
+              <h1>Reset-Link anfordern</h1>
+              <p class="description">
+                Gib deine E-Mail-Adresse ein. In dieser lokalen Version wird der Token-Link direkt angezeigt.
+              </p>
+            </article>
+
+            <article class="panel auth-panel">
+              <form id="forgot-password-form" class="stack-form">
+                <label>
+                  <span>E-Mail</span>
+                  <input
+                    id="forgot-password-email"
+                    type="email"
+                    name="email"
+                    autocomplete="email"
+                    required
+                    placeholder="du@firma.de"
+                  />
+                </label>
+
+                <div id="forgot-password-feedback" class="feedback" role="status" aria-live="polite"></div>
+                <div id="forgot-password-link"></div>
+
+                <button class="primary-button" type="submit">
+                  <i class="fa-solid fa-key"></i>
+                  Reset-Link erzeugen
+                </button>
+
+                <p class="description"><a class="inline-link" href="/login">Zurueck zum Login</a></p>
+              </form>
+            </article>
+          </section>
+        </div>
+
+        <div id="dynamic-view" class="app-view is-hidden"></div>
+      </main>
     </div>
-
-    <template id="landing-template">
-      <section class="hero-card auth-hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Login zuerst</p>
-          <h1>Dein Dashboard fuer Termin-Abstimmungen</h1>
-          <p class="hero-text">
-            Registriere dich mit E-Mail-Adresse und Passwort und verwalte danach deine eigenen Umfragen zentral im
-            mobilen Dashboard.
-          </p>
-          <div class="hero-cta-row">
-            <a class="primary-link" href="/register">Konto erstellen</a>
-            <a class="ghost-link" href="/login">Zum Login</a>
-          </div>
-        </div>
-        <div class="hero-stats auth-stats">
-          <article class="hero-stat">
-            <strong>30 Minuten</strong>
-            <span>Session-Timeout bei Inaktivitaet</span>
-          </article>
-          <article class="hero-stat">
-            <strong>Eigenes Dashboard</strong>
-            <span>Alle erstellten Polls an einem Ort</span>
-          </article>
-          <article class="hero-stat">
-            <strong>E-Mail als Login</strong>
-            <span>Keine Verifizierung, kein Zusatzschritt</span>
-          </article>
-        </div>
-      </section>
-    </template>
-
-    <template id="login-template">
-      <section class="auth-layout">
-        <article class="auth-panel auth-panel-highlight">
-          <p class="eyebrow">Sicherer Zugang</p>
-          <h1>Login</h1>
-          <p class="description">
-            Melde dich mit deiner E-Mail-Adresse und deinem Passwort an und erstelle neue Termin-Abstimmungen direkt
-            aus dem Dashboard.
-          </p>
-        </article>
-
-        <article class="panel auth-panel">
-          <form id="login-form" class="stack-form">
-            <label>
-              <span>E-Mail</span>
-              <input id="login-email" type="email" name="email" autocomplete="email" required placeholder="du@firma.de" />
-            </label>
-
-            <label>
-              <span>Passwort</span>
-              <input
-                id="login-password"
-                type="password"
-                name="password"
-                autocomplete="current-password"
-                required
-                placeholder="Dein Passwort"
-              />
-            </label>
-
-            <div id="login-feedback" class="feedback" role="status" aria-live="polite"></div>
-
-            <button class="primary-button" type="submit">
-              <i class="fa-solid fa-right-to-bracket"></i>
-              Einloggen
-            </button>
-
-            <p class="description"><a class="inline-link" href="/forgot-password">Passwort vergessen?</a></p>
-            <p class="description">Noch kein Konto? <a class="inline-link" href="/register">Jetzt registrieren</a></p>
-          </form>
-        </article>
-      </section>
-    </template>
-
-    <template id="register-template">
-      <section class="auth-layout">
-        <article class="auth-panel auth-panel-highlight">
-          <p class="eyebrow">Registrierung</p>
-          <h1>Konto anlegen</h1>
-          <p class="description">
-            Lege dein Konto direkt mit E-Mail-Adresse und Passwort an. Danach landest du sofort in deinem Dashboard.
-          </p>
-        </article>
-
-        <article class="panel auth-panel">
-          <form id="register-form" class="stack-form">
-            <label>
-              <span>E-Mail</span>
-              <input
-                id="register-email"
-                type="email"
-                name="email"
-                autocomplete="email"
-                required
-                placeholder="du@firma.de"
-              />
-            </label>
-
-            <label>
-              <span>Passwort</span>
-              <input
-                id="register-password"
-                type="password"
-                name="password"
-                autocomplete="new-password"
-                required
-                minlength="8"
-                placeholder="Mindestens 8 Zeichen"
-              />
-            </label>
-
-            <label>
-              <span>Passwort wiederholen</span>
-              <input
-                id="register-password-confirm"
-                type="password"
-                name="password_confirm"
-                autocomplete="new-password"
-                required
-                minlength="8"
-                placeholder="Passwort bestaetigen"
-              />
-            </label>
-
-            <div id="register-feedback" class="feedback" role="status" aria-live="polite"></div>
-
-            <button class="primary-button" type="submit">
-              <i class="fa-regular fa-user"></i>
-              Konto erstellen
-            </button>
-
-            <p class="description">Schon registriert? <a class="inline-link" href="/login">Zum Login</a></p>
-          </form>
-        </article>
-      </section>
-    </template>
-
-    <template id="forgot-password-template">
-      <section class="auth-layout">
-        <article class="auth-panel auth-panel-highlight">
-          <p class="eyebrow">Passwort vergessen</p>
-          <h1>Reset-Link anfordern</h1>
-          <p class="description">
-            Gib deine E-Mail-Adresse ein. In dieser lokalen Version wird der Token-Link direkt angezeigt.
-          </p>
-        </article>
-
-        <article class="panel auth-panel">
-          <form id="forgot-password-form" class="stack-form">
-            <label>
-              <span>E-Mail</span>
-              <input
-                id="forgot-password-email"
-                type="email"
-                name="email"
-                autocomplete="email"
-                required
-                placeholder="du@firma.de"
-              />
-            </label>
-
-            <div id="forgot-password-feedback" class="feedback" role="status" aria-live="polite"></div>
-            <div id="forgot-password-link"></div>
-
-            <button class="primary-button" type="submit">
-              <i class="fa-solid fa-key"></i>
-              Reset-Link erzeugen
-            </button>
-
-            <p class="description"><a class="inline-link" href="/login">Zurueck zum Login</a></p>
-          </form>
-        </article>
-      </section>
-    </template>
 
     <template id="reset-password-template">
       <section class="auth-layout">
@@ -444,17 +454,7 @@
           </div>
 
           <form id="response-form" class="stack-form">
-            <label>
-              <span>Name</span>
-              <input
-                id="participant-name"
-                class="prominent-input"
-                name="name"
-                maxlength="80"
-                required
-                placeholder="Dein Name"
-              />
-            </label>
+            <div id="participant-identity"></div>
 
             <div id="availability-grid" class="availability-grid"></div>
             <div id="availability-legend" class="legend">
