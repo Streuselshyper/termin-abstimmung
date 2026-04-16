@@ -634,7 +634,6 @@ select:focus {
   display: flex;
   align-items: center;
   align-self: center;
-  min-height: 100%;
 }
 
 .poll-list-main,
@@ -767,7 +766,6 @@ select:focus {
 
 .poll-type-pill {
   align-self: center;
-  margin-block: auto;
   min-height: 1.55rem;
   display: inline-flex;
   align-items: center;
