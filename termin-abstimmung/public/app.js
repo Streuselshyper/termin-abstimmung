@@ -15,6 +15,7 @@ const state = {
     csrfToken: "",
     sessionTimeoutMinutes: 30,
   },
+  dashboardStats: null,
   dashboardPolls: [],
   selectedDates: new Set(),
   currentMonth: startOfMonth(new Date()),
@@ -336,10 +337,6 @@ async function renderDashboardPage() {
   showDynamicView();
   dynamicViewElement.appendChild(template.content.cloneNode(true));
 
-  document.querySelector("#dashboard-email").textContent = state.auth.user.email;
-  document.querySelector("#dashboard-email-inline").textContent = state.auth.user.email;
-  document.querySelector("#dashboard-timeout").textContent = `${state.auth.sessionTimeoutMinutes} Minuten`;
-
   hydrateCreateModeInputs();
   renderCalendar();
   renderSelectedDates();
@@ -368,6 +365,9 @@ async function renderDashboardPage() {
     });
   });
 
+  document.querySelector("#refresh-dashboard").addEventListener("click", () => {
+    loadDashboardPolls().catch(handleRenderError);
+  });
   document.querySelector("#create-poll-form").addEventListener("submit", handleCreatePoll);
 
   await loadDashboardPolls();
@@ -534,17 +534,19 @@ async function renderAccountPage() {
 
 async function loadDashboardPolls() {
   const list = document.querySelector("#dashboard-polls");
-  const stats = document.querySelector("#dashboard-poll-count");
+  const summary = document.querySelector("#dashboard-list-summary");
   list.innerHTML = '<p class="description">Deine Umfragen werden geladen ...</p>';
 
   try {
-    const data = await apiFetch("/api/user/polls");
+    const data = await apiFetch("/api/user/dashboard");
     state.dashboardPolls = data.polls;
-    stats.textContent = `${data.polls.length} eigene Umfragen`;
+    state.dashboardStats = data.stats;
+    renderDashboardStats(data.stats);
+    summary.textContent = `${data.polls.length} Umfragen`;
 
     if (data.polls.length === 0) {
       list.innerHTML = `
-        <article class="poll-card empty-state">
+        <article class="poll-card poll-empty-state">
           <strong>Noch keine Umfragen</strong>
           <p class="description">Lege unten deine erste Termin-Abstimmung an.</p>
         </article>
@@ -552,54 +554,9 @@ async function loadDashboardPolls() {
       return;
     }
 
-    list.innerHTML = data.polls
-      .map(
-        (poll) => `
-          <article class="poll-card">
-            <div class="poll-card-head">
-              <div>
-                <p class="eyebrow">${poll.mode === "fixed" ? "Festgelegte Termine" : "Freie Wahl"}</p>
-                <h3>${escapeHtml(poll.title)}</h3>
-              </div>
-              <span class="pill">${formatDateTime(poll.createdAt)}</span>
-            </div>
-            <p class="description">${escapeHtml(poll.description)}</p>
-            <div class="poll-card-actions">
-              <a class="ghost-link" href="${poll.shareUrl}">Umfrage oeffnen</a>
-              ${
-                poll.userId === state.auth.user.id
-                  ? `<button class="btn-delete" type="button" data-poll-id="${poll.id}">🗑️</button>`
-                  : ""
-              }
-              <button class="text-button copy-link-button" type="button" data-share-url="${poll.shareUrl}">Link kopieren</button>
-            </div>
-          </article>
-        `
-      )
-      .join("");
-
-    document.querySelectorAll(".copy-link-button").forEach((button) => {
-      button.addEventListener("click", async () => {
-        await navigator.clipboard.writeText(`${window.location.origin}${button.dataset.shareUrl}`);
-        const feedback = document.querySelector("#dashboard-feedback");
-        setFeedback(feedback, "Link wurde in die Zwischenablage kopiert.", "success");
-      });
-    });
-
-    document.querySelectorAll(".btn-delete").forEach((button) => {
-      button.addEventListener("click", async (event) => {
-        const pollId = event.currentTarget.dataset.pollId;
-        if (!confirm("Umfrage loeschen?")) {
-          return;
-        }
-
-        try {
-          await apiFetch(`/api/polls/${pollId}`, { method: "DELETE" });
-          await loadDashboardPolls();
-        } catch (_error) {
-          alert("Fehler beim Loeschen");
-        }
-      });
+    list.innerHTML = data.polls.map(renderDashboardPollCard).join("");
+    list.querySelectorAll("[data-dashboard-action]").forEach((button) => {
+      button.addEventListener("click", handleDashboardAction);
     });
   } catch (error) {
     if (error.status === 401) {
@@ -608,6 +565,131 @@ async function loadDashboardPolls() {
     }
 
     list.innerHTML = `<p class="feedback error">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function renderDashboardStats(stats) {
+  const container = document.querySelector("#dashboard-stats");
+  if (!container) {
+    return;
+  }
+
+  const items = [
+    { value: stats?.totalPolls ?? 0, label: "Umfragen gesamt" },
+    { value: stats?.totalResponses ?? 0, label: "Antworten" },
+    { value: stats?.activePolls ?? 0, label: "Mit Aktivitaet" },
+    { value: stats?.inviteEnabledPolls ?? 0, label: "E-Mail aktiv" },
+  ];
+
+  container.innerHTML = items
+    .map(
+      (item) => `
+        <article class="dashboard-stat">
+          <strong>${escapeHtml(String(item.value))}</strong>
+          <span>${escapeHtml(item.label)}</span>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderDashboardPollCard(poll) {
+  const absoluteShareUrl = poll.absoluteShareUrl || `${window.location.origin}${poll.shareUrl}`;
+  const exportDates = getPollExportDates(poll);
+  const latestActivity = poll.latestResponseAt || poll.updatedAt || poll.createdAt;
+  const topDates = poll.bestDates?.length
+    ? poll.bestDates.slice(0, 2).map((entry) => formatDateLong(entry.date)).join(" · ")
+    : "Noch keine Favoriten";
+
+  return `
+    <article class="poll-card">
+      <div class="poll-card-head">
+        <div>
+          <p class="eyebrow">${poll.mode === "fixed" ? "Festgelegte Termine" : "Freie Wahl"}</p>
+          <h3>${escapeHtml(poll.title)}</h3>
+        </div>
+        <span class="pill">${escapeHtml(formatDateTime(latestActivity))}</span>
+      </div>
+      <p class="description">${escapeHtml(poll.description)}</p>
+      <div class="poll-card-meta">
+        <span class="pill">${poll.responseCount} Antworten</span>
+        <span class="pill">${poll.mode === "fixed" ? `${poll.dates.length} Termine` : "Flexible Tage"}</span>
+        <span class="pill">${poll.allowEmailInvites ? "E-Mail aktiv" : "E-Mail aus"}</span>
+      </div>
+      <p class="muted-copy">Top-Auswahl: ${escapeHtml(topDates)}</p>
+      <div class="poll-card-actions">
+        <a class="ghost-link" href="${poll.shareUrl}">Oeffnen</a>
+        <button class="ghost-button compact-button" type="button" data-dashboard-action="copy" data-share-url="${escapeHtml(
+          absoluteShareUrl
+        )}">
+          Link kopieren
+        </button>
+        <button class="ghost-button compact-button" type="button" data-dashboard-action="duplicate" data-poll-id="${poll.id}">
+          Duplizieren
+        </button>
+        <button
+          class="ghost-button compact-button"
+          type="button"
+          data-dashboard-action="ics"
+          data-poll-id="${poll.id}"
+          ${exportDates.length === 0 ? "disabled" : ""}
+        >
+          ICS
+        </button>
+        <button class="ghost-button compact-button" type="button" data-dashboard-action="delete" data-poll-id="${poll.id}">
+          Loeschen
+        </button>
+      </div>
+      <div class="inline-action-row">
+        <small class="muted-copy">${escapeHtml(absoluteShareUrl)}</small>
+        <small class="muted-copy">${poll.allowEmailInvites ? "Einladungen vorbereitet" : "Nur Linkfreigabe"}</small>
+      </div>
+    </article>
+  `;
+}
+
+async function handleDashboardAction(event) {
+  const button = event.currentTarget;
+  const action = button.dataset.dashboardAction;
+  const pollId = button.dataset.pollId;
+  const feedback = document.querySelector("#dashboard-feedback");
+
+  try {
+    if (action === "copy") {
+      await copyTextToClipboard(button.dataset.shareUrl || "");
+      setFeedback(feedback, "Share-Link wurde kopiert.", "success");
+      return;
+    }
+
+    if (action === "duplicate") {
+      setFeedback(feedback, "Umfrage wird dupliziert ...");
+      await apiFetch(`/api/polls/${pollId}/duplicate`, { method: "POST" });
+      await loadDashboardPolls();
+      setFeedback(feedback, "Umfrage dupliziert.", "success");
+      return;
+    }
+
+    if (action === "ics") {
+      const poll = state.dashboardPolls.find((entry) => entry.id === pollId);
+      const exportDate = getPollExportDates(poll)[0] || "";
+      const query = exportDate ? `?date=${encodeURIComponent(exportDate)}` : "";
+      window.open(`/api/polls/${pollId}/ics${query}`, "_blank", "noopener");
+      setFeedback(feedback, "ICS-Export wurde geoeffnet.", "success");
+      return;
+    }
+
+    if (action === "delete") {
+      if (!confirm("Umfrage loeschen?")) {
+        return;
+      }
+
+      setFeedback(feedback, "Umfrage wird geloescht ...");
+      await apiFetch(`/api/polls/${pollId}`, { method: "DELETE" });
+      await loadDashboardPolls();
+      setFeedback(feedback, "Umfrage geloescht.", "success");
+    }
+  } catch (error) {
+    setFeedback(feedback, error.message, "error");
   }
 }
 
@@ -913,6 +995,11 @@ async function handleCreatePoll(event) {
   const title = document.querySelector("#poll-title").value.trim();
   const description = document.querySelector("#poll-description").value.trim();
   const dates = Array.from(state.selectedDates).sort();
+  const inviteMessage = document.querySelector("#poll-invite-message").value.trim();
+  const inviteEmails = document.querySelector("#poll-invite-emails").value.trim();
+  const sendInvites = document.querySelector("#poll-send-invites").checked;
+  const notificationEmailEnabled = document.querySelector("#poll-notify-responses").checked;
+  const allowEmailInvites = document.querySelector("#poll-allow-invite-emails").checked;
 
   if (state.createMode === "fixed" && dates.length === 0) {
     setFeedback(feedback, "Bitte waehle mindestens ein Datum aus.", "error");
@@ -928,9 +1015,21 @@ async function handleCreatePoll(event) {
         description,
         mode: state.createMode,
         dates,
+        inviteMessage,
+        inviteEmails,
+        sendInvites,
+        notificationEmailEnabled,
+        allowEmailInvites,
       }),
     });
 
+    document.querySelector("#create-poll-form").reset();
+    state.selectedDates.clear();
+    state.createMode = "fixed";
+    hydrateCreateModeInputs();
+    renderCalendar();
+    renderSelectedDates();
+    syncCreateModeUi();
     await navigateTo(data.poll.shareUrl);
   } catch (error) {
     if (error.status === 401) {
@@ -962,6 +1061,8 @@ async function renderPollPage(pollId) {
 
     document.querySelector("#response-form").addEventListener("submit", handleResponseSubmit);
     document.querySelector("#share-button").addEventListener("click", sharePollLink);
+    document.querySelector("#calendar-download-button").addEventListener("click", handleCalendarDownload);
+    document.querySelector("#calendar-open-button").addEventListener("click", handleCalendarOpen);
   } catch (error) {
     dynamicViewElement.innerHTML = `<section class="panel"><h1>Nicht gefunden</h1><p>${escapeHtml(
       error.message
@@ -990,6 +1091,7 @@ function initializeDraftFromPoll(poll) {
 function fillPollSummary() {
   const { poll, responses, results } = state.pollData;
   const isFixed = poll.mode === "fixed";
+  const absoluteShareUrl = poll.absoluteShareUrl || window.location.href;
   document.querySelector("#poll-title-view").textContent = poll.title;
   document.querySelector("#poll-description-view").textContent = poll.description;
   document.querySelector("#poll-mode-pill").textContent = isFixed ? "Festgelegte Termine" : "Freie Wahl";
@@ -1006,7 +1108,10 @@ function fillPollSummary() {
   const bestDateMeta = document.querySelector("#best-date-meta");
   const resultsPanelEyebrow = document.querySelector("#results-panel-eyebrow");
   const resultsPanelTitle = document.querySelector("#results-panel-title");
+  const shareAnchor = document.querySelector("#share-link-anchor");
   bestDateMeta.innerHTML = "";
+  shareAnchor.href = absoluteShareUrl;
+  shareAnchor.textContent = "Share-Link oeffnen";
 
   if (!isFixed) {
     bestDateEyebrow.textContent = "Am haeufigsten genannt";
@@ -1016,6 +1121,7 @@ function fillPollSummary() {
     if (results.bestDates.length === 0) {
       bestDateLabel.textContent = "Noch keine Antworten";
       bestDateMeta.innerHTML = '<span class="pill">Noch keine Vorschlaege eingegangen</span>';
+      renderPollOwnerActions();
       return;
     }
 
@@ -1026,6 +1132,7 @@ function fillPollSummary() {
       meta.textContent = `${entry.count} Personen`;
       bestDateMeta.appendChild(meta);
     }
+    renderPollOwnerActions();
     return;
   }
 
@@ -1046,6 +1153,95 @@ function fillPollSummary() {
     meta.textContent = `${entry.yes} Ja · ${entry.maybe} Vielleicht · Score ${entry.score}`;
     bestDateMeta.appendChild(meta);
   }
+
+  renderPollOwnerActions();
+}
+
+function renderPollOwnerActions() {
+  const container = document.querySelector("#poll-owner-actions");
+  if (!container || !state.pollData?.permissions?.canManage) {
+    if (container) {
+      container.classList.add("is-hidden");
+      container.innerHTML = "";
+    }
+    return;
+  }
+
+  const { poll } = state.pollData;
+  const exportDates = getPollExportDates(poll);
+  const defaultDate = exportDates[0] || "";
+  container.classList.remove("is-hidden");
+  container.innerHTML = `
+    <div class="owner-action-grid">
+      <section class="owner-action-card">
+        <p class="eyebrow">Share</p>
+        <h3>Link fuer Teilnehmende</h3>
+        <div class="share-link-row">
+          <div class="share-link-output">${escapeHtml(poll.absoluteShareUrl || window.location.href)}</div>
+          <button id="owner-copy-share-link" class="ghost-button compact-button" type="button">Kopieren</button>
+        </div>
+      </section>
+
+      <section class="owner-action-card">
+        <p class="eyebrow">Kalender</p>
+        <h3>ICS-Export</h3>
+        <div class="export-row">
+          <select id="poll-export-date">
+            ${
+              exportDates.length > 0
+                ? exportDates
+                    .map(
+                      (date) => `
+                        <option value="${date}" ${date === defaultDate ? "selected" : ""}>${escapeHtml(
+                          formatDateLong(date)
+                        )}</option>
+                      `
+                    )
+                    .join("")
+                : '<option value="">Kein Datum verfuegbar</option>'
+            }
+          </select>
+          <button id="owner-export-ics" class="ghost-button compact-button" type="button" ${
+            exportDates.length === 0 ? "disabled" : ""
+          }>Download</button>
+        </div>
+      </section>
+
+      <section class="owner-action-card">
+        <p class="eyebrow">E-Mail-Optionen</p>
+        <h3>Einladungen vorbereiten</h3>
+        <form id="owner-invitation-form" class="stack-form">
+          <label>
+            <span>Empfaenger</span>
+            <textarea id="owner-invite-emails" rows="3" placeholder="team@firma.de, kundin@firma.de"></textarea>
+          </label>
+          <label>
+            <span>Nachricht</span>
+            <textarea id="owner-invite-message" rows="3" maxlength="500" placeholder="Optionaler Einladungstext">${escapeHtml(
+              poll.inviteMessage || ""
+            )}</textarea>
+          </label>
+          <p class="muted-copy">Versand bleibt hier als UI/Log-Vorbereitung enthalten.</p>
+          <div id="owner-invite-feedback" class="feedback" role="status" aria-live="polite"></div>
+          <button class="ghost-button compact-button" type="submit" ${poll.allowEmailInvites ? "" : "disabled"}>
+            Einladung protokollieren
+          </button>
+        </form>
+      </section>
+    </div>
+  `;
+
+  document.querySelector("#owner-copy-share-link").addEventListener("click", async () => {
+    try {
+      await copyTextToClipboard(poll.absoluteShareUrl || window.location.href);
+      setFeedback(document.querySelector("#response-feedback"), "Share-Link wurde kopiert.", "success");
+    } catch (error) {
+      setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+    }
+  });
+
+  document.querySelector("#owner-export-ics")?.addEventListener("click", handleCalendarDownload);
+  document.querySelector("#owner-invitation-form").addEventListener("submit", handleOwnerInvites);
 }
 
 function renderAvailabilityForm() {
@@ -1415,7 +1611,7 @@ async function handleResponseSubmit(event) {
 }
 
 async function sharePollLink() {
-  const shareUrl = window.location.href;
+  const shareUrl = state.pollData?.poll?.absoluteShareUrl || window.location.href;
   if (navigator.share) {
     try {
       await navigator.share({
@@ -1431,9 +1627,95 @@ async function sharePollLink() {
     }
   }
 
-  await navigator.clipboard.writeText(shareUrl);
+  await copyTextToClipboard(shareUrl);
   const feedback = document.querySelector("#response-feedback");
   setFeedback(feedback, "Link wurde in die Zwischenablage kopiert.", "success");
+}
+
+async function handleCalendarDownload() {
+  const poll = state.pollData?.poll;
+  if (!poll) {
+    return;
+  }
+
+  const exportDate = getSelectedExportDate();
+  const query = exportDate ? `?date=${encodeURIComponent(exportDate)}` : "";
+  window.open(`/api/polls/${poll.id}/ics${query}`, "_blank", "noopener");
+}
+
+async function handleCalendarOpen() {
+  await handleCalendarDownload();
+}
+
+async function handleOwnerInvites(event) {
+  event.preventDefault();
+
+  const poll = state.pollData?.poll;
+  if (!poll) {
+    return;
+  }
+
+  const feedback = document.querySelector("#owner-invite-feedback");
+  const inviteEmails = document.querySelector("#owner-invite-emails").value.trim();
+  const inviteMessage = document.querySelector("#owner-invite-message").value.trim();
+
+  try {
+    setFeedback(feedback, "Einladung wird protokolliert ...");
+    const data = await apiFetch(`/api/polls/${poll.id}/invitations`, {
+      method: "POST",
+      body: JSON.stringify({ inviteEmails, inviteMessage }),
+    });
+    setFeedback(feedback, data.message || "Einladung protokolliert.", "success");
+  } catch (error) {
+    setFeedback(feedback, error.message, "error");
+  }
+}
+
+function getPollExportDates(poll) {
+  if (!poll) {
+    return [];
+  }
+
+  if (poll.mode === "fixed") {
+    return [...poll.dates];
+  }
+
+  if (Array.isArray(poll.bestDates)) {
+    return poll.bestDates.map((entry) => entry.date);
+  }
+
+  return (state.pollData?.results?.bestDates || []).map((entry) => entry.date);
+}
+
+function getSelectedExportDate() {
+  const select = document.querySelector("#poll-export-date");
+  if (select?.value) {
+    return select.value;
+  }
+
+  const poll = state.pollData?.poll;
+  return getPollExportDates(poll)[0] || "";
+}
+
+async function copyTextToClipboard(text) {
+  if (!text) {
+    throw new Error("Kein Share-Link verfuegbar.");
+  }
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.setAttribute("readonly", "readonly");
+  field.style.position = "absolute";
+  field.style.left = "-9999px";
+  document.body.appendChild(field);
+  field.select();
+  document.execCommand("copy");
+  field.remove();
 }
 
 function setFeedback(element, message, type = "") {
