@@ -708,34 +708,36 @@
           <div id="poll-summary-empty" class="empty-state poll-summary-empty is-hidden"></div>
         </article>
 
-        <article class="panel poll-response-panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Antwort</p>
-              <h2 id="participant-form-title">Deine Verfuegbarkeit</h2>
+        <article class="poll-response-panel">
+          <div class="panel poll-response-card">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Antwort</p>
+                <h2 id="participant-form-title">Deine Verfuegbarkeit</h2>
+              </div>
+              <button id="poll-share-button" class="ghost-button compact-button" type="button">
+                <i class="fa-solid fa-share-nodes"></i>
+                Teilen
+              </button>
             </div>
-            <button id="poll-share-button" class="ghost-button compact-button" type="button">
-              <i class="fa-solid fa-share-nodes"></i>
-              Teilen
-            </button>
+
+            <form id="response-form" class="stack-form">
+              <div id="participant-identity"></div>
+              <div id="availability-grid" class="availability-grid"></div>
+              <div id="availability-legend" class="legend">
+                <span class="legend-item yes">Ja</span>
+                <span class="legend-item maybe">Vielleicht</span>
+                <span class="legend-item no">Nein</span>
+              </div>
+
+              <div id="response-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+              <button id="submit-response-button" class="primary-button" type="submit">
+                <i class="fa-regular fa-paper-plane"></i>
+                Antwort speichern
+              </button>
+            </form>
           </div>
-
-          <form id="response-form" class="stack-form">
-            <div id="participant-identity"></div>
-            <div id="availability-grid" class="availability-grid"></div>
-            <div id="availability-legend" class="legend">
-              <span class="legend-item yes">Ja</span>
-              <span class="legend-item maybe">Vielleicht</span>
-              <span class="legend-item no">Nein</span>
-            </div>
-
-            <div id="response-feedback" class="feedback" role="status" aria-live="polite"></div>
-
-            <button id="submit-response-button" class="primary-button" type="submit">
-              <i class="fa-regular fa-paper-plane"></i>
-              Antwort speichern
-            </button>
-          </form>
         </article>
 
         <article class="panel poll-ranking-panel">
