@@ -717,6 +717,8 @@ select:focus {
   color: var(--muted);
   background: var(--surface-muted);
   border-color: var(--border);
+  display: inline-flex;
+  align-items: center;
   font-weight: 600;
   width: 1.75rem;
   justify-content: center;
@@ -747,8 +749,8 @@ select:focus {
   align-items: center;
   justify-content: center;
   min-width: auto;
-  min-height: 2rem;
-  padding: 0.3rem 0.75rem;
+  min-height: 1.55rem;
+  padding: 0.18rem 0.75rem;
   border-radius: 999px;
   box-shadow: none;
   font-size: 0.82rem;
