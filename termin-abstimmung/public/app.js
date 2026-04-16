@@ -1109,9 +1109,12 @@ function fillPollSummary() {
   const resultsPanelEyebrow = document.querySelector("#results-panel-eyebrow");
   const resultsPanelTitle = document.querySelector("#results-panel-title");
   const shareAnchor = document.querySelector("#share-link-anchor");
+  const exportDates = getPollExportDates(poll);
   bestDateMeta.innerHTML = "";
   shareAnchor.href = absoluteShareUrl;
   shareAnchor.textContent = "Share-Link oeffnen";
+  document.querySelector("#calendar-download-button").disabled = exportDates.length === 0;
+  document.querySelector("#calendar-open-button").disabled = exportDates.length === 0;
 
   if (!isFixed) {
     bestDateEyebrow.textContent = "Am haeufigsten genannt";
@@ -1639,6 +1642,10 @@ async function handleCalendarDownload() {
   }
 
   const exportDate = getSelectedExportDate();
+  if (!exportDate) {
+    setFeedback(document.querySelector("#response-feedback"), "Noch kein exportierbarer Termin verfuegbar.", "error");
+    return;
+  }
   const query = exportDate ? `?date=${encodeURIComponent(exportDate)}` : "";
   window.open(`/api/polls/${poll.id}/ics${query}`, "_blank", "noopener");
 }
