@@ -743,9 +743,6 @@ async function loadDashboardPolls() {
         }
       });
     });
-    list.querySelectorAll("[data-dashboard-action]").forEach((button) => {
-      button.addEventListener("click", handleDashboardAction);
-    });
   } catch (error) {
     if (error.status === 401) {
       await navigateTo("/login", { replace: true });
@@ -769,63 +766,64 @@ function handleDashboardRowOpen(event, href) {
 }
 
 function renderDashboardPollCard(poll) {
-  const absoluteShareUrl = poll.absoluteShareUrl || `${window.location.origin}${poll.shareUrl}`;
   const lastUpdated = poll.latestResponseAt || poll.updatedAt || poll.createdAt;
-  const status = poll.responseCount > 0 ? "Aktiv" : "Neu";
+  const lastUpdatedDate = typeof lastUpdated === "string" ? lastUpdated.slice(0, 10) : "";
+  const status = getDashboardPollStatus(poll);
+  const type = getDashboardPollTypeMeta(poll.mode);
 
   return `
     <article class="poll-list-row" data-poll-link="${poll.shareUrl}" tabindex="0">
-      <div>
-        <h3>${escapeHtml(poll.title)}</h3>
-        <p class="description">${escapeHtml(formatDateShort(lastUpdated.slice(0, 10)))} · ${escapeHtml(
-          poll.mode === "fixed" ? "Feste Termine" : "Freie Wahl"
-        )}</p>
+      <div class="poll-list-main">
+        <h3 class="poll-list-title">${escapeHtml(poll.title)}</h3>
+      </div>
+      <div class="poll-list-date" aria-label="Zuletzt aktualisiert">
+        ${escapeHtml(lastUpdatedDate ? formatDateShort(lastUpdatedDate) : "-")}
       </div>
       <div class="poll-list-meta">
-        <span class="pill">${escapeHtml(status)}</span>
-        <span class="pill">${poll.responseCount} Antworten</span>
+        <span class="dashboard-status-badge dashboard-status-${status.tone}">${escapeHtml(status.label)}</span>
       </div>
-      <div class="poll-card-actions">
-        <a class="ghost-link" href="${poll.shareUrl}">Oeffnen</a>
-        <button class="ghost-button wide-button" type="button" data-dashboard-action="copy" data-share-url="${escapeHtml(
-          absoluteShareUrl
-        )}">
-          Link kopieren
-        </button>
-        <button class="ghost-button wide-button" type="button" data-dashboard-action="delete" data-poll-id="${poll.id}">
-          Loeschen
-        </button>
+      <div class="poll-list-type" aria-label="Umfragetyp">
+        <span class="poll-type-pill">
+          <i class="${escapeHtml(type.icon)}" aria-hidden="true"></i>
+          <span>${escapeHtml(type.label)}</span>
+        </span>
+      </div>
+      <div class="poll-card-actions poll-list-actions">
+        <a class="primary-link poll-open-link" href="${poll.shareUrl}">Oeffnen</a>
       </div>
     </article>
   `;
 }
 
-async function handleDashboardAction(event) {
-  const button = event.currentTarget;
-  const action = button.dataset.dashboardAction;
-  const pollId = button.dataset.pollId;
-  const feedback = document.querySelector("#dashboard-feedback");
+function getDashboardPollStatus(poll) {
+  const rawStatus = String(poll.status || "").toLowerCase();
+  const endsAt = poll.endsAt ? new Date(poll.endsAt) : null;
+  const isEnded = Boolean(
+    poll.isClosed ||
+      poll.closedAt ||
+      rawStatus === "closed" ||
+      rawStatus === "ended" ||
+      rawStatus === "finished" ||
+      (endsAt instanceof Date && !Number.isNaN(endsAt.getTime()) && endsAt.getTime() < Date.now())
+  );
 
-  try {
-    if (action === "copy") {
-      await copyTextToClipboard(button.dataset.shareUrl || "");
-      setFeedback(feedback, "Share-Link wurde kopiert.", "success");
-      return;
-    }
-
-    if (action === "delete") {
-      if (!confirm("Umfrage loeschen?")) {
-        return;
-      }
-
-      setFeedback(feedback, "Umfrage wird geloescht ...");
-      await apiFetch(`/api/polls/${pollId}`, { method: "DELETE" });
-      await loadDashboardPolls();
-      setFeedback(feedback, "Umfrage geloescht.", "success");
-    }
-  } catch (error) {
-    setFeedback(feedback, error.message, "error");
+  if (isEnded) {
+    return { label: "Beendet", tone: "ended" };
   }
+
+  if (poll.isDraft || rawStatus === "draft" || Number(poll.responseCount || 0) === 0) {
+    return { label: "Entwurf", tone: "draft" };
+  }
+
+  return { label: "Aktiv", tone: "active" };
+}
+
+function getDashboardPollTypeMeta(mode) {
+  if (mode === "fixed") {
+    return { label: "Feste Termine", icon: "fa-regular fa-calendar" };
+  }
+
+  return { label: "Freie Wahl", icon: "fa-regular fa-pen-to-square" };
 }
 
 async function handleRegister(event) {
