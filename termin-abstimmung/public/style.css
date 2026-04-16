@@ -597,6 +597,7 @@ select:focus {
 
 .poll-shell {
   grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
 }
 
 .poll-summary-panel {
@@ -606,8 +607,23 @@ select:focus {
 .poll-response-panel {
   grid-column: span 4;
   position: sticky;
-  top: 5.9rem;
+  top: 1rem;
   align-self: start;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2rem);
+  overflow: hidden;
+}
+
+.poll-response-panel .panel-header {
+  flex: 0 0 auto;
+}
+
+.poll-response-panel #response-form {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+  scrollbar-gutter: stable;
 }
 
 .poll-ranking-panel,
@@ -1317,6 +1333,8 @@ select:focus {
 
   .poll-response-panel {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
 
   .poll-list-row {
