@@ -1178,7 +1178,9 @@ function fillPollSummary() {
   document.querySelector("#poll-description-view").textContent = poll.description || "";
   document.querySelector("#poll-description-view").classList.toggle("is-hidden", !poll.description);
   favoriteSummary.textContent =
-    responses.length > 0 && favorite ? `Favorit: ${formatDateShort(favorite.date)} mit ${favorite.votes} Stimmen` : "";
+    responses.length > 0 && favorite
+      ? `🏆 Favorit: ${formatDateShort(favorite.date)} mit ${formatVoteCountLabel(favorite.votes)}`
+      : "";
   favoriteSummary.classList.toggle("is-hidden", !(responses.length > 0 && favorite));
   document.querySelector("#participant-form-title").textContent = hasEditableResponse()
     ? "Verfuegbarkeit anpassen"
@@ -1228,6 +1230,10 @@ function fillPollSummary() {
 
 function formatResponseCountLabel(count) {
   return count === 1 ? "1 Antwort" : `${count} Antworten`;
+}
+
+function formatVoteCountLabel(count) {
+  return count === 1 ? "1 Stimme" : `${count} Stimmen`;
 }
 
 function renderPollOwnerActions() {
@@ -1602,17 +1608,15 @@ function renderResultsTable() {
       <tr>
         <th class="name-column">Name</th>
         ${matrixDates
-          .map((entry) => {
-            const percentage = responses.length > 0 ? Math.round((entry.count / responses.length) * 100) : 0;
-            return `
+          .map(
+            (entry) => `
               <th>
                 <div class="results-matrix-header">
                   <strong>${escapeHtml(formatDateShort(entry.date))}</strong>
-                  <span class="results-matrix-subline">${entry.count} Stimmen · ${percentage}%</span>
                 </div>
               </th>
-            `;
-          })
+            `
+          )
           .join("")}
       </tr>
     `;
@@ -1660,6 +1664,31 @@ function renderResultsTable() {
         `;
       })
       .join("");
+
+    foot.innerHTML = `
+      <tr>
+        <td class="name-column score-footer" style="position: sticky; bottom: 0; z-index: 3;">Stimmen</td>
+        ${matrixDates
+          .map((entry, index) => {
+            const percentage = responses.length > 0 ? Math.round((entry.count / responses.length) * 100) : 0;
+            const isWinner = index === 0;
+            return `
+              <td
+                class="score-footer ${isWinner ? "winner-column" : ""}"
+                style="position: sticky; bottom: 0; z-index: 3; ${
+                  isWinner
+                    ? "background: rgba(16, 185, 129, 0.15); box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.35);"
+                    : ""
+                }"
+              >
+                <strong>${escapeHtml(formatVoteCountLabel(entry.count))}</strong>
+                <div class="results-matrix-subline">${percentage}%</div>
+              </td>
+            `;
+          })
+          .join("")}
+      </tr>
+    `;
 
     bindMatrixEditButtons();
     return;
@@ -1714,6 +1743,28 @@ function renderResultsTable() {
             </td>
           `
         )
+        .join("")}
+    </tr>
+    <tr>
+      <td class="name-column score-footer" style="position: sticky; bottom: 0; z-index: 3;">Stimmen</td>
+      ${dateStats.entries
+        .map((entry) => {
+          const percentage = responses.length > 0 ? Math.round((entry.yes / responses.length) * 100) : 0;
+          const isWinner = entry.date === dateStats.winnerDate;
+          return `
+            <td
+              class="score-footer ${isWinner ? "winner-column" : ""}"
+              style="position: sticky; bottom: 0; z-index: 3; ${
+                isWinner
+                  ? "background: rgba(16, 185, 129, 0.15); box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.35);"
+                  : ""
+              }"
+            >
+              <strong>${escapeHtml(formatVoteCountLabel(entry.yes))}</strong>
+              <div class="results-matrix-subline">${percentage}%</div>
+            </td>
+          `;
+        })
         .join("")}
     </tr>
   `;
