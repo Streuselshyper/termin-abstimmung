@@ -16,6 +16,7 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
 const VALID_POLL_MODES = new Set(["fixed", "free"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
+const VETO_SCORE_MAP = { yes: 3, maybe: 2, no: 0 };
 const rateLimitBuckets = new Map();
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -75,6 +76,18 @@ db.exec(`
     UNIQUE(poll_id, name COLLATE NOCASE),
     FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS poll_participants (
+    poll_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    can_vote INTEGER NOT NULL DEFAULT 1,
+    has_veto INTEGER NOT NULL DEFAULT 0,
+    is_blocked INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (poll_id, user_id),
+    FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
 `);
 
 ensureColumn("users", "name", "TEXT NOT NULL DEFAULT ''");
@@ -94,6 +107,10 @@ ensureColumn("polls", "last_response_at", "TEXT");
 ensureColumn("responses", "suggested_dates", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("responses", "free_text_availabilities", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("responses", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
+ensureColumn("poll_participants", "can_vote", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("poll_participants", "has_veto", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("poll_participants", "is_blocked", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("poll_participants", "created_at", "TEXT NOT NULL DEFAULT ''");
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
@@ -102,6 +119,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_polls_user_created ON polls(user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_polls_last_response_at ON polls(last_response_at DESC);
   CREATE INDEX IF NOT EXISTS idx_responses_poll_updated ON responses(poll_id, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_poll_participants_poll_id ON poll_participants(poll_id);
+  CREATE INDEX IF NOT EXISTS idx_poll_participants_user_id ON poll_participants(user_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_responses_poll_user_id
     ON responses(poll_id, user_id) WHERE user_id IS NOT NULL;
 `);
@@ -191,6 +210,11 @@ function parseJsonArray(value) {
   } catch (_error) {
     return [];
   }
+}
+
+function getScoreForStatus(status, hasVeto = false) {
+  const scoreMap = hasVeto ? VETO_SCORE_MAP : SCORE_MAP;
+  return scoreMap[status] ?? 0;
 }
 
 function normalizeDates(dates) {
@@ -386,6 +410,9 @@ function mapResponseRow(row) {
     name: displayName,
     availabilities: JSON.parse(row.availabilities),
     suggestedDates: suggestedDates.length > 0 ? suggestedDates : legacySuggestedDates,
+    hasVeto: Boolean(row.has_veto),
+    canVote: row.can_vote === null || row.can_vote === undefined ? true : Boolean(row.can_vote),
+    isBlocked: Boolean(row.is_blocked),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -407,7 +434,7 @@ function calculateBestDates(dates, responses) {
       } else {
         no += 1;
       }
-      score += SCORE_MAP[status];
+      score += getScoreForStatus(status, Boolean(response.hasVeto));
     }
 
     return { date, yes, maybe, no, score, participants: responses.length };
@@ -428,6 +455,106 @@ function calculateBestDates(dates, responses) {
     summary,
     bestDates: sorted.filter((entry) => entry.score === bestScore && sorted.length > 0),
   };
+}
+
+function getDefaultParticipantRights() {
+  return {
+    canVote: true,
+    hasVeto: false,
+    isBlocked: false,
+  };
+}
+
+function mapParticipantRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    pollId: row.poll_id,
+    userId: row.user_id,
+    name: normalizeText(row.user_name || row.user_email || "", 320) || "Unbekannt",
+    email: row.user_email || "",
+    canVote: Boolean(row.can_vote),
+    hasVeto: Boolean(row.has_veto),
+    isBlocked: Boolean(row.is_blocked),
+    createdAt: row.created_at,
+    responseId: row.response_id ?? null,
+    responseUpdatedAt: row.response_updated_at || null,
+  };
+}
+
+function ensurePollParticipant(pollId, userId) {
+  if (!pollId || !userId) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT OR IGNORE INTO poll_participants (poll_id, user_id, can_vote, has_veto, is_blocked, created_at)
+    VALUES (?, ?, 1, 0, 0, ?)
+  `).run(pollId, userId, now);
+
+  return db
+    .prepare("SELECT * FROM poll_participants WHERE poll_id = ? AND user_id = ?")
+    .get(pollId, userId);
+}
+
+function syncPollParticipantsFromResponses(pollId) {
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT OR IGNORE INTO poll_participants (poll_id, user_id, can_vote, has_veto, is_blocked, created_at)
+    SELECT responses.poll_id, responses.user_id, 1, 0, 0, ?
+    FROM responses
+    WHERE responses.poll_id = ?
+      AND responses.user_id IS NOT NULL
+  `).run(now, pollId);
+}
+
+function getPollParticipantRights(pollId, userId) {
+  if (!userId) {
+    return getDefaultParticipantRights();
+  }
+
+  const row = db
+    .prepare("SELECT * FROM poll_participants WHERE poll_id = ? AND user_id = ?")
+    .get(pollId, userId);
+  if (!row) {
+    return getDefaultParticipantRights();
+  }
+
+  return {
+    canVote: Boolean(row.can_vote),
+    hasVeto: Boolean(row.has_veto),
+    isBlocked: Boolean(row.is_blocked),
+  };
+}
+
+function listPollParticipants(pollId) {
+  syncPollParticipantsFromResponses(pollId);
+
+  const rows = db.prepare(`
+    SELECT
+      poll_participants.*,
+      users.email AS user_email,
+      users.name AS user_name,
+      responses.id AS response_id,
+      responses.updated_at AS response_updated_at
+    FROM poll_participants
+    JOIN users ON users.id = poll_participants.user_id
+    LEFT JOIN responses
+      ON responses.poll_id = poll_participants.poll_id
+      AND responses.user_id = poll_participants.user_id
+    WHERE poll_participants.poll_id = ?
+    ORDER BY LOWER(COALESCE(NULLIF(users.name, ''), users.email)) ASC
+  `).all(pollId);
+
+  return rows.map(mapParticipantRow);
+}
+
+function cleanupGuestResponses() {
+  const result = db.prepare("DELETE FROM responses WHERE user_id IS NULL").run();
+  return result.changes || 0;
 }
 
 function calculateSuggestedDatesRanking(responses) {
@@ -462,14 +589,22 @@ function loadPollWithResponses(pollId, currentUser = null, req = null) {
     return null;
   }
 
+  syncPollParticipantsFromResponses(pollId);
+
   const responseRows = db
     .prepare(`
       SELECT
         responses.*,
         users.email AS user_email,
-        users.name AS user_name
+        users.name AS user_name,
+        poll_participants.has_veto AS has_veto,
+        poll_participants.can_vote AS can_vote,
+        poll_participants.is_blocked AS is_blocked
       FROM responses
       LEFT JOIN users ON users.id = responses.user_id
+      LEFT JOIN poll_participants
+        ON poll_participants.poll_id = responses.poll_id
+        AND poll_participants.user_id = responses.user_id
       WHERE responses.poll_id = ?
       ORDER BY responses.updated_at DESC, responses.id DESC
     `)
@@ -485,6 +620,10 @@ function loadPollWithResponses(pollId, currentUser = null, req = null) {
     ? db.prepare("SELECT id, email, name FROM users WHERE id = ?").get(poll.userId)
     : null;
 
+  const participantRights = currentUser
+    ? getPollParticipantRights(poll.id, currentUser.id)
+    : getDefaultParticipantRights();
+
   return {
     poll,
     owner: owner
@@ -492,7 +631,9 @@ function loadPollWithResponses(pollId, currentUser = null, req = null) {
       : null,
     permissions: {
       canManage: Boolean(currentUser && poll.userId && currentUser.id === poll.userId),
+      canRespond: Boolean(currentUser) && participantRights.canVote && !participantRights.isBlocked,
     },
+    participant: participantRights,
     responses,
     results,
     user: currentUser
@@ -1238,6 +1379,20 @@ app.get("/api/user/polls", requireAuth, (req, res) => {
   }
 });
 
+app.post("/api/admin/cleanup-guest-responses", requireCsrf, requireAuth, (_req, res) => {
+  try {
+    const deletedCount = cleanupGuestResponses();
+    res.json({
+      success: true,
+      deletedCount,
+      message: `${deletedCount} Gast-Antworten wurden geloescht.`,
+    });
+  } catch (error) {
+    console.error("Fehler beim Bereinigen der Gast-Antworten:", error);
+    res.status(500).json({ error: "Die Gast-Antworten konnten nicht geloescht werden." });
+  }
+});
+
 app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "poll-create", limit: 12 }), (req, res) => {
   try {
     const validation = validatePollInput(req.body);
@@ -1411,6 +1566,78 @@ app.post("/api/polls/:pollId/invitations", requireCsrf, requireAuth, (req, res) 
   }
 });
 
+app.get("/api/polls/:pollId/participants", requireAuth, (req, res) => {
+  try {
+    const poll = getPollOwnerOrThrow(req.params.pollId, req.currentUser.id);
+    if (poll === null) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+    if (poll === false) {
+      return res.status(403).json({ error: "Nicht erlaubt." });
+    }
+
+    res.json({ participants: listPollParticipants(req.params.pollId) });
+  } catch (error) {
+    console.error("Fehler beim Laden der Teilnehmer:", error);
+    res.status(500).json({ error: "Die Teilnehmer konnten nicht geladen werden." });
+  }
+});
+
+app.put("/api/polls/:pollId/participants/:userId", requireCsrf, requireAuth, (req, res) => {
+  try {
+    const poll = getPollOwnerOrThrow(req.params.pollId, req.currentUser.id);
+    if (poll === null) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+    if (poll === false) {
+      return res.status(403).json({ error: "Nicht erlaubt." });
+    }
+
+    const targetUserId = Number(req.params.userId);
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ error: "Ungueltiger Benutzer." });
+    }
+
+    const user = db.prepare("SELECT id FROM users WHERE id = ?").get(targetUserId);
+    if (!user) {
+      return res.status(404).json({ error: "Benutzer nicht gefunden." });
+    }
+
+    ensurePollParticipant(req.params.pollId, targetUserId);
+    const canVote = normalizeBoolean(req.body?.canVote, true);
+    const hasVeto = normalizeBoolean(req.body?.hasVeto, false);
+    const isBlocked = normalizeBoolean(req.body?.isBlocked, false);
+
+    db.prepare(`
+      UPDATE poll_participants
+      SET can_vote = ?, has_veto = ?, is_blocked = ?
+      WHERE poll_id = ? AND user_id = ?
+    `).run(canVote ? 1 : 0, hasVeto ? 1 : 0, isBlocked ? 1 : 0, req.params.pollId, targetUserId);
+
+    res.json({
+      participant: mapParticipantRow(
+        db.prepare(`
+          SELECT
+            poll_participants.*,
+            users.email AS user_email,
+            users.name AS user_name,
+            responses.id AS response_id,
+            responses.updated_at AS response_updated_at
+          FROM poll_participants
+          JOIN users ON users.id = poll_participants.user_id
+          LEFT JOIN responses
+            ON responses.poll_id = poll_participants.poll_id
+            AND responses.user_id = poll_participants.user_id
+          WHERE poll_participants.poll_id = ? AND poll_participants.user_id = ?
+        `).get(req.params.pollId, targetUserId)
+      ),
+    });
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren der Teilnehmerrechte:", error);
+    res.status(500).json({ error: "Die Teilnehmerrechte konnten nicht gespeichert werden." });
+  }
+});
+
 app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefix: "responses", limit: 30 }), (req, res) => {
   try {
     if (!req.session?.userId || !req.currentUser) {
@@ -1420,6 +1647,14 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
     const data = loadPollWithResponses(req.params.pollId, req.currentUser, req);
     if (!data) {
       return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+
+    const participantRights = getPollParticipantRights(data.poll.id, req.session.userId);
+    if (participantRights.isBlocked) {
+      return res.status(403).json({ error: "Du wurdest fuer diese Umfrage gesperrt." });
+    }
+    if (!participantRights.canVote) {
+      return res.status(403).json({ error: "Du darfst in dieser Umfrage aktuell nicht abstimmen." });
     }
 
     let availabilities = {};
@@ -1466,6 +1701,7 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
       `).run(data.poll.id, req.session.userId, responseName, serializedAvailabilities, serializedSuggestedDates, timestamp, timestamp);
     }
 
+    ensurePollParticipant(data.poll.id, req.session.userId);
     db.prepare("UPDATE polls SET last_response_at = ?, updated_at = ? WHERE id = ?").run(timestamp, timestamp, data.poll.id);
     sendOwnerResponseNotification(req, data.poll.id, responseName, isUpdate);
 
@@ -1473,6 +1709,33 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
   } catch (error) {
     console.error("Fehler beim Speichern der Antwort:", error);
     res.status(500).json({ error: "Die Antwort konnte nicht gespeichert werden." });
+  }
+});
+
+app.delete("/api/polls/:pollId/responses/:responseId", requireCsrf, requireAuth, (req, res) => {
+  try {
+    const poll = getPollOwnerOrThrow(req.params.pollId, req.currentUser.id);
+    if (poll === null) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+    if (poll === false) {
+      return res.status(403).json({ error: "Nicht erlaubt." });
+    }
+
+    const responseId = Number(req.params.responseId);
+    if (!Number.isInteger(responseId) || responseId <= 0) {
+      return res.status(400).json({ error: "Ungueltige Antwort." });
+    }
+
+    const deleted = db.prepare("DELETE FROM responses WHERE id = ? AND poll_id = ?").run(responseId, req.params.pollId);
+    if (!deleted.changes) {
+      return res.status(404).json({ error: "Antwort nicht gefunden." });
+    }
+
+    res.json(loadPollWithResponses(req.params.pollId, req.currentUser, req));
+  } catch (error) {
+    console.error("Fehler beim Loeschen der Antwort:", error);
+    res.status(500).json({ error: "Die Antwort konnte nicht geloescht werden." });
   }
 });
 
@@ -1540,6 +1803,8 @@ app.use((error, _req, res, _next) => {
 
 function startServer(port = PORT, host = HOST) {
   return app.listen(port, host, () => {
+    const deletedCount = cleanupGuestResponses();
+    console.log(`Cleanup: ${deletedCount} Gast-Antworten geloescht`);
     console.log(`Termin-Abstimmung laeuft auf http://${host}:${port}`);
   });
 }

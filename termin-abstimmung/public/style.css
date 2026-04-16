@@ -724,6 +724,7 @@ body.poll-drawer-open {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .poll-settings-shell {
@@ -762,16 +763,20 @@ body.poll-drawer-open {
 .owner-action-stack {
   display: grid;
   gap: 0.6rem;
+  min-width: 0;
 }
 
 .settings-action {
   width: 100%;
-  padding: 0.8rem 0.9rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.8rem 1rem;
   border-radius: 0.9rem;
   border: 1px solid var(--border);
   background: var(--surface-muted);
   color: var(--text);
   text-align: left;
+  overflow: hidden;
 }
 
 .settings-action-title {
@@ -781,6 +786,7 @@ body.poll-drawer-open {
 .settings-action-copy {
   flex-direction: column;
   gap: 0.2rem;
+  min-width: 0;
 }
 
 .settings-action-copy small,
@@ -789,6 +795,10 @@ body.poll-drawer-open {
 .poll-summary-empty .description,
 .empty-state-copy .description {
   color: var(--muted);
+}
+
+.settings-action-copy small {
+  overflow-wrap: anywhere;
 }
 
 .settings-action select {

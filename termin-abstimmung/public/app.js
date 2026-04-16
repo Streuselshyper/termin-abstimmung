@@ -27,6 +27,9 @@ const state = {
   responseDraft: {},
   pollDrawerOpen: false,
   createMode: "fixed",
+  adminParticipants: [],
+  adminParticipantsVisible: false,
+  adminParticipantsLoadedForPollId: "",
 };
 
 initializeRouting();
@@ -1038,6 +1041,9 @@ async function renderPollPage(pollId) {
     const data = await apiFetch(`/api/polls/${pollId}`);
     state.pollData = data;
     state.pollDrawerOpen = false;
+    state.adminParticipants = [];
+    state.adminParticipantsVisible = false;
+    state.adminParticipantsLoadedForPollId = "";
     dynamicViewElement.innerHTML = "";
     dynamicViewElement.appendChild(template.content.cloneNode(true));
 
@@ -1100,11 +1106,28 @@ function isCompactPollLayout() {
 
 function updatePollResponseCta() {
   const label = document.querySelector("#poll-open-response-label");
+  const currentParticipant = getCurrentParticipantState();
   if (!label) {
     return;
   }
 
+  if (currentParticipant.isBlocked) {
+    label.textContent = "Gesperrt";
+    return;
+  }
+  if (!currentParticipant.canVote) {
+    label.textContent = "Derzeit deaktiviert";
+    return;
+  }
   label.textContent = hasEditableResponse() ? "Verfuegbarkeit aendern" : "Jetzt abstimmen";
+}
+
+function getCurrentParticipantState() {
+  return {
+    canVote: state.pollData?.participant?.canVote !== false,
+    hasVeto: Boolean(state.pollData?.participant?.hasVeto),
+    isBlocked: Boolean(state.pollData?.participant?.isBlocked),
+  };
 }
 
 function syncPollResponsePanelState() {
@@ -1196,6 +1219,11 @@ function fillPollSummary() {
       : "",
   ].filter(Boolean).join("");
 
+  const currentParticipant = getCurrentParticipantState();
+  if (currentParticipant.hasVeto) {
+    meta.innerHTML += `<span class="pill"><i class="fa-solid fa-crown"></i> Veto-Recht</span>`;
+  }
+
   summaryEmpty.classList.add("is-hidden");
   summaryEmpty.innerHTML = "";
   renderPollOwnerActions();
@@ -1275,6 +1303,19 @@ function renderPollOwnerActions() {
         <i class="fa-regular fa-clone"></i>
       </button>
 
+      <div class="settings-action settings-action-participants">
+        <button id="owner-toggle-participants" class="settings-action-toggle" type="button" aria-expanded="${
+          state.adminParticipantsVisible ? "true" : "false"
+        }">
+          <span class="settings-action-copy">
+            <span class="settings-action-title">Teilnehmer verwalten</span>
+            <small>Veto, Sperren und Antworten einzelner Personen steuern.</small>
+          </span>
+          <i class="fa-solid fa-users-gear"></i>
+        </button>
+        <div id="participants-admin-panel" class="participants-admin-panel${state.adminParticipantsVisible ? "" : " is-hidden"}"></div>
+      </div>
+
       <div class="settings-action">
         <span class="settings-action-copy">
           <span class="settings-action-title">ICS exportieren</span>
@@ -1335,6 +1376,12 @@ function renderPollOwnerActions() {
     }
   });
 
+  document.querySelector("#owner-toggle-participants").addEventListener("click", () => {
+    toggleParticipantsAdminPanel().catch((error) => {
+      setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+    });
+  });
+
   document.querySelector("#owner-export-ics")?.addEventListener("click", handleCalendarDownload);
 
   document.querySelector("#owner-delete-poll").addEventListener("click", async () => {
@@ -1350,6 +1397,8 @@ function renderPollOwnerActions() {
       setFeedback(document.querySelector("#response-feedback"), error.message, "error");
     }
   });
+
+  renderParticipantsAdminPanel();
 }
 
 
@@ -1359,8 +1408,9 @@ function renderAvailabilityForm() {
   const panel = document.querySelector("#poll-response-panel");
   const cta = document.querySelector("#poll-open-response");
   const form = document.querySelector("#response-form");
+  const submitButton = document.querySelector("#submit-response-button");
 
-  if (!grid || !legend || !panel || !cta || !form) {
+  if (!grid || !legend || !panel || !cta || !form || !submitButton) {
     return;
   }
 
@@ -1379,6 +1429,25 @@ function renderAvailabilityForm() {
   updatePollResponseCta();
   syncPollResponsePanelState();
   grid.innerHTML = "";
+
+  const participant = getCurrentParticipantState();
+  const canRespond = participant.canVote && !participant.isBlocked;
+  cta.disabled = !canRespond;
+  cta.classList.toggle("is-disabled", !canRespond);
+  submitButton.disabled = !canRespond;
+  submitButton.classList.toggle("is-disabled", !canRespond);
+
+  if (!canRespond) {
+    legend.classList.add("is-hidden");
+    grid.innerHTML = renderEmptyStateMarkup(
+      participant.isBlocked ? "fa-solid fa-user-lock" : "fa-solid fa-ban",
+      participant.isBlocked ? "Du bist fuer diese Umfrage gesperrt" : "Deine Teilnahme ist aktuell deaktiviert",
+      participant.isBlocked
+        ? "Der Ersteller hat deine Teilnahme an dieser Umfrage blockiert."
+        : "Der Ersteller hat deine Stimmabgabe voruebergehend deaktiviert."
+    );
+    return;
+  }
 
   if (state.pollData.poll.mode === "free") {
     legend.classList.add("is-hidden");
@@ -1424,10 +1493,22 @@ function renderParticipantIdentity() {
     return;
   }
 
+  const participant = getCurrentParticipantState();
+  const badges = [];
+  if (participant.hasVeto) {
+    badges.push('<span class="participant-role-badge"><i class="fa-solid fa-crown"></i> Veto</span>');
+  }
+  if (participant.isBlocked) {
+    badges.push('<span class="participant-role-badge blocked"><i class="fa-solid fa-user-lock"></i> Gesperrt</span>');
+  } else if (!participant.canVote) {
+    badges.push('<span class="participant-role-badge blocked"><i class="fa-solid fa-ban"></i> Deaktiviert</span>');
+  }
+
   container.innerHTML = `
     <div class="selected-dates-box">
       <div class="selected-header">
         <span>Antwort wird mit deinem Account gespeichert</span>
+        <div class="participant-role-badge-row">${badges.join("")}</div>
       </div>
       <p class="description"><strong>${escapeHtml(state.pollData.user.email)}</strong></p>
     </div>
@@ -1765,19 +1846,34 @@ function renderResultsTable() {
 
 function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
   const isOwnRow = Boolean(showEditIcon && editableResponse && response.id === editableResponse.id);
+  const canManage = Boolean(state.pollData?.permissions?.canManage);
+  const roleIcon = response.hasVeto
+    ? '<span class="participant-inline-icon" title="Veto-Recht"><i class="fa-solid fa-crown"></i></span>'
+    : "";
 
   return `
     <div class="matrix-name-cell">
-      <span>${escapeHtml(name)}</span>
-      ${
-        isOwnRow
-          ? `
-            <button class="matrix-edit-button" type="button" data-response-id="${response.id}" aria-label="Eigene Verfuegbarkeit bearbeiten">
-              <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
-            </button>
-          `
-          : ""
-      }
+      <span class="matrix-name-label">${escapeHtml(name)}${roleIcon}</span>
+      <span class="matrix-action-group">
+        ${
+          isOwnRow
+            ? `
+              <button class="matrix-edit-button" type="button" data-response-id="${response.id}" aria-label="Eigene Verfuegbarkeit bearbeiten">
+                <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+              </button>
+            `
+            : ""
+        }
+        ${
+          canManage
+            ? `
+              <button class="matrix-delete-button" type="button" data-response-id="${response.id}" aria-label="Antwort loeschen">
+                <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+              </button>
+            `
+            : ""
+        }
+      </span>
     </div>
   `;
 }
@@ -1786,6 +1882,14 @@ function bindMatrixEditButtons() {
   for (const button of document.querySelectorAll(".matrix-edit-button")) {
     button.addEventListener("click", () => {
       openPollResponseDrawer({ resetDraft: true });
+    });
+  }
+
+  for (const button of document.querySelectorAll(".matrix-delete-button")) {
+    button.addEventListener("click", () => {
+      handleAdminDeleteResponse(button.dataset.responseId).catch((error) => {
+        setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+      });
     });
   }
 }
@@ -1914,10 +2018,10 @@ function getFixedDateStats(dates, responses) {
 
       if (status === "yes") {
         entry.yes += 1;
-        entry.score += 2;
+        entry.score += getScoreForStatus(status, response.hasVeto);
       } else if (status === "maybe") {
         entry.maybe += 1;
-        entry.score += 1;
+        entry.score += getScoreForStatus(status, response.hasVeto);
       } else {
         entry.no += 1;
       }
@@ -1951,6 +2055,203 @@ function getPollFavorite(poll, responses, results) {
 
   const favorite = (results?.summary || [])[0];
   return favorite ? { date: favorite.date, votes: favorite.count, score: favorite.count } : null;
+}
+
+function getScoreForStatus(status, hasVeto = false) {
+  if (hasVeto) {
+    if (status === "yes") {
+      return 3;
+    }
+    if (status === "maybe") {
+      return 2;
+    }
+  }
+
+  if (status === "yes") {
+    return 2;
+  }
+  if (status === "maybe") {
+    return 1;
+  }
+  return 0;
+}
+
+async function toggleParticipantsAdminPanel() {
+  state.adminParticipantsVisible = !state.adminParticipantsVisible;
+  renderPollOwnerActions();
+
+  if (state.adminParticipantsVisible) {
+    await loadPollParticipants();
+  }
+}
+
+async function loadPollParticipants() {
+  const pollId = state.pollData?.poll?.id;
+  if (!pollId) {
+    return;
+  }
+
+  const panel = document.querySelector("#participants-admin-panel");
+  if (panel) {
+    panel.innerHTML = '<p class="description">Teilnehmer werden geladen ...</p>';
+  }
+
+  const data = await apiFetch(`/api/polls/${pollId}/participants`);
+  state.adminParticipants = data.participants || [];
+  state.adminParticipantsLoadedForPollId = pollId;
+  renderParticipantsAdminPanel();
+}
+
+function renderParticipantsAdminPanel() {
+  const panel = document.querySelector("#participants-admin-panel");
+  if (!panel || !state.pollData?.permissions?.canManage) {
+    return;
+  }
+
+  if (!state.adminParticipantsVisible) {
+    panel.classList.add("is-hidden");
+    panel.innerHTML = "";
+    return;
+  }
+
+  panel.classList.remove("is-hidden");
+
+  if (state.adminParticipantsLoadedForPollId !== state.pollData.poll.id) {
+    panel.innerHTML = '<p class="description">Teilnehmerliste wird vorbereitet ...</p>';
+    return;
+  }
+
+  if (state.adminParticipants.length === 0) {
+    panel.innerHTML = '<p class="description">Noch keine registrierten Teilnehmer vorhanden.</p>';
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="participants-admin-feedback description">
+      Rechte wirken sofort. Gesperrte Teilnehmer koennen keine neuen Antworten mehr speichern.
+    </div>
+    <div class="participants-admin-list">
+      ${state.adminParticipants
+        .map(
+          (participant) => `
+            <article class="participants-admin-row" data-user-id="${participant.userId}">
+              <div class="participants-admin-meta">
+                <strong>${escapeHtml(participant.name)}</strong>
+                <span>${escapeHtml(participant.email)}</span>
+              </div>
+              <label class="participants-admin-check">
+                <input type="checkbox" data-field="hasVeto" ${participant.hasVeto ? "checked" : ""} />
+                <span>Veto</span>
+              </label>
+              <label class="participants-admin-check">
+                <input type="checkbox" data-field="canVote" ${participant.canVote ? "checked" : ""} />
+                <span>Darf abstimmen</span>
+              </label>
+              <label class="participants-admin-check">
+                <input type="checkbox" data-field="isBlocked" ${participant.isBlocked ? "checked" : ""} />
+                <span>Gesperrt</span>
+              </label>
+              <button
+                class="ghost-button compact-button participant-delete-response"
+                type="button"
+                data-response-id="${participant.responseId || ""}"
+                ${participant.responseId ? "" : "disabled"}
+              >
+                <i class="fa-regular fa-trash-can"></i>
+                Antwort loeschen
+              </button>
+            </article>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+
+  for (const row of panel.querySelectorAll(".participants-admin-row")) {
+    const userId = row.dataset.userId;
+    row.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        handleParticipantRightsChange(userId, row).catch((error) => {
+          setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+        });
+      });
+    });
+  }
+
+  for (const button of panel.querySelectorAll(".participant-delete-response")) {
+    button.addEventListener("click", () => {
+      handleAdminDeleteResponse(button.dataset.responseId).catch((error) => {
+        setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+      });
+    });
+  }
+}
+
+async function handleParticipantRightsChange(userId, row) {
+  const payload = {
+    hasVeto: row.querySelector('[data-field="hasVeto"]').checked,
+    canVote: row.querySelector('[data-field="canVote"]').checked,
+    isBlocked: row.querySelector('[data-field="isBlocked"]').checked,
+  };
+
+  const data = await apiFetch(`/api/polls/${state.pollData.poll.id}/participants/${encodeURIComponent(userId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+  state.adminParticipants = state.adminParticipants.map((participant) =>
+    String(participant.userId) === String(userId) ? data.participant : participant
+  );
+  state.pollData.responses = (state.pollData.responses || []).map((response) =>
+    String(response.userId) === String(userId)
+      ? {
+          ...response,
+          hasVeto: data.participant.hasVeto,
+          canVote: data.participant.canVote,
+          isBlocked: data.participant.isBlocked,
+        }
+      : response
+  );
+
+  if (state.pollData?.user?.id && String(state.pollData.user.id) === String(userId)) {
+    state.pollData.participant = {
+      canVote: data.participant.canVote,
+      hasVeto: data.participant.hasVeto,
+      isBlocked: data.participant.isBlocked,
+    };
+    fillPollSummary();
+    renderAvailabilityForm();
+  }
+
+  renderParticipantsAdminPanel();
+  renderResultsTable();
+  setFeedback(document.querySelector("#response-feedback"), "Teilnehmerrechte gespeichert.", "success");
+}
+
+async function handleAdminDeleteResponse(responseId) {
+  if (!responseId) {
+    return;
+  }
+  if (!confirm("Diese Antwort wirklich loeschen?")) {
+    return;
+  }
+
+  setFeedback(document.querySelector("#response-feedback"), "Antwort wird geloescht ...");
+  const data = await apiFetch(`/api/polls/${state.pollData.poll.id}/responses/${encodeURIComponent(responseId)}`, {
+    method: "DELETE",
+  });
+
+  state.pollData = data;
+  initializeDraftFromPoll(data.poll);
+  fillPollSummary();
+  renderAvailabilityForm();
+  renderResultsTable();
+
+  if (state.adminParticipantsVisible) {
+    await loadPollParticipants();
+  }
+
+  setFeedback(document.querySelector("#response-feedback"), "Antwort geloescht.", "success");
 }
 
 function renderEmptyStateMarkup(iconClass, title, description) {
