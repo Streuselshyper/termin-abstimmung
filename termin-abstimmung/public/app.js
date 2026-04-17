@@ -1676,6 +1676,7 @@ function renderResultsTable() {
   if (poll.mode === "free") {
     foot.innerHTML = "";
     const matrixDates = getTopMatrixDates(results.summary);
+    const topVoteCount = matrixDates.reduce((bestCount, entry) => Math.max(bestCount, entry.count), 0);
     head.innerHTML = `
       <tr>
         <th class="name-column">Name</th>
@@ -1741,9 +1742,9 @@ function renderResultsTable() {
       <tr>
         <td class="name-column score-footer" style="position: sticky; bottom: 0; z-index: 3;">Stimmen</td>
         ${matrixDates
-          .map((entry, index) => {
+          .map((entry) => {
             const percentage = responses.length > 0 ? Math.round((entry.count / responses.length) * 100) : 0;
-            const isWinner = index === 0;
+            const isWinner = topVoteCount > 0 && entry.count === topVoteCount;
             return `
               <td
                 class="score-footer ${isWinner ? "winner-column" : ""}"
@@ -2002,8 +2003,8 @@ function getSelectedExportDate() {
   return getPollExportDates(poll)[0] || "";
 }
 
-function getTopMatrixDates(summary, limit = 8) {
-  return [...(summary || [])].sort((left, right) => left.date.localeCompare(right.date)).slice(0, limit);
+function getTopMatrixDates(summary) {
+  return [...(summary || [])].sort((left, right) => left.date.localeCompare(right.date));
 }
 
 function getFixedDateStats(dates, responses) {
