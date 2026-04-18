@@ -227,6 +227,13 @@
         align-content: start;
       }
 
+      .dashboard-footer-link {
+        min-height: 2.4rem;
+        padding: 0.5rem 0.8rem;
+        border-radius: 0.85rem;
+        font-size: 0.92rem;
+      }
+
       .poll-favorite-summary {
         margin: 0;
         color: #10b981;
@@ -809,7 +816,7 @@
               <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
               <div id="dashboard-polls" class="poll-list"></div>
               <div class="section-footer-action">
-                <a class="ghost-link" href="/my-polls">
+                <a class="ghost-link dashboard-footer-link" href="/my-polls">
                   <i class="fa-regular fa-rectangle-list"></i>
                   Alle anzeigen
                 </a>
@@ -828,7 +835,7 @@
             <div class="dashboard-section-content">
               <div id="dashboard-participated-polls" class="poll-list"></div>
               <div class="section-footer-action">
-                <a class="ghost-link" href="/participated">
+                <a class="ghost-link dashboard-footer-link" href="/participated">
                   <i class="fa-regular fa-handshake"></i>
                   Alle anzeigen
                 </a>

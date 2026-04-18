@@ -984,7 +984,7 @@ function renderDashboardPollCard(poll, options = {}) {
   const dateField = options.dateField || "latestResponseAt";
   const activityDate = poll[dateField] || poll.updatedAt || poll.createdAt;
   const activityDay = typeof activityDate === "string" ? activityDate.slice(0, 10) : "";
-  const status = getDashboardPollStatus(poll);
+  const status = getDashboardPollStatus(poll, options);
 
   return `
     <article class="poll-list-row" data-poll-link="${poll.shareUrl}" tabindex="0">
@@ -1001,7 +1001,11 @@ function renderDashboardPollCard(poll, options = {}) {
   `;
 }
 
-function getDashboardPollStatus(poll) {
+function getDashboardPollStatus(poll, options = {}) {
+  if (options.dateField === "votedAt") {
+    return { label: "Teilgenommen", tone: "active" };
+  }
+
   const rawStatus = String(poll.status || "").toLowerCase();
   const endsAt = poll.endsAt ? new Date(poll.endsAt) : null;
   const isEnded = Boolean(
