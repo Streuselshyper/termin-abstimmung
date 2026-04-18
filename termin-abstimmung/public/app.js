@@ -2255,32 +2255,57 @@ async function handleParticipantRightsChange(userId, row) {
 
 async function handleAdminDeleteResponse(responseId) {
   if (!responseId) {
-    console.debug("[matrix] delete aborted: missing responseId");
-    return;
-  }
-  if (!confirm("Diese Antwort wirklich loeschen?")) {
-    console.debug("[matrix] delete cancelled", { responseId });
+    console.debug("[Delete] Aborted: missing responseId");
     return;
   }
 
-  console.debug("[matrix] delete request", { responseId, pollId: state.pollData.poll.id });
-  setFeedback(document.querySelector("#response-feedback"), "Antwort wird geloescht ...");
-  const data = await apiFetch(`/api/polls/${state.pollData.poll.id}/responses/${encodeURIComponent(responseId)}`, {
-    method: "DELETE",
-  });
+  console.log("[Delete] Button clicked, responseId:", responseId);
 
-  state.pollData = {
-    ...data,
-    responses: (data.responses || []).filter((response) => String(response.id) !== String(responseId)),
-  };
-  refreshPollView();
+  const confirmed = confirm("Diese Antwort wirklich loeschen?");
+  console.log("[Delete] Dialog confirmed:", confirmed);
 
-  if (state.adminParticipantsVisible) {
-    await loadPollParticipants();
+  if (!confirmed) {
+    console.debug("[Delete] Cancelled by user", { responseId });
+    return;
   }
 
-  console.debug("[matrix] delete success", { responseId });
-  setFeedback(document.querySelector("#response-feedback"), "Antwort geloescht.", "success");
+  const feedback = document.querySelector("#response-feedback");
+  const pollId = state.pollData?.poll?.id;
+  if (!pollId) {
+    const error = new Error("Poll-ID fehlt. Antwort kann nicht geloescht werden.");
+    console.error("[Delete] Error:", error);
+    throw error;
+  }
+
+  try {
+    console.log("[Delete] API call starting...");
+    setFeedback(feedback, "Antwort wird geloescht ...");
+
+    const data = await apiFetch(`/api/polls/${pollId}/responses/${encodeURIComponent(responseId)}`, {
+      method: "DELETE",
+    });
+
+    console.log("[Delete] API response:", 200);
+
+    if (!data?.poll || !Array.isArray(data.responses)) {
+      throw new Error("Unerwartete Server-Antwort nach dem Loeschen.");
+    }
+
+    state.pollData = data;
+
+    console.log("[Delete] Success, re-rendering...");
+    refreshPollView();
+
+    if (state.adminParticipantsVisible) {
+      await loadPollParticipants();
+    }
+
+    setFeedback(feedback, "Antwort geloescht.", "success");
+  } catch (error) {
+    console.error("[Delete] Error:", error);
+    setFeedback(feedback, error.message, "error");
+    throw error;
+  }
 }
 
 function renderEmptyStateMarkup(iconClass, title, description) {
