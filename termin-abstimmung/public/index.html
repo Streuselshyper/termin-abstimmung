@@ -228,10 +228,14 @@
       }
 
       .dashboard-footer-link {
+        width: 11.25rem;
+        max-width: 100%;
         min-height: 2.4rem;
         padding: 0.5rem 0.8rem;
         border-radius: 0.85rem;
         font-size: 0.92rem;
+        justify-content: center;
+        gap: 0.5rem;
       }
 
       .poll-favorite-summary {
@@ -833,6 +837,7 @@
               <span id="dashboard-participated-summary" class="pill dashboard-section-badge">0 Teilnahmen</span>
             </div>
             <div class="dashboard-section-content">
+              <div class="feedback" role="status" aria-live="polite"></div>
               <div id="dashboard-participated-polls" class="poll-list"></div>
               <div class="section-footer-action">
                 <a class="ghost-link dashboard-footer-link" href="/participated">
