@@ -193,6 +193,40 @@
         justify-content: flex-end;
       }
 
+      .dashboard-section-panel {
+        display: flex;
+        flex-direction: column;
+        min-height: 100%;
+      }
+
+      .dashboard-section-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .dashboard-section-copy {
+        display: grid;
+        gap: 0.2rem;
+      }
+
+      .dashboard-section-badge {
+        flex-shrink: 0;
+        align-self: flex-start;
+      }
+
+      .dashboard-section-content {
+        display: grid;
+        gap: 1rem;
+        flex: 1;
+        margin-top: 1rem;
+      }
+
+      .dashboard-section-content .poll-list {
+        align-content: start;
+      }
+
       .poll-favorite-summary {
         margin: 0;
         color: #10b981;
@@ -763,42 +797,42 @@
         </article>
 
         <section class="dashboard-grid">
-          <article class="panel">
-            <div class="panel-header">
-              <div>
+          <article class="panel dashboard-section-panel">
+            <div class="dashboard-section-header">
+              <div class="dashboard-section-copy">
                 <p class="eyebrow">Meine Umfragen</p>
                 <h2 id="dashboard-list-title">0 aktive Umfragen</h2>
               </div>
+              <span id="dashboard-list-summary" class="pill dashboard-section-badge">0 Umfragen</span>
             </div>
-            <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
-            <div class="dashboard-section-head dashboard-summary-row">
-              <span id="dashboard-list-summary" class="pill">0 Umfragen</span>
-            </div>
-            <div id="dashboard-polls" class="poll-list"></div>
-            <div class="section-footer-action">
-              <a class="ghost-link" href="/my-polls">
-                <i class="fa-regular fa-rectangle-list"></i>
-                Alle anzeigen
-              </a>
+            <div class="dashboard-section-content">
+              <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
+              <div id="dashboard-polls" class="poll-list"></div>
+              <div class="section-footer-action">
+                <a class="ghost-link" href="/my-polls">
+                  <i class="fa-regular fa-rectangle-list"></i>
+                  Alle anzeigen
+                </a>
+              </div>
             </div>
           </article>
 
-          <article class="panel">
-            <div class="panel-header">
-              <div>
+          <article class="panel dashboard-section-panel">
+            <div class="dashboard-section-header">
+              <div class="dashboard-section-copy">
                 <p class="eyebrow">An denen ich teilgenommen habe</p>
                 <h2>Letzte Teilnahmen</h2>
               </div>
+              <span id="dashboard-participated-summary" class="pill dashboard-section-badge">0 Teilnahmen</span>
             </div>
-            <div class="dashboard-section-head dashboard-summary-row">
-              <span id="dashboard-participated-summary" class="pill">0 Umfragen</span>
-            </div>
-            <div id="dashboard-participated-polls" class="poll-list"></div>
-            <div class="section-footer-action">
-              <a class="ghost-link" href="/participated">
-                <i class="fa-regular fa-handshake"></i>
-                Alle anzeigen
-              </a>
+            <div class="dashboard-section-content">
+              <div id="dashboard-participated-polls" class="poll-list"></div>
+              <div class="section-footer-action">
+                <a class="ghost-link" href="/participated">
+                  <i class="fa-regular fa-handshake"></i>
+                  Alle anzeigen
+                </a>
+              </div>
             </div>
           </article>
         </section>

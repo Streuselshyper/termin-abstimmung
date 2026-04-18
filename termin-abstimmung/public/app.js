@@ -772,15 +772,13 @@ async function loadDashboardPolls() {
     state.dashboardStats = dashboardData.stats;
     state.participatedPolls = participatedData.polls;
 
-    summary.textContent = dashboardData.stats.totalPolls === 1 ? "1 Umfrage" : `${dashboardData.stats.totalPolls} Umfragen`;
+    summary.textContent = formatPollCountLabel(dashboardData.stats.totalPolls);
     if (title) {
       const activeCount = dashboardData.polls.filter((poll) => getDashboardPollStatus(poll).tone === "active").length;
       title.textContent = `${activeCount} aktive Umfragen`;
     }
 
-    participatedSummary.textContent = participatedData.stats.totalPolls === 1
-      ? "1 Teilnahme"
-      : `${participatedData.stats.totalPolls} Teilnahmen`;
+    participatedSummary.textContent = formatParticipationCountLabel(participatedData.stats.totalPolls);
 
     renderDashboardPollList(list, dashboardData.polls.slice(0, 3), {
       emptyTitle: "Noch keine Umfragen",
@@ -842,7 +840,7 @@ async function renderMyPollsPage() {
       eyebrow: "Meine Umfragen",
       title: "Alle erstellten Umfragen",
       description: "Hier findest du deine komplette Liste mit denselben Karten wie im Dashboard.",
-      summaryLabel: data.pagination.totalItems === 1 ? "1 Umfrage" : `${data.pagination.totalItems} Umfragen`,
+      summaryLabel: formatPollCountLabel(data.pagination.totalItems),
       containerId: "my-polls-list",
       emptyTitle: "Noch keine Umfragen",
       emptyDescription: "Erstelle im Dashboard deine erste Termin-Abstimmung.",
@@ -870,7 +868,7 @@ async function renderParticipatedPage() {
       eyebrow: "Teilnahmen",
       title: "Alle Umfragen mit deiner Stimme",
       description: "Diese Liste enthaelt alle Umfragen, bei denen du bereits abgestimmt hast.",
-      summaryLabel: data.stats.totalPolls === 1 ? "1 Teilnahme" : `${data.stats.totalPolls} Teilnahmen`,
+      summaryLabel: formatParticipationCountLabel(data.stats.totalPolls),
       containerId: "participated-polls-list",
       emptyTitle: "Noch keine Teilnahmen",
       emptyDescription: "Sobald du an Umfragen anderer Personen teilnimmst, erscheinen sie hier.",
@@ -960,6 +958,14 @@ function getPositiveInteger(value, fallback = 1) {
   }
 
   return parsed;
+}
+
+function formatPollCountLabel(count) {
+  return count === 1 ? "1 Umfrage" : `${count} Umfragen`;
+}
+
+function formatParticipationCountLabel(count) {
+  return count === 1 ? "1 Teilnahme" : `${count} Teilnahmen`;
 }
 
 function handleDashboardRowOpen(event, href) {
