@@ -722,6 +722,7 @@ function getFirstSelectedCreateDate(dates) {
 async function loadDashboardPolls() {
   const list = document.querySelector("#dashboard-polls");
   const summary = document.querySelector("#dashboard-list-summary");
+  const title = document.querySelector("#dashboard-list-title");
   const participatedList = document.querySelector("#dashboard-participated-polls");
   const participatedSummary = document.querySelector("#dashboard-participated-summary");
   list.innerHTML = '<p class="description">Deine Umfragen werden geladen ...</p>';
@@ -738,7 +739,12 @@ async function loadDashboardPolls() {
     state.participatedPolls = participatedData.polls;
 
     summary.textContent = `${dashboardData.polls.length} Umfragen`;
-    participatedSummary.textContent = `${participatedData.polls.length} Umfragen`;
+    if (title) {
+      const activeCount = dashboardData.polls.filter((poll) => getDashboardPollStatus(poll).tone === "active").length;
+      title.textContent = `${activeCount} aktive Umfragen`;
+    }
+
+    participatedSummary.textContent = participatedData.polls.length === 1 ? "1 Teilnahme" : `${participatedData.polls.length} Teilnahmen`;
 
     renderDashboardPollList(list, dashboardData.polls, {
       emptyTitle: "Noch keine Umfragen",
@@ -809,13 +815,11 @@ function renderDashboardPollCard(poll, options = {}) {
       <div class="poll-list-main">
         <h3 class="poll-list-title">${escapeHtml(poll.title)}</h3>
       </div>
-      <div class="poll-list-meta" aria-label="Zuletzt aktualisiert und Status">
+      <div class="poll-list-meta" aria-label="Datum und Status">
         <span class="poll-list-date">
           ${escapeHtml(activityDay ? formatDateShort(activityDay) : "-")}
         </span>
         <span class="dashboard-status-badge dashboard-status-${status.tone}">${escapeHtml(status.label)}</span>
-      </div>
-      <div class="poll-card-actions poll-list-actions">
       </div>
     </article>
   `;

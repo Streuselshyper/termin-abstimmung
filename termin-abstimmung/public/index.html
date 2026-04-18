@@ -148,7 +148,49 @@
       }
 
       .poll-list-row {
-        padding: 0.5rem 0.75rem;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.4rem 0.65rem;
+      }
+
+      .poll-list-main,
+      .poll-list-meta {
+        min-width: 0;
+      }
+
+      .poll-list-main {
+        display: flex;
+        align-items: center;
+      }
+
+      .poll-list-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .poll-list-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        justify-content: flex-end;
+        white-space: nowrap;
+      }
+
+      .poll-list-date {
+        font-size: 0.78rem;
+      }
+
+      .dashboard-status-badge {
+        min-height: 1.45rem;
+        padding: 0.16rem 0.45rem;
+      }
+
+      .dashboard-summary-row {
+        margin-bottom: 0.9rem;
+        justify-content: flex-end;
       }
 
       .poll-favorite-summary {
@@ -400,6 +442,16 @@
       }
 
       @media (max-width: 640px) {
+        .poll-list-row {
+          grid-template-columns: minmax(0, 1fr);
+          justify-items: start;
+        }
+
+        .poll-list-meta {
+          width: 100%;
+          justify-content: flex-start;
+        }
+
         .share-link-row {
           grid-template-columns: 1fr;
         }
@@ -715,15 +767,14 @@
             <div class="panel-header">
               <div>
                 <p class="eyebrow">Meine Umfragen</p>
-                <h2>Zuletzt aktualisiert</h2>
+                <h2 id="dashboard-list-title">0 aktive Umfragen</h2>
               </div>
               <button id="refresh-dashboard" class="ghost-button compact-button" type="button" aria-label="Aktualisieren">
                 <i class="fa-solid fa-rotate"></i>
               </button>
             </div>
             <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
-            <div class="dashboard-section-head">
-              <p class="muted-copy">Nur die wichtigsten Infos und schnelle Aktionen direkt im Dashboard.</p>
+            <div class="dashboard-section-head dashboard-summary-row">
               <span id="dashboard-list-summary" class="pill">0 Umfragen</span>
             </div>
             <div id="dashboard-polls" class="poll-list"></div>
@@ -733,11 +784,10 @@
             <div class="panel-header">
               <div>
                 <p class="eyebrow">An denen ich teilgenommen habe</p>
-                <h2>Zuletzt abgestimmt</h2>
+                <h2>Letzte Teilnahmen</h2>
               </div>
             </div>
-            <div class="dashboard-section-head">
-              <p class="muted-copy">Deine letzten Teilnahmen an Umfragen anderer Personen.</p>
+            <div class="dashboard-section-head dashboard-summary-row">
               <span id="dashboard-participated-summary" class="pill">0 Umfragen</span>
             </div>
             <div id="dashboard-participated-polls" class="poll-list"></div>
