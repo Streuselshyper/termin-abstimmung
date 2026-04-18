@@ -1891,19 +1891,36 @@ function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
 }
 
 function bindMatrixEditButtons() {
-  for (const button of document.querySelectorAll(".matrix-edit-button")) {
-    button.addEventListener("click", () => {
-      openPollResponseDrawer({ resetDraft: true });
-    });
+  const table = document.querySelector(".results-table");
+  if (!table || table.dataset.matrixActionsBound === "true") {
+    return;
   }
 
-  for (const button of document.querySelectorAll(".matrix-delete-button")) {
-    button.addEventListener("click", () => {
-      handleAdminDeleteResponse(button.dataset.responseId).catch((error) => {
-        setFeedback(document.querySelector("#response-feedback"), error.message, "error");
-      });
+  table.dataset.matrixActionsBound = "true";
+  table.addEventListener("click", (event) => {
+    const editButton = event.target.closest(".matrix-edit-button");
+    if (editButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      console.debug("[matrix] edit click", { responseId: editButton.dataset.responseId || "" });
+      openPollResponseDrawer({ resetDraft: true });
+      return;
+    }
+
+    const deleteButton = event.target.closest(".matrix-delete-button");
+    if (!deleteButton) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const { responseId = "" } = deleteButton.dataset;
+    console.debug("[matrix] delete click", { responseId });
+    handleAdminDeleteResponse(responseId).catch((error) => {
+      setFeedback(document.querySelector("#response-feedback"), error.message, "error");
     });
-  }
+  });
 }
 
 async function handleResponseSubmit(event) {
@@ -2238,12 +2255,15 @@ async function handleParticipantRightsChange(userId, row) {
 
 async function handleAdminDeleteResponse(responseId) {
   if (!responseId) {
+    console.debug("[matrix] delete aborted: missing responseId");
     return;
   }
   if (!confirm("Diese Antwort wirklich loeschen?")) {
+    console.debug("[matrix] delete cancelled", { responseId });
     return;
   }
 
+  console.debug("[matrix] delete request", { responseId, pollId: state.pollData.poll.id });
   setFeedback(document.querySelector("#response-feedback"), "Antwort wird geloescht ...");
   const data = await apiFetch(`/api/polls/${state.pollData.poll.id}/responses/${encodeURIComponent(responseId)}`, {
     method: "DELETE",
@@ -2259,6 +2279,7 @@ async function handleAdminDeleteResponse(responseId) {
     await loadPollParticipants();
   }
 
+  console.debug("[matrix] delete success", { responseId });
   setFeedback(document.querySelector("#response-feedback"), "Antwort geloescht.", "success");
 }
 
