@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs");
 const Database = require("better-sqlite3");
 
 const app = express();
+const userApi = express.Router();
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "data", "terminabstimmung.db");
@@ -1050,6 +1051,45 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function hasRegisteredRoute(appInstance, method, routePath, prefix = "") {
+  const stack = appInstance?.router?.stack || appInstance?.stack || [];
+  const normalizedMethod = String(method || "").toLowerCase();
+  return stack.some((layer) => {
+    if (!layer.route || !layer.route.methods?.[normalizedMethod]) {
+      if (!layer.handle?.stack) {
+        return false;
+      }
+
+      const matchedMount = Array.isArray(layer.matchers)
+        ? layer.matchers
+            .map((matcher) => matcher(routePath))
+            .find(Boolean)?.path || ""
+        : "";
+      const nextPrefix = matchedMount ? `${prefix}${matchedMount}` : prefix;
+      return hasRegisteredRoute(layer.handle, normalizedMethod, routePath, nextPrefix);
+    }
+
+    const fullPath = `${prefix}${layer.route.path}`;
+    if (fullPath === routePath) {
+      return true;
+    }
+
+    return Array.isArray(layer.route.path) && layer.route.path.some((pathEntry) => `${prefix}${pathEntry}` === routePath);
+  });
+}
+
+function assertRequiredRoutes(appInstance) {
+  const requiredRoutes = [
+    ["get", "/api/user/my-polls"],
+  ];
+
+  for (const [method, routePath] of requiredRoutes) {
+    if (!hasRegisteredRoute(appInstance, method, routePath)) {
+      throw new Error(`Pflicht-Route fehlt: ${String(method).toUpperCase()} ${routePath}`);
+    }
+  }
+}
+
 function clearExpiredResetTokens() {
   db.prepare(`
     UPDATE users
@@ -1396,7 +1436,7 @@ app.post("/api/auth/logout", requireCsrf, (req, res) => {
   res.json({ message: "Logout erfolgreich." });
 });
 
-app.get("/api/user/profile", requireAuth, (req, res) => {
+userApi.get("/profile", requireAuth, (req, res) => {
   try {
     const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.currentUser.id);
     res.json(mapUserRow(user));
@@ -1406,7 +1446,7 @@ app.get("/api/user/profile", requireAuth, (req, res) => {
   }
 });
 
-app.put("/api/user/profile", requireCsrf, requireAuth, (req, res) => {
+userApi.put("/profile", requireCsrf, requireAuth, (req, res) => {
   try {
     const name = normalizeText(req.body?.name, 120);
     if (name.length < 2) {
@@ -1429,7 +1469,7 @@ app.put("/api/user/profile", requireCsrf, requireAuth, (req, res) => {
   }
 });
 
-app.put("/api/user/password", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "password", limit: 10 }), (req, res) => {
+userApi.put("/password", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "password", limit: 10 }), (req, res) => {
   try {
     const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
     const newPasswordCheck = validatePassword(req.body?.newPassword);
@@ -1458,7 +1498,7 @@ app.put("/api/user/password", requireCsrf, requireAuth, createRateLimit({ keyPre
   }
 });
 
-app.delete("/api/user/account", requireCsrf, requireAuth, (req, res) => {
+userApi.delete("/account", requireCsrf, requireAuth, (req, res) => {
   try {
     const userId = req.currentUser.id;
     const deleteAccount = db.transaction(() => {
@@ -1480,7 +1520,7 @@ app.delete("/api/user/account", requireCsrf, requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/user/dashboard", requireAuth, (req, res) => {
+userApi.get("/dashboard", requireAuth, (req, res) => {
   try {
     sendDailySummaryIfDue(req, req.currentUser.id);
     const profile = db.prepare("SELECT * FROM users WHERE id = ?").get(req.currentUser.id);
@@ -1494,7 +1534,7 @@ app.get("/api/user/dashboard", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/user/participated-polls", requireAuth, (req, res) => {
+userApi.get("/participated-polls", requireAuth, (req, res) => {
   try {
     res.json(buildParticipatedPollsPayload(req, req.currentUser.id, { limit: 3 }));
   } catch (error) {
@@ -1503,7 +1543,7 @@ app.get("/api/user/participated-polls", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/user/my-polls", requireAuth, (req, res) => {
+userApi.get("/my-polls", requireAuth, (req, res) => {
   try {
     const page = parsePaginationValue(req.query?.page, 1, 100000);
     const pageSize = parsePaginationValue(req.query?.pageSize, 12);
@@ -1514,7 +1554,7 @@ app.get("/api/user/my-polls", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/user/all-participated", requireAuth, (req, res) => {
+userApi.get("/all-participated", requireAuth, (req, res) => {
   try {
     res.json(buildParticipatedPollsPayload(req, req.currentUser.id));
   } catch (error) {
@@ -1523,7 +1563,7 @@ app.get("/api/user/all-participated", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/user/polls", requireAuth, (req, res) => {
+userApi.get("/polls", requireAuth, (req, res) => {
   try {
     res.json(buildDashboardPayload(req, req.currentUser.id));
   } catch (error) {
@@ -1531,6 +1571,8 @@ app.get("/api/user/polls", requireAuth, (req, res) => {
     res.status(500).json({ error: "Die Umfragen konnten nicht geladen werden." });
   }
 });
+
+app.use("/api/user", userApi);
 
 app.post("/api/admin/cleanup-guest-responses", requireCsrf, requireAuth, (_req, res) => {
   try {
@@ -1976,6 +2018,7 @@ app.use((error, _req, res, _next) => {
 });
 
 function startServer(port = PORT, host = HOST) {
+  assertRequiredRoutes(app);
   return app.listen(port, host, () => {
     const deletedCount = cleanupGuestResponses();
     console.log(`Cleanup: ${deletedCount} Gast-Antworten geloescht`);
