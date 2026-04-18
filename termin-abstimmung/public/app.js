@@ -2,6 +2,7 @@ const navElement = document.querySelector("#topbar-nav");
 const topbarPrimaryElement = document.querySelector("#topbar-primary");
 const themeToggle = document.querySelector("#theme-toggle");
 const dynamicViewElement = document.querySelector("#dynamic-view");
+const toastElement = document.querySelector("#toast");
 const staticViewIds = ["landing-view", "login-view", "register-view", "forgot-password-view", "dynamic-view"];
 const weekdayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const statusLabels = {
@@ -31,6 +32,8 @@ const state = {
   adminParticipantsVisible: false,
   adminParticipantsLoadedForPollId: "",
 };
+
+let toastTimeoutId = 0;
 
 initializeRouting();
 bindStaticEventHandlers();
@@ -1056,7 +1059,7 @@ async function renderPollPage(pollId) {
 
     document.querySelector("#response-form").addEventListener("submit", handleResponseSubmit);
     document.querySelector("#poll-share-button").addEventListener("click", () => {
-      copyPollShareLink().catch((error) => {
+      sharePollLink().catch((error) => {
         setFeedback(document.querySelector("#response-feedback"), error.message, "error");
       });
     });
@@ -1964,11 +1967,27 @@ async function handleResponseSubmit(event) {
   }
 }
 
-async function copyPollShareLink() {
+async function sharePollLink() {
   const shareUrl = state.pollData?.poll?.absoluteShareUrl || window.location.href;
+  const shareTitle = state.pollData?.poll?.title || "Termin-Abstimmung";
+
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: shareTitle,
+        text: "Schau dir diese Termin-Abstimmung an:",
+        url: shareUrl,
+      });
+      return;
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        console.log("Share failed:", error);
+      }
+    }
+  }
+
   await copyTextToClipboard(shareUrl);
-  const feedback = document.querySelector("#response-feedback");
-  setFeedback(feedback, "Link kopiert!", "success");
+  showToast("Link kopiert!");
 }
 
 async function handleCalendarDownload() {
@@ -2371,6 +2390,33 @@ async function copyTextToClipboard(text) {
   field.select();
   document.execCommand("copy");
   field.remove();
+}
+
+function showToast(message) {
+  if (!toastElement) {
+    return;
+  }
+
+  window.clearTimeout(toastTimeoutId);
+  toastElement.textContent = message;
+  toastElement.style.position = "fixed";
+  toastElement.style.left = "50%";
+  toastElement.style.bottom = "2rem";
+  toastElement.style.transform = "translateX(-50%) translateY(0)";
+  toastElement.style.background = "var(--accent-strong)";
+  toastElement.style.color = "#fff";
+  toastElement.style.padding = "0.75rem 1.5rem";
+  toastElement.style.borderRadius = "0.5rem";
+  toastElement.style.boxShadow = "0 16px 40px rgba(15, 23, 42, 0.28)";
+  toastElement.style.zIndex = "1000";
+  toastElement.style.opacity = "1";
+  toastElement.style.pointerEvents = "none";
+  toastElement.style.transition = "opacity 180ms ease, transform 180ms ease";
+
+  toastTimeoutId = window.setTimeout(() => {
+    toastElement.style.opacity = "0";
+    toastElement.style.transform = "translateX(-50%) translateY(-10px)";
+  }, 1800);
 }
 
 function setFeedback(element, message, type = "") {
