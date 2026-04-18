@@ -1867,6 +1867,7 @@ function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
     <div class="matrix-name-cell">
       <span class="matrix-name-label">${escapeHtml(name)}${roleIcon}</span>
       <span class="matrix-action-group">
+        <span class="matrix-actions-row">
         ${
           isOwnRow
             ? `
@@ -1879,7 +1880,7 @@ function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
         ${
           canManage
             ? `
-              <select class="veto-dropdown" data-response-id="${response.id}" aria-label="Veto fuer ${escapeHtml(name)}">
+              <select class="veto-dropdown veto-dropdown-inline" data-response-id="${response.id}" aria-label="Veto fuer ${escapeHtml(name)}">
                 <option value="none" ${response.hasVeto ? "" : "selected"}>Kein Veto</option>
                 <option value="veto" ${response.hasVeto ? "selected" : ""}>Veto</option>
               </select>
@@ -1889,6 +1890,7 @@ function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
             `
             : ""
         }
+        </span>
       </span>
     </div>
   `;

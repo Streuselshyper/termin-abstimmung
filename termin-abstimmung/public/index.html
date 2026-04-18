@@ -344,21 +344,58 @@
       .matrix-action-group {
         display: inline-flex;
         align-items: center;
-        flex-wrap: wrap;
         justify-content: flex-end;
-        gap: 0.35rem;
+        gap: 0.45rem;
+        max-width: 100%;
       }
 
-      .veto-dropdown {
-        min-width: 6.75rem;
-        height: 2rem;
-        padding: 0 0.55rem;
-        border-radius: 999px;
+      .matrix-actions-row {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.45rem;
+        flex-wrap: nowrap;
+        max-width: 100%;
+      }
+
+      .veto-dropdown,
+      .veto-dropdown-inline {
+        min-width: 5.5rem;
+        height: 1.8rem;
+        padding: 0.25rem 1.8rem 0.25rem 0.6rem;
+        border-radius: 0.65rem;
         border: 1px solid var(--border-soft);
-        background: rgba(255, 255, 255, 0.04);
+        background: color-mix(in srgb, var(--surface-soft) 88%, rgba(255, 255, 255, 0.1));
+        color: var(--text-soft);
+        font-family: inherit;
+        font-size: 0.78rem;
+        font-weight: 600;
+        line-height: 1.1;
+        appearance: none;
+        -webkit-appearance: none;
+        background-image:
+          linear-gradient(45deg, transparent 50%, currentColor 50%),
+          linear-gradient(135deg, currentColor 50%, transparent 50%);
+        background-position:
+          calc(100% - 0.85rem) calc(50% - 0.12rem),
+          calc(100% - 0.6rem) calc(50% - 0.12rem);
+        background-size: 0.4rem 0.4rem, 0.4rem 0.4rem;
+        background-repeat: no-repeat;
+        transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+      }
+
+      .veto-dropdown:hover,
+      .veto-dropdown-inline:hover {
+        border-color: rgba(45, 212, 191, 0.28);
         color: inherit;
-        font: inherit;
-        font-size: 0.8rem;
+      }
+
+      .veto-dropdown:focus,
+      .veto-dropdown-inline:focus {
+        outline: none;
+        border-color: rgba(45, 212, 191, 0.45);
+        box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12);
+        color: inherit;
       }
 
       .matrix-delete-button,
@@ -412,7 +449,13 @@
 
         .matrix-action-group {
           width: 100%;
+          overflow-x: auto;
           justify-content: flex-start;
+          padding-bottom: 0.1rem;
+        }
+
+        .matrix-actions-row {
+          min-width: max-content;
         }
 
         .participants-admin-row {
