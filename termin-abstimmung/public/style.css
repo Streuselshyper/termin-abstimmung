@@ -114,7 +114,7 @@ a {
   z-index: 1;
   width: min(1240px, calc(100% - 1.25rem));
   margin: 0 auto;
-  padding: 0.75rem 0 3rem;
+  padding: 1.1rem 0 4rem;
 }
 
 .topbar,
@@ -376,18 +376,18 @@ h3 {
 }
 
 .hero-card {
-  padding: 1.15rem;
+  padding: 1.45rem;
 }
 
 .panel {
-  padding: 1.1rem;
+  padding: 1.25rem;
 }
 
 .landing-hero,
 .dashboard-hero {
   display: grid;
   grid-template-columns: 1.35fr 1fr;
-  gap: 1rem;
+  gap: 1.4rem;
 }
 
 .create-hero {
@@ -399,6 +399,9 @@ h3 {
 }
 
 .hero-copy {
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
   max-width: 52rem;
 }
 
@@ -410,7 +413,7 @@ h3 {
 }
 
 .hero-text {
-  margin: 0.6rem 0 0;
+  margin: 0.2rem 0 0;
   line-height: 1.5;
   max-width: 42ch;
 }
@@ -621,7 +624,51 @@ select:focus {
 }
 
 .overview-stack {
-  gap: 1.25rem;
+  gap: 1.7rem;
+}
+
+.overview-list-panel {
+  display: grid;
+  gap: 1.35rem;
+  padding: 1.45rem 1.5rem 1.55rem;
+}
+
+.overview-list-intro,
+.overview-list-meta {
+  display: flex;
+  gap: 0.9rem;
+}
+
+.overview-list-intro {
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.overview-list-copy {
+  display: grid;
+  gap: 0.55rem;
+  max-width: 44rem;
+}
+
+.overview-list-copy h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2vw, 1.75rem);
+  line-height: 1.05;
+}
+
+.overview-list-meta {
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.overview-list-panel .poll-list {
+  gap: 0.9rem;
+  margin-top: 0.3rem;
+}
+
+.overview-list-panel .pagination-row {
+  margin-top: 0.2rem;
 }
 
 .poll-shell {
@@ -1079,9 +1126,9 @@ body.poll-drawer-open {
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
-  min-height: 3rem;
-  margin-bottom: 0.35rem;
-  padding: 0.5rem 0.75rem;
+  min-height: 3.35rem;
+  margin-bottom: 0.5rem;
+  padding: 0.75rem 0.95rem;
   border-radius: 0.25rem;
   box-shadow: none;
 }
@@ -1521,6 +1568,15 @@ body.poll-drawer-open {
     grid-template-columns: 1fr;
   }
 
+  .overview-list-intro {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .overview-list-meta {
+    justify-content: flex-start;
+  }
+
   .calendar-grid {
     gap: 0.35rem;
   }
@@ -1599,7 +1655,7 @@ body.poll-drawer-open {
 
   .poll-list-row {
     gap: 0.5rem;
-    padding: 0.45rem 0.6rem;
+    padding: 0.6rem 0.75rem;
   }
 
   .poll-list-meta {

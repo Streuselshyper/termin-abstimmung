@@ -847,12 +847,10 @@ async function renderMyPollsPage() {
     };
     const summaryLabel = formatPollCountLabel(data.total);
     const summaryElement = document.querySelector("#my-polls-summary-label");
-    const countPillElement = document.querySelector("#my-polls-count-pill");
     const pagePillElement = document.querySelector("#my-polls-page-pill");
     const paginationElement = document.querySelector("#my-polls-pagination");
 
     summaryElement.textContent = summaryLabel;
-    countPillElement.textContent = summaryLabel;
 
     if (totalPages > 1) {
       pagePillElement.textContent = `Seite ${pagination.page} von ${pagination.totalPages}`;
@@ -888,6 +886,8 @@ async function renderParticipatedPage() {
       title: "Alle Umfragen mit deiner Stimme",
       description: "Diese Liste enthaelt alle Umfragen, bei denen du bereits abgestimmt hast.",
       summaryLabel: formatParticipationCountLabel(data.stats.totalPolls),
+      sectionTitle: "Deine Teilnahmen",
+      sectionDescription: "Alle Umfragen, an denen du bereits mitgewirkt hast, mit der letzten Aktivitaet auf einen Blick.",
       containerId: "participated-polls-list",
       emptyTitle: "Noch keine Teilnahmen",
       emptyDescription: "Sobald du an Umfragen anderer Personen teilnimmst, erscheinen sie hier.",
@@ -932,10 +932,16 @@ function renderPollOverviewPage(options) {
         </div>
       </article>
 
-      <article class="panel">
-        <div class="dashboard-section-head dashboard-summary-row">
-          <span class="pill">${escapeHtml(options.summaryLabel)}</span>
-          ${pagination ? `<span class="pill">Seite ${pagination.page} von ${pagination.totalPages}</span>` : ""}
+      <article class="panel overview-list-panel">
+        <div class="overview-list-intro">
+          <div class="overview-list-copy">
+            <p class="eyebrow">Uebersicht</p>
+            <h2>${escapeHtml(options.sectionTitle || options.title)}</h2>
+            <p class="description">${escapeHtml(options.sectionDescription || options.description)}</p>
+          </div>
+          <div class="overview-list-meta">
+            ${pagination ? `<span class="pill">Seite ${pagination.page} von ${pagination.totalPages}</span>` : ""}
+          </div>
         </div>
         <div id="${escapeHtml(options.containerId)}" class="poll-list"></div>
         ${renderPaginationControls(pagination, options.basePath || "")}
