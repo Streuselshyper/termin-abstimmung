@@ -647,7 +647,25 @@ function getPollOwnerOrThrow(pollId, userId) {
   return poll;
 }
 
-function buildDashboardPayload(req, userId) {
+function parsePaginationValue(value, fallback, max = 50) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (Number.isNaN(parsed) || parsed < 1) {
+    return fallback;
+  }
+
+  return Math.min(parsed, max);
+}
+
+function buildDashboardPayload(req, userId, options = {}) {
+  const paginated = Boolean(options.paginated);
+  const pageSize = parsePaginationValue(options.pageSize, 12);
+  const requestedPage = parsePaginationValue(options.page, 1, 100000);
+  const totalPolls = Number(db.prepare("SELECT COUNT(*) AS count FROM polls WHERE user_id = ?").get(userId)?.count || 0);
+  const totalPages = paginated ? Math.max(1, Math.ceil(totalPolls / pageSize)) : 1;
+  const page = paginated ? Math.min(requestedPage, totalPages) : 1;
+  const offset = paginated ? (page - 1) * pageSize : 0;
+  const paginationSql = paginated ? "LIMIT ? OFFSET ?" : "";
+  const queryParameters = paginated ? [userId, pageSize, offset] : [userId];
   const rows = db
     .prepare(`
       SELECT
@@ -659,8 +677,9 @@ function buildDashboardPayload(req, userId) {
       WHERE polls.user_id = ?
       GROUP BY polls.id
       ORDER BY COALESCE(polls.last_response_at, polls.updated_at, polls.created_at) DESC
+      ${paginationSql}
     `)
-    .all(userId);
+    .all(...queryParameters);
 
   const polls = rows.map((row) => {
     const mapped = mapPollRow(row, req);
@@ -677,31 +696,68 @@ function buildDashboardPayload(req, userId) {
     };
   });
 
+  const statsRow = db.prepare(`
+    SELECT
+      COUNT(*) AS total_polls,
+      COALESCE(SUM(poll_rows.response_count), 0) AS total_responses,
+      COALESCE(SUM(CASE WHEN poll_rows.response_count > 0 THEN 1 ELSE 0 END), 0) AS active_polls,
+      COALESCE(SUM(CASE WHEN poll_rows.allow_email_invites = 1 THEN 1 ELSE 0 END), 0) AS invite_enabled_polls
+    FROM (
+      SELECT
+        polls.id,
+        polls.allow_email_invites,
+        COUNT(responses.id) AS response_count
+      FROM polls
+      LEFT JOIN responses ON responses.poll_id = polls.id
+      WHERE polls.user_id = ?
+      GROUP BY polls.id
+    ) AS poll_rows
+  `).get(userId) || {};
+
   return {
     polls,
     stats: {
-      totalPolls: polls.length,
-      totalResponses: polls.reduce((sum, poll) => sum + poll.responseCount, 0),
-      activePolls: polls.filter((poll) => poll.responseCount > 0).length,
-      inviteEnabledPolls: polls.filter((poll) => poll.allowEmailInvites).length,
+      totalPolls: Number(statsRow.total_polls || 0),
+      totalResponses: Number(statsRow.total_responses || 0),
+      activePolls: Number(statsRow.active_polls || 0),
+      inviteEnabledPolls: Number(statsRow.invite_enabled_polls || 0),
+    },
+    pagination: {
+      page,
+      pageSize,
+      totalItems: totalPolls,
+      totalPages,
     },
   };
 }
 
-function buildParticipatedPollsPayload(req, userId) {
-  const rows = db
-    .prepare(`
-      SELECT DISTINCT
-        polls.*,
-        responses.created_at AS voted_at
+function buildParticipatedPollsPayload(req, userId, options = {}) {
+  const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : null;
+  const totalPolls = Number(
+    db.prepare(`
+      SELECT COUNT(DISTINCT polls.id) AS count
       FROM polls
       JOIN responses ON responses.poll_id = polls.id
       WHERE responses.user_id = ?
         AND polls.user_id != ?
-      ORDER BY responses.created_at DESC
-      LIMIT 3
+    `).get(userId, userId)?.count || 0
+  );
+  const limitSql = limit ? "LIMIT ?" : "";
+  const queryParameters = limit ? [userId, userId, limit] : [userId, userId];
+  const rows = db
+    .prepare(`
+      SELECT
+        polls.*,
+        MAX(responses.created_at) AS voted_at
+      FROM polls
+      JOIN responses ON responses.poll_id = polls.id
+      WHERE responses.user_id = ?
+        AND polls.user_id != ?
+      GROUP BY polls.id
+      ORDER BY MAX(responses.created_at) DESC
+      ${limitSql}
     `)
-    .all(userId, userId);
+    .all(...queryParameters);
 
   const polls = rows.map((row) => ({
     ...mapPollRow(row, req),
@@ -711,7 +767,7 @@ function buildParticipatedPollsPayload(req, userId) {
   return {
     polls,
     stats: {
-      totalPolls: polls.length,
+      totalPolls,
     },
   };
 }
@@ -1394,10 +1450,30 @@ app.get("/api/user/dashboard", requireAuth, (req, res) => {
 
 app.get("/api/user/participated-polls", requireAuth, (req, res) => {
   try {
-    res.json(buildParticipatedPollsPayload(req, req.currentUser.id));
+    res.json(buildParticipatedPollsPayload(req, req.currentUser.id, { limit: 3 }));
   } catch (error) {
     console.error("Fehler beim Laden der teilgenommenen Umfragen:", error);
     res.status(500).json({ error: "Die teilgenommenen Umfragen konnten nicht geladen werden." });
+  }
+});
+
+app.get("/api/user/my-polls", requireAuth, (req, res) => {
+  try {
+    const page = parsePaginationValue(req.query?.page, 1, 100000);
+    const pageSize = parsePaginationValue(req.query?.pageSize, 12);
+    res.json(buildDashboardPayload(req, req.currentUser.id, { paginated: true, page, pageSize }));
+  } catch (error) {
+    console.error("Fehler beim Laden aller eigenen Umfragen:", error);
+    res.status(500).json({ error: "Die eigenen Umfragen konnten nicht geladen werden." });
+  }
+});
+
+app.get("/api/user/all-participated", requireAuth, (req, res) => {
+  try {
+    res.json(buildParticipatedPollsPayload(req, req.currentUser.id));
+  } catch (error) {
+    console.error("Fehler beim Laden aller Teilnahmen:", error);
+    res.status(500).json({ error: "Die Teilnahmen konnten nicht geladen werden." });
   }
 });
 
@@ -1826,7 +1902,19 @@ app.delete("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
 });
 
 app.get(
-  ["/", "/login", "/register", "/forgot-password", "/reset-password", "/dashboard", "/account", "/create", "/poll/:pollId"],
+  [
+    "/",
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/reset-password",
+    "/dashboard",
+    "/account",
+    "/create",
+    "/my-polls",
+    "/participated",
+    "/poll/:pollId",
+  ],
   (_req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
   }

@@ -80,12 +80,22 @@ async function renderCurrentRoute() {
     return;
   }
 
+  if (route.type === "my-polls") {
+    await renderMyPollsPage();
+    return;
+  }
+
+  if (route.type === "participated") {
+    await renderParticipatedPage();
+    return;
+  }
+
   if (route.type === "reset-password") {
     await renderResetPasswordPage(route.token);
     return;
   }
 
-  if (["dashboard", "create"].includes(route.type) && !state.auth.user) {
+  if (["dashboard", "create", "my-polls", "participated"].includes(route.type) && !state.auth.user) {
     await navigateTo("/login", { replace: true });
     return;
   }
@@ -140,6 +150,8 @@ function isSpaPath(pathname) {
     pathname === "/create" ||
     pathname === "/reset-password" ||
     pathname === "/dashboard" ||
+    pathname === "/my-polls" ||
+    pathname === "/participated" ||
     /^\/poll\/[a-z0-9]+$/i.test(pathname)
   );
 }
@@ -269,6 +281,12 @@ function getRoute() {
   if (pathname === "/account") {
     return { type: "account" };
   }
+  if (pathname === "/my-polls") {
+    return { type: "my-polls" };
+  }
+  if (pathname === "/participated") {
+    return { type: "participated" };
+  }
   if (pathname === "/create") {
     const mode = ["fixed", "free"].includes(params.get("mode")) ? params.get("mode") : "fixed";
     return { type: "create", mode, pollId: params.get("edit") || "" };
@@ -362,10 +380,6 @@ async function renderDashboardPage() {
   const template = document.querySelector("#dashboard-template");
   showDynamicView();
   dynamicViewElement.appendChild(template.content.cloneNode(true));
-
-  document.querySelector("#refresh-dashboard").addEventListener("click", () => {
-    loadDashboardPolls().catch(handleRenderError);
-  });
 
   await loadDashboardPolls();
 }
@@ -492,6 +506,26 @@ async function renderAccountPage() {
               Passwort aendern
             </button>
           </form>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Uebersichten</p>
+              <h2>Schnellzugriff</h2>
+            </div>
+          </div>
+
+          <div class="overview-link-grid">
+            <a class="ghost-link" href="/my-polls">
+              <i class="fa-regular fa-rectangle-list"></i>
+              Meine Umfragen
+            </a>
+            <a class="ghost-link" href="/participated">
+              <i class="fa-regular fa-handshake"></i>
+              An denen ich teilgenommen habe
+            </a>
+          </div>
         </article>
 
         <article class="panel">
@@ -738,19 +772,21 @@ async function loadDashboardPolls() {
     state.dashboardStats = dashboardData.stats;
     state.participatedPolls = participatedData.polls;
 
-    summary.textContent = `${dashboardData.polls.length} Umfragen`;
+    summary.textContent = dashboardData.stats.totalPolls === 1 ? "1 Umfrage" : `${dashboardData.stats.totalPolls} Umfragen`;
     if (title) {
       const activeCount = dashboardData.polls.filter((poll) => getDashboardPollStatus(poll).tone === "active").length;
       title.textContent = `${activeCount} aktive Umfragen`;
     }
 
-    participatedSummary.textContent = participatedData.polls.length === 1 ? "1 Teilnahme" : `${participatedData.polls.length} Teilnahmen`;
+    participatedSummary.textContent = participatedData.stats.totalPolls === 1
+      ? "1 Teilnahme"
+      : `${participatedData.stats.totalPolls} Teilnahmen`;
 
-    renderDashboardPollList(list, dashboardData.polls, {
+    renderDashboardPollList(list, dashboardData.polls.slice(0, 3), {
       emptyTitle: "Noch keine Umfragen",
       emptyDescription: "Erstelle oben deine erste Termin-Abstimmung.",
     });
-    renderDashboardPollList(participatedList, participatedData.polls, {
+    renderDashboardPollList(participatedList, participatedData.polls.slice(0, 3), {
       emptyTitle: "Noch keine Teilnahmen",
       emptyDescription: "Sobald du an Umfragen anderer Personen teilnimmst, erscheinen sie hier.",
       dateField: "votedAt",
@@ -790,6 +826,140 @@ function renderDashboardPollList(container, polls, options = {}) {
       }
     });
   });
+}
+
+async function renderMyPollsPage() {
+  const params = new URLSearchParams(window.location.search);
+  const page = getPositiveInteger(params.get("page"), 1);
+  const pageSize = 12;
+
+  showDynamicView();
+  dynamicViewElement.innerHTML = '<section class="panel"><p class="description">Deine Umfragen werden geladen ...</p></section>';
+
+  try {
+    const data = await apiFetch(`/api/user/my-polls?page=${page}&pageSize=${pageSize}`);
+    renderPollOverviewPage({
+      eyebrow: "Meine Umfragen",
+      title: "Alle erstellten Umfragen",
+      description: "Hier findest du deine komplette Liste mit denselben Karten wie im Dashboard.",
+      summaryLabel: data.pagination.totalItems === 1 ? "1 Umfrage" : `${data.pagination.totalItems} Umfragen`,
+      containerId: "my-polls-list",
+      emptyTitle: "Noch keine Umfragen",
+      emptyDescription: "Erstelle im Dashboard deine erste Termin-Abstimmung.",
+      polls: data.polls,
+      pagination: data.pagination,
+      basePath: "/my-polls",
+    });
+  } catch (error) {
+    if (error.status === 401) {
+      await navigateTo("/login", { replace: true });
+      return;
+    }
+
+    dynamicViewElement.innerHTML = `<section class="panel"><h1>Fehler</h1><p>${escapeHtml(error.message)}</p></section>`;
+  }
+}
+
+async function renderParticipatedPage() {
+  showDynamicView();
+  dynamicViewElement.innerHTML = '<section class="panel"><p class="description">Deine Teilnahmen werden geladen ...</p></section>';
+
+  try {
+    const data = await apiFetch("/api/user/all-participated");
+    renderPollOverviewPage({
+      eyebrow: "Teilnahmen",
+      title: "Alle Umfragen mit deiner Stimme",
+      description: "Diese Liste enthaelt alle Umfragen, bei denen du bereits abgestimmt hast.",
+      summaryLabel: data.stats.totalPolls === 1 ? "1 Teilnahme" : `${data.stats.totalPolls} Teilnahmen`,
+      containerId: "participated-polls-list",
+      emptyTitle: "Noch keine Teilnahmen",
+      emptyDescription: "Sobald du an Umfragen anderer Personen teilnimmst, erscheinen sie hier.",
+      polls: data.polls,
+      dateField: "votedAt",
+    });
+  } catch (error) {
+    if (error.status === 401) {
+      await navigateTo("/login", { replace: true });
+      return;
+    }
+
+    dynamicViewElement.innerHTML = `<section class="panel"><h1>Fehler</h1><p>${escapeHtml(error.message)}</p></section>`;
+  }
+}
+
+function renderPollOverviewPage(options) {
+  const pagination = options.pagination || null;
+  dynamicViewElement.innerHTML = `
+    <section class="dashboard-shell overview-stack">
+      <article class="hero-card dashboard-hero">
+        <div class="hero-copy">
+          <div class="inline-action-row">
+            <a class="ghost-link" href="/dashboard">
+              <i class="fa-solid fa-arrow-left"></i>
+              Zurueck zum Dashboard
+            </a>
+            <a class="ghost-link" href="/account">
+              <i class="fa-regular fa-user"></i>
+              Konto
+            </a>
+          </div>
+          <p class="eyebrow">${escapeHtml(options.eyebrow)}</p>
+          <h1>${escapeHtml(options.title)}</h1>
+          <p class="hero-text">${escapeHtml(options.description)}</p>
+        </div>
+        <div class="hero-stats auth-stats">
+          <article class="hero-stat">
+            <strong>${escapeHtml(options.summaryLabel)}</strong>
+            <span>Direkt aus deinem Konto geladen</span>
+          </article>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="dashboard-section-head dashboard-summary-row">
+          <span class="pill">${escapeHtml(options.summaryLabel)}</span>
+          ${pagination ? `<span class="pill">Seite ${pagination.page} von ${pagination.totalPages}</span>` : ""}
+        </div>
+        <div id="${escapeHtml(options.containerId)}" class="poll-list"></div>
+        ${renderPaginationControls(pagination, options.basePath || "")}
+      </article>
+    </section>
+  `;
+
+  renderDashboardPollList(document.querySelector(`#${options.containerId}`), options.polls, {
+    emptyTitle: options.emptyTitle,
+    emptyDescription: options.emptyDescription,
+    dateField: options.dateField,
+  });
+}
+
+function renderPaginationControls(pagination, basePath) {
+  if (!pagination || pagination.totalPages <= 1) {
+    return "";
+  }
+
+  const prevHref = `${basePath}?page=${pagination.page - 1}`;
+  const nextHref = `${basePath}?page=${pagination.page + 1}`;
+
+  return `
+    <div class="pagination-row">
+      ${pagination.page > 1
+        ? `<a class="ghost-link" href="${prevHref}"><i class="fa-solid fa-arrow-left"></i> Vorherige Seite</a>`
+        : '<span class="ghost-link is-disabled"><i class="fa-solid fa-arrow-left"></i> Vorherige Seite</span>'}
+      ${pagination.page < pagination.totalPages
+        ? `<a class="ghost-link" href="${nextHref}">Naechste Seite <i class="fa-solid fa-arrow-right"></i></a>`
+        : '<span class="ghost-link is-disabled">Naechste Seite <i class="fa-solid fa-arrow-right"></i></span>'}
+    </div>
+  `;
+}
+
+function getPositiveInteger(value, fallback = 1) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  if (Number.isNaN(parsed) || parsed < 1) {
+    return fallback;
+  }
+
+  return parsed;
 }
 
 function handleDashboardRowOpen(event, href) {

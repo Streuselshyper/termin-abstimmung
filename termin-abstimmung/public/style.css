@@ -153,6 +153,28 @@ a {
   gap: 1rem;
 }
 
+.overview-link-grid,
+.section-footer-action,
+.pagination-row {
+  display: flex;
+}
+
+.overview-link-grid {
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.section-footer-action {
+  justify-content: flex-start;
+  margin-top: 1rem;
+}
+
+.pagination-row {
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
 .topbar,
 .panel-header,
 .calendar-header,
@@ -595,6 +617,10 @@ select:focus {
 
 .dashboard-grid {
   grid-template-columns: 1.15fr 0.95fr;
+}
+
+.overview-stack {
+  gap: 1.25rem;
 }
 
 .poll-shell {
@@ -1387,6 +1413,10 @@ body.poll-drawer-open {
 
   .poll-list-actions {
     gap: 0.45rem;
+  }
+
+  .pagination-row {
+    flex-direction: column;
   }
 }
 
