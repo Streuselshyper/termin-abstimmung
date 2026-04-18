@@ -360,15 +360,15 @@
 
       .veto-dropdown,
       .veto-dropdown-inline {
-        min-width: 5.5rem;
-        height: 1.8rem;
-        padding: 0.25rem 1.8rem 0.25rem 0.6rem;
-        border-radius: 0.65rem;
-        border: 1px solid var(--border-soft);
-        background: color-mix(in srgb, var(--surface-soft) 88%, rgba(255, 255, 255, 0.1));
+        min-width: auto;
+        height: 1.9rem;
+        padding: 0.35rem 1.8rem 0.35rem 0.75rem;
+        border-radius: 9999px;
+        border: 2px solid var(--border-soft);
+        background: color-mix(in srgb, var(--surface-soft) 92%, rgba(255, 255, 255, 0.08));
         color: var(--text-soft);
         font-family: inherit;
-        font-size: 0.78rem;
+        font-size: 0.85rem;
         font-weight: 600;
         line-height: 1.1;
         appearance: none;
@@ -377,15 +377,22 @@
           linear-gradient(45deg, transparent 50%, currentColor 50%),
           linear-gradient(135deg, currentColor 50%, transparent 50%);
         background-position:
-          calc(100% - 0.85rem) calc(50% - 0.12rem),
-          calc(100% - 0.6rem) calc(50% - 0.12rem);
-        background-size: 0.4rem 0.4rem, 0.4rem 0.4rem;
+          calc(100% - 0.95rem) calc(50% - 0.14rem),
+          calc(100% - 0.7rem) calc(50% - 0.14rem);
+        background-size: 0.42rem 0.42rem, 0.42rem 0.42rem;
         background-repeat: no-repeat;
         transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
       }
 
-      .veto-dropdown:hover,
-      .veto-dropdown-inline:hover {
+      .veto-dropdown:has(option[value="veto"]:checked),
+      .veto-dropdown-inline:has(option[value="veto"]:checked) {
+        background: rgba(16, 185, 129, 0.15);
+        border-color: #10b981;
+        color: #10b981;
+      }
+
+      .veto-dropdown:not(:has(option[value="veto"]:checked)):hover,
+      .veto-dropdown-inline:not(:has(option[value="veto"]:checked)):hover {
         border-color: rgba(45, 212, 191, 0.28);
         color: inherit;
       }
@@ -393,9 +400,19 @@
       .veto-dropdown:focus,
       .veto-dropdown-inline:focus {
         outline: none;
-        border-color: rgba(45, 212, 191, 0.45);
         box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12);
+      }
+
+      .veto-dropdown:not(:has(option[value="veto"]:checked)):focus,
+      .veto-dropdown-inline:not(:has(option[value="veto"]:checked)):focus {
+        border-color: rgba(45, 212, 191, 0.45);
         color: inherit;
+      }
+
+      .veto-dropdown:has(option[value="veto"]:checked):focus,
+      .veto-dropdown-inline:has(option[value="veto"]:checked):focus {
+        border-color: #10b981;
+        color: #10b981;
       }
 
       .matrix-delete-button,
