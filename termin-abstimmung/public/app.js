@@ -2178,23 +2178,27 @@ function renderParticipantsAdminPanel() {
                 <strong>${escapeHtml(participant.name)}</strong>
                 <span>${escapeHtml(participant.email)}</span>
               </div>
-              <label class="participants-admin-check">
-                <input type="checkbox" data-field="canVote" ${participant.canVote ? "checked" : ""} />
-                <span>Darf abstimmen</span>
-              </label>
-              <label class="participants-admin-check">
-                <input type="checkbox" data-field="isBlocked" ${participant.isBlocked ? "checked" : ""} />
-                <span>Gesperrt</span>
-              </label>
-              <button
-                class="ghost-button compact-button participant-delete-response"
-                type="button"
-                data-response-id="${participant.responseId || ""}"
-                ${participant.responseId ? "" : "disabled"}
-              >
-                <i class="fa-regular fa-trash-can"></i>
-                Antwort loeschen
-              </button>
+              <div class="participants-admin-controls">
+                <label class="participants-admin-check">
+                  <input type="checkbox" data-field="canVote" ${participant.canVote ? "checked" : ""} />
+                  <span>Darf abstimmen</span>
+                </label>
+                <label class="participants-admin-check">
+                  <input type="checkbox" data-field="isBlocked" ${participant.isBlocked ? "checked" : ""} />
+                  <span>Gesperrt</span>
+                </label>
+              </div>
+              <div class="participants-admin-actions">
+                <button
+                  class="ghost-button compact-button participant-delete-response participant-delete-button"
+                  type="button"
+                  data-response-id="${participant.responseId || ""}"
+                  ${participant.responseId ? "" : "disabled"}
+                >
+                  <i class="fa-regular fa-trash-can"></i>
+                  <span>Loeschen</span>
+                </button>
+              </div>
             </article>
           `
         )

@@ -273,8 +273,8 @@
 
       .participants-admin-row {
         display: grid;
-        grid-template-columns: minmax(0, 1.6fr) repeat(3, auto) auto;
-        gap: 0.75rem;
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, auto) auto;
+        gap: 1rem;
         align-items: center;
         padding: 0.8rem 0.9rem;
         border-radius: 0.85rem;
@@ -294,11 +294,36 @@
         white-space: nowrap;
       }
 
+      .participants-admin-controls {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
       .participants-admin-check {
         display: inline-flex;
         align-items: center;
         gap: 0.45rem;
         font-size: 0.92rem;
+        white-space: nowrap;
+      }
+
+      .participants-admin-check input {
+        margin: 0;
+      }
+
+      .participants-admin-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+      }
+
+      .participant-delete-button {
+        padding: 0.35rem 0.75rem;
+        font-size: 0.85rem;
+        white-space: nowrap;
       }
 
       .participant-role-badge-row {
@@ -450,7 +475,12 @@
         }
 
         .participants-admin-row {
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: minmax(0, 1fr);
+          align-items: flex-start;
+        }
+
+        .participants-admin-actions {
+          justify-content: flex-start;
         }
       }
 
@@ -475,8 +505,9 @@
           min-width: max-content;
         }
 
-        .participants-admin-row {
-          grid-template-columns: 1fr;
+        .participants-admin-controls {
+          flex-direction: column;
+          align-items: flex-start;
         }
       }
     </style>
