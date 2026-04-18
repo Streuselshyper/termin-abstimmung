@@ -1708,11 +1708,11 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
 
 app.delete("/api/polls/:pollId/responses/:responseId", requireCsrf, requireAuth, (req, res) => {
   try {
-    const poll = getPollOwnerOrThrow(req.params.pollId, req.currentUser.id);
-    if (poll === null) {
+    const poll = db.prepare("SELECT * FROM polls WHERE id = ?").get(req.params.pollId);
+    if (!poll) {
       return res.status(404).json({ error: "Poll nicht gefunden." });
     }
-    if (poll === false) {
+    if (poll.user_id !== req.currentUser.id) {
       return res.status(403).json({ error: "Nicht erlaubt." });
     }
 
