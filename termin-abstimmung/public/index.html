@@ -344,7 +344,21 @@
       .matrix-action-group {
         display: inline-flex;
         align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         gap: 0.35rem;
+      }
+
+      .veto-dropdown {
+        min-width: 6.75rem;
+        height: 2rem;
+        padding: 0 0.55rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255, 255, 255, 0.04);
+        color: inherit;
+        font: inherit;
+        font-size: 0.8rem;
       }
 
       .matrix-delete-button,
@@ -389,6 +403,16 @@
       @media (max-width: 640px) {
         .share-link-row {
           grid-template-columns: 1fr;
+        }
+
+        .matrix-name-cell {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .matrix-action-group {
+          width: 100%;
+          justify-content: flex-start;
         }
 
         .participants-admin-row {

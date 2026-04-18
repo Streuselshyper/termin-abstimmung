@@ -1879,6 +1879,10 @@ function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
         ${
           canManage
             ? `
+              <select class="veto-dropdown" data-response-id="${response.id}" aria-label="Veto fuer ${escapeHtml(name)}">
+                <option value="none" ${response.hasVeto ? "" : "selected"}>Kein Veto</option>
+                <option value="veto" ${response.hasVeto ? "selected" : ""}>Veto</option>
+              </select>
               <button class="matrix-delete-button" type="button" data-response-id="${response.id}" aria-label="Antwort loeschen">
                 <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
               </button>
@@ -1922,6 +1926,21 @@ function bindMatrixEditButtons() {
     console.debug("[matrix] delete click", { responseId });
     handleAdminDeleteResponse(responseId).catch((error) => {
       setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+    });
+  });
+
+  newTable.addEventListener("change", (event) => {
+    const vetoDropdown = event.target.closest(".veto-dropdown");
+    if (!vetoDropdown) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    handleMatrixVetoChange(vetoDropdown.dataset.responseId, vetoDropdown.value, vetoDropdown).catch((error) => {
+      setFeedback(document.querySelector("#response-feedback"), error.message, "error");
+      refreshPollView();
     });
   });
 }
@@ -2159,7 +2178,7 @@ function renderParticipantsAdminPanel() {
 
   panel.innerHTML = `
     <div class="participants-admin-feedback description">
-      Rechte wirken sofort. Gesperrte Teilnehmer koennen keine neuen Antworten mehr speichern.
+      Rechte wirken sofort. Veto wird direkt in der Matrix gepflegt, Sperren und Abstimmungsrecht bleiben hier.
     </div>
     <div class="participants-admin-list">
       ${state.adminParticipants
@@ -2170,10 +2189,6 @@ function renderParticipantsAdminPanel() {
                 <strong>${escapeHtml(participant.name)}</strong>
                 <span>${escapeHtml(participant.email)}</span>
               </div>
-              <label class="participants-admin-check">
-                <input type="checkbox" data-field="hasVeto" ${participant.hasVeto ? "checked" : ""} />
-                <span>Veto</span>
-              </label>
               <label class="participants-admin-check">
                 <input type="checkbox" data-field="canVote" ${participant.canVote ? "checked" : ""} />
                 <span>Darf abstimmen</span>
@@ -2220,7 +2235,7 @@ function renderParticipantsAdminPanel() {
 
 async function handleParticipantRightsChange(userId, row) {
   const payload = {
-    hasVeto: row.querySelector('[data-field="hasVeto"]').checked,
+    hasVeto: getParticipantByUserId(userId)?.hasVeto ?? false,
     canVote: row.querySelector('[data-field="canVote"]').checked,
     isBlocked: row.querySelector('[data-field="isBlocked"]').checked,
   };
@@ -2230,30 +2245,72 @@ async function handleParticipantRightsChange(userId, row) {
     body: JSON.stringify(payload),
   });
 
+  syncParticipantRights(data.participant);
+
+  refreshPollView();
+  setFeedback(document.querySelector("#response-feedback"), "Teilnehmerrechte gespeichert.", "success");
+}
+
+function getParticipantByUserId(userId) {
+  return state.adminParticipants.find((participant) => String(participant.userId) === String(userId)) || null;
+}
+
+function syncParticipantRights(participantData) {
+  const userId = participantData?.userId;
+  if (!userId) {
+    return;
+  }
+
   state.adminParticipants = state.adminParticipants.map((participant) =>
-    String(participant.userId) === String(userId) ? data.participant : participant
+    String(participant.userId) === String(userId) ? participantData : participant
   );
   state.pollData.responses = (state.pollData.responses || []).map((response) =>
     String(response.userId) === String(userId)
       ? {
           ...response,
-          hasVeto: data.participant.hasVeto,
-          canVote: data.participant.canVote,
-          isBlocked: data.participant.isBlocked,
+          hasVeto: participantData.hasVeto,
+          canVote: participantData.canVote,
+          isBlocked: participantData.isBlocked,
         }
       : response
   );
 
   if (state.pollData?.user?.id && String(state.pollData.user.id) === String(userId)) {
     state.pollData.participant = {
-      canVote: data.participant.canVote,
-      hasVeto: data.participant.hasVeto,
-      isBlocked: data.participant.isBlocked,
+      canVote: participantData.canVote,
+      hasVeto: participantData.hasVeto,
+      isBlocked: participantData.isBlocked,
     };
   }
+}
 
-  refreshPollView();
-  setFeedback(document.querySelector("#response-feedback"), "Teilnehmerrechte gespeichert.", "success");
+async function handleMatrixVetoChange(responseId, vetoValue, selectElement) {
+  const response = (state.pollData?.responses || []).find((entry) => String(entry.id) === String(responseId));
+  if (!response?.userId) {
+    throw new Error("Teilnehmer konnte nicht gefunden werden.");
+  }
+
+  selectElement.disabled = true;
+
+  try {
+    const currentParticipant = getParticipantByUserId(response.userId);
+    const payload = {
+      hasVeto: vetoValue === "veto",
+      canVote: currentParticipant?.canVote ?? response.canVote ?? true,
+      isBlocked: currentParticipant?.isBlocked ?? response.isBlocked ?? false,
+    };
+
+    const data = await apiFetch(`/api/polls/${state.pollData.poll.id}/participants/${encodeURIComponent(response.userId)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+
+    syncParticipantRights(data.participant);
+    refreshPollView();
+    setFeedback(document.querySelector("#response-feedback"), "Veto gespeichert.", "success");
+  } finally {
+    selectElement.disabled = false;
+  }
 }
 
 async function handleAdminDeleteResponse(responseId) {
