@@ -845,12 +845,8 @@ async function renderMyPollsPage() {
       totalItems: data.total,
       totalPages,
     };
-    const summaryLabel = formatPollCountLabel(data.total);
-    const summaryElement = document.querySelector("#my-polls-summary-label");
     const pagePillElement = document.querySelector("#my-polls-page-pill");
     const paginationElement = document.querySelector("#my-polls-pagination");
-
-    summaryElement.textContent = summaryLabel;
 
     if (totalPages > 1) {
       pagePillElement.textContent = `Seite ${pagination.page} von ${pagination.totalPages}`;
@@ -915,20 +911,10 @@ function renderPollOverviewPage(options) {
               <i class="fa-solid fa-arrow-left"></i>
               Zurueck zum Dashboard
             </a>
-            <a class="ghost-link" href="/account">
-              <i class="fa-regular fa-user"></i>
-              Konto
-            </a>
           </div>
           <p class="eyebrow">${escapeHtml(options.eyebrow)}</p>
           <h1>${escapeHtml(options.title)}</h1>
           <p class="hero-text">${escapeHtml(options.description)}</p>
-        </div>
-        <div class="hero-stats auth-stats">
-          <article class="hero-stat">
-            <strong>${escapeHtml(options.summaryLabel)}</strong>
-            <span>Direkt aus deinem Konto geladen</span>
-          </article>
         </div>
       </article>
 
