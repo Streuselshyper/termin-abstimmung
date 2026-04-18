@@ -1056,7 +1056,7 @@ async function renderPollPage(pollId) {
 
     document.querySelector("#response-form").addEventListener("submit", handleResponseSubmit);
     document.querySelector("#poll-share-button").addEventListener("click", () => {
-      sharePollLink().catch((error) => {
+      copyPollShareLink().catch((error) => {
         setFeedback(document.querySelector("#response-feedback"), error.message, "error");
       });
     });
@@ -1287,14 +1287,6 @@ function renderPollOwnerActions() {
         <i class="fa-solid fa-pen"></i>
       </button>
 
-      <button id="owner-copy-share-link" class="settings-action" type="button">
-        <span class="settings-action-copy">
-          <span class="settings-action-title">Link kopieren</span>
-          <small>${escapeHtml(poll.absoluteShareUrl || window.location.href)}</small>
-        </span>
-        <i class="fa-regular fa-copy"></i>
-      </button>
-
       <button id="owner-duplicate-poll" class="settings-action" type="button">
         <span class="settings-action-copy">
           <span class="settings-action-title">Duplizieren</span>
@@ -1355,15 +1347,6 @@ function renderPollOwnerActions() {
 
   document.querySelector("#owner-edit-poll").addEventListener("click", () => {
     navigateTo(`/create?mode=${encodeURIComponent(poll.mode)}&edit=${encodeURIComponent(poll.id)}`).catch(handleRenderError);
-  });
-
-  document.querySelector("#owner-copy-share-link").addEventListener("click", async () => {
-    try {
-      await copyTextToClipboard(poll.absoluteShareUrl || window.location.href);
-      setFeedback(document.querySelector("#response-feedback"), "Share-Link wurde kopiert.", "success");
-    } catch (error) {
-      setFeedback(document.querySelector("#response-feedback"), error.message, "error");
-    }
   });
 
   document.querySelector("#owner-duplicate-poll").addEventListener("click", async () => {
@@ -1981,26 +1964,11 @@ async function handleResponseSubmit(event) {
   }
 }
 
-async function sharePollLink() {
+async function copyPollShareLink() {
   const shareUrl = state.pollData?.poll?.absoluteShareUrl || window.location.href;
-  if (navigator.share) {
-    try {
-      await navigator.share({
-        title: state.pollData.poll.title,
-        text: "Trag dich in diese Termin-Abstimmung ein.",
-        url: shareUrl,
-      });
-      return;
-    } catch (error) {
-      if (error.name === "AbortError") {
-        return;
-      }
-    }
-  }
-
   await copyTextToClipboard(shareUrl);
   const feedback = document.querySelector("#response-feedback");
-  setFeedback(feedback, "Link wurde in die Zwischenablage kopiert.", "success");
+  setFeedback(feedback, "Link kopiert!", "success");
 }
 
 async function handleCalendarDownload() {
