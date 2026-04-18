@@ -28,9 +28,6 @@ const state = {
   responseDraft: {},
   pollDrawerOpen: false,
   createMode: "fixed",
-  adminParticipants: [],
-  adminParticipantsVisible: false,
-  adminParticipantsLoadedForPollId: "",
 };
 
 let toastTimeoutId = 0;
@@ -1044,9 +1041,6 @@ async function renderPollPage(pollId) {
     const data = await apiFetch(`/api/polls/${pollId}`);
     state.pollData = data;
     state.pollDrawerOpen = false;
-    state.adminParticipants = [];
-    state.adminParticipantsVisible = false;
-    state.adminParticipantsLoadedForPollId = "";
     dynamicViewElement.innerHTML = "";
     dynamicViewElement.appendChild(template.content.cloneNode(true));
 
@@ -1298,19 +1292,6 @@ function renderPollOwnerActions() {
         <i class="fa-regular fa-clone"></i>
       </button>
 
-      <div class="settings-action settings-action-participants">
-        <button id="owner-toggle-participants" class="settings-action-toggle" type="button" aria-expanded="${
-          state.adminParticipantsVisible ? "true" : "false"
-        }">
-          <span class="settings-action-copy">
-            <span class="settings-action-title">Teilnehmer verwalten</span>
-            <small>Veto, Sperren und Antworten einzelner Personen steuern.</small>
-          </span>
-          <i class="fa-solid fa-users-gear"></i>
-        </button>
-        <div id="participants-admin-panel" class="participants-admin-panel${state.adminParticipantsVisible ? "" : " is-hidden"}"></div>
-      </div>
-
       <div class="settings-action">
         <span class="settings-action-copy">
           <span class="settings-action-title">ICS exportieren</span>
@@ -1362,12 +1343,6 @@ function renderPollOwnerActions() {
     }
   });
 
-  document.querySelector("#owner-toggle-participants").addEventListener("click", () => {
-    toggleParticipantsAdminPanel().catch((error) => {
-      setFeedback(document.querySelector("#response-feedback"), error.message, "error");
-    });
-  });
-
   document.querySelector("#owner-export-ics")?.addEventListener("click", handleCalendarDownload);
 
   document.querySelector("#owner-delete-poll").addEventListener("click", async () => {
@@ -1383,8 +1358,6 @@ function renderPollOwnerActions() {
       setFeedback(document.querySelector("#response-feedback"), error.message, "error");
     }
   });
-
-  renderParticipantsAdminPanel();
 }
 
 
@@ -1836,10 +1809,6 @@ function refreshPollView() {
   fillPollSummary();
   renderAvailabilityForm();
   renderResultsTable();
-
-  if (state.adminParticipantsVisible) {
-    renderParticipantsAdminPanel();
-  }
 }
 
 function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
@@ -2115,148 +2084,12 @@ function getScoreForStatus(status, hasVeto = false) {
   return 0;
 }
 
-async function toggleParticipantsAdminPanel() {
-  state.adminParticipantsVisible = !state.adminParticipantsVisible;
-  renderPollOwnerActions();
-
-  if (state.adminParticipantsVisible) {
-    await loadPollParticipants();
-  }
-}
-
-async function loadPollParticipants() {
-  const pollId = state.pollData?.poll?.id;
-  if (!pollId) {
-    return;
-  }
-
-  const panel = document.querySelector("#participants-admin-panel");
-  if (panel) {
-    panel.innerHTML = '<p class="description">Teilnehmer werden geladen ...</p>';
-  }
-
-  const data = await apiFetch(`/api/polls/${pollId}/participants`);
-  state.adminParticipants = data.participants || [];
-  state.adminParticipantsLoadedForPollId = pollId;
-  renderParticipantsAdminPanel();
-}
-
-function renderParticipantsAdminPanel() {
-  const panel = document.querySelector("#participants-admin-panel");
-  if (!panel || !state.pollData?.permissions?.canManage) {
-    return;
-  }
-
-  if (!state.adminParticipantsVisible) {
-    panel.classList.add("is-hidden");
-    panel.innerHTML = "";
-    return;
-  }
-
-  panel.classList.remove("is-hidden");
-
-  if (state.adminParticipantsLoadedForPollId !== state.pollData.poll.id) {
-    panel.innerHTML = '<p class="description">Teilnehmerliste wird vorbereitet ...</p>';
-    return;
-  }
-
-  if (state.adminParticipants.length === 0) {
-    panel.innerHTML = '<p class="description">Noch keine registrierten Teilnehmer vorhanden.</p>';
-    return;
-  }
-
-  panel.innerHTML = `
-    <div class="participants-admin-feedback description">
-      Rechte wirken sofort. Veto wird direkt in der Matrix gepflegt, Sperren und Abstimmungsrecht bleiben hier.
-    </div>
-    <div class="participants-admin-list">
-      ${state.adminParticipants
-        .map(
-          (participant) => `
-            <article class="participants-admin-row" data-user-id="${participant.userId}">
-              <div class="participants-admin-meta">
-                <strong>${escapeHtml(participant.name)}</strong>
-                <span>${escapeHtml(participant.email)}</span>
-              </div>
-              <div class="participants-admin-controls">
-                <label class="participants-admin-check">
-                  <input type="checkbox" data-field="canVote" ${participant.canVote ? "checked" : ""} />
-                  <span>Darf abstimmen</span>
-                </label>
-                <label class="participants-admin-check">
-                  <input type="checkbox" data-field="isBlocked" ${participant.isBlocked ? "checked" : ""} />
-                  <span>Gesperrt</span>
-                </label>
-              </div>
-              <div class="participants-admin-actions">
-                <button
-                  class="ghost-button compact-button participant-delete-response participant-delete-button"
-                  type="button"
-                  data-response-id="${participant.responseId || ""}"
-                  ${participant.responseId ? "" : "disabled"}
-                >
-                  <i class="fa-regular fa-trash-can"></i>
-                  <span>Loeschen</span>
-                </button>
-              </div>
-            </article>
-          `
-        )
-        .join("")}
-    </div>
-  `;
-
-  for (const row of panel.querySelectorAll(".participants-admin-row")) {
-    const userId = row.dataset.userId;
-    row.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-      input.addEventListener("change", () => {
-        handleParticipantRightsChange(userId, row).catch((error) => {
-          setFeedback(document.querySelector("#response-feedback"), error.message, "error");
-        });
-      });
-    });
-  }
-
-  for (const button of panel.querySelectorAll(".participant-delete-response")) {
-    button.addEventListener("click", () => {
-      handleAdminDeleteResponse(button.dataset.responseId).catch((error) => {
-        setFeedback(document.querySelector("#response-feedback"), error.message, "error");
-      });
-    });
-  }
-}
-
-async function handleParticipantRightsChange(userId, row) {
-  const payload = {
-    hasVeto: getParticipantByUserId(userId)?.hasVeto ?? false,
-    canVote: row.querySelector('[data-field="canVote"]').checked,
-    isBlocked: row.querySelector('[data-field="isBlocked"]').checked,
-  };
-
-  const data = await apiFetch(`/api/polls/${state.pollData.poll.id}/participants/${encodeURIComponent(userId)}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-
-  syncParticipantRights(data.participant);
-
-  refreshPollView();
-  setFeedback(document.querySelector("#response-feedback"), "Teilnehmerrechte gespeichert.", "success");
-}
-
-function getParticipantByUserId(userId) {
-  return state.adminParticipants.find((participant) => String(participant.userId) === String(userId)) || null;
-}
-
 function syncParticipantRights(participantData) {
   const userId = participantData?.userId;
   if (!userId) {
     return;
   }
 
-  state.adminParticipants = state.adminParticipants.map((participant) =>
-    String(participant.userId) === String(userId) ? participantData : participant
-  );
   state.pollData.responses = (state.pollData.responses || []).map((response) =>
     String(response.userId) === String(userId)
       ? {
@@ -2286,11 +2119,10 @@ async function handleMatrixVetoChange(responseId, vetoValue, selectElement) {
   selectElement.disabled = true;
 
   try {
-    const currentParticipant = getParticipantByUserId(response.userId);
     const payload = {
       hasVeto: vetoValue === "veto",
-      canVote: currentParticipant?.canVote ?? response.canVote ?? true,
-      isBlocked: currentParticipant?.isBlocked ?? response.isBlocked ?? false,
+      canVote: response.canVote ?? true,
+      isBlocked: response.isBlocked ?? false,
     };
 
     const data = await apiFetch(`/api/polls/${state.pollData.poll.id}/participants/${encodeURIComponent(response.userId)}`, {
@@ -2348,10 +2180,6 @@ async function handleAdminDeleteResponse(responseId) {
 
     console.log("[Delete] Success, re-rendering...");
     refreshPollView();
-
-    if (state.adminParticipantsVisible) {
-      await loadPollParticipants();
-    }
 
     setFeedback(feedback, "Antwort geloescht.", "success");
   } catch (error) {

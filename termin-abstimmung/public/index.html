@@ -237,95 +237,6 @@
         flex: 1 1 12rem;
       }
 
-      .settings-action-participants {
-        display: grid;
-        gap: 0.75rem;
-      }
-
-      .settings-action-toggle {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-        width: 100%;
-        border: 0;
-        background: transparent;
-        color: inherit;
-        padding: 0;
-        font: inherit;
-        text-align: left;
-        cursor: pointer;
-      }
-
-      .participants-admin-panel {
-        display: grid;
-        gap: 0.75rem;
-        padding: 0.85rem;
-        border-radius: 0.9rem;
-        border: 1px solid var(--border-soft);
-        background: rgba(255, 255, 255, 0.04);
-      }
-
-      .participants-admin-list {
-        display: grid;
-        gap: 0.6rem;
-      }
-
-      .participants-admin-row {
-        display: grid;
-        grid-template-columns: minmax(0, 1.6fr) minmax(0, auto) auto;
-        gap: 1rem;
-        align-items: center;
-        padding: 0.8rem 0.9rem;
-        border-radius: 0.85rem;
-        background: var(--surface-soft);
-        border: 1px solid var(--border-soft);
-      }
-
-      .participants-admin-meta {
-        display: grid;
-        min-width: 0;
-      }
-
-      .participants-admin-meta span {
-        color: var(--text-soft);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .participants-admin-controls {
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        gap: 1rem;
-        flex-wrap: wrap;
-      }
-
-      .participants-admin-check {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.45rem;
-        font-size: 0.92rem;
-        white-space: nowrap;
-      }
-
-      .participants-admin-check input {
-        margin: 0;
-      }
-
-      .participants-admin-actions {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-      }
-
-      .participant-delete-button {
-        padding: 0.35rem 0.75rem;
-        font-size: 0.85rem;
-        white-space: nowrap;
-      }
-
       .participant-role-badge-row {
         display: flex;
         flex-wrap: wrap;
@@ -474,14 +385,6 @@
           justify-content: flex-start;
         }
 
-        .participants-admin-row {
-          grid-template-columns: minmax(0, 1fr);
-          align-items: flex-start;
-        }
-
-        .participants-admin-actions {
-          justify-content: flex-start;
-        }
       }
 
       @media (max-width: 640px) {
@@ -505,10 +408,6 @@
           min-width: max-content;
         }
 
-        .participants-admin-controls {
-          flex-direction: column;
-          align-items: flex-start;
-        }
       }
     </style>
   </head>
