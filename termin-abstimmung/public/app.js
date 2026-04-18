@@ -19,6 +19,7 @@ const state = {
   },
   dashboardStats: null,
   dashboardPolls: [],
+  participatedPolls: [],
   selectedDates: new Set(),
   currentMonth: startOfMonth(new Date()),
   participantSelectedDates: new Set(),
@@ -721,33 +722,32 @@ function getFirstSelectedCreateDate(dates) {
 async function loadDashboardPolls() {
   const list = document.querySelector("#dashboard-polls");
   const summary = document.querySelector("#dashboard-list-summary");
+  const participatedList = document.querySelector("#dashboard-participated-polls");
+  const participatedSummary = document.querySelector("#dashboard-participated-summary");
   list.innerHTML = '<p class="description">Deine Umfragen werden geladen ...</p>';
+  participatedList.innerHTML = '<p class="description">Deine Teilnahmen werden geladen ...</p>';
 
   try {
-    const data = await apiFetch("/api/user/dashboard");
-    state.dashboardPolls = data.polls;
-    state.dashboardStats = data.stats;
-    summary.textContent = `${data.polls.length} Umfragen`;
+    const [dashboardData, participatedData] = await Promise.all([
+      apiFetch("/api/user/dashboard"),
+      apiFetch("/api/user/participated-polls"),
+    ]);
 
-    if (data.polls.length === 0) {
-      list.innerHTML = `
-        <article class="poll-card poll-empty-state">
-          <strong>Noch keine Umfragen</strong>
-          <p class="description">Erstelle oben deine erste Termin-Abstimmung.</p>
-        </article>
-      `;
-      return;
-    }
+    state.dashboardPolls = dashboardData.polls;
+    state.dashboardStats = dashboardData.stats;
+    state.participatedPolls = participatedData.polls;
 
-    list.innerHTML = data.polls.map(renderDashboardPollCard).join("");
-    list.querySelectorAll("[data-poll-link]").forEach((row) => {
-      row.addEventListener("click", (event) => handleDashboardRowOpen(event, row.dataset.pollLink || ""));
-      row.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          handleDashboardRowOpen(event, row.dataset.pollLink || "");
-        }
-      });
+    summary.textContent = `${dashboardData.polls.length} Umfragen`;
+    participatedSummary.textContent = `${participatedData.polls.length} Umfragen`;
+
+    renderDashboardPollList(list, dashboardData.polls, {
+      emptyTitle: "Noch keine Umfragen",
+      emptyDescription: "Erstelle oben deine erste Termin-Abstimmung.",
+    });
+    renderDashboardPollList(participatedList, participatedData.polls, {
+      emptyTitle: "Noch keine Teilnahmen",
+      emptyDescription: "Sobald du an Umfragen anderer Personen teilnimmst, erscheinen sie hier.",
+      dateField: "votedAt",
     });
   } catch (error) {
     if (error.status === 401) {
@@ -756,7 +756,34 @@ async function loadDashboardPolls() {
     }
 
     list.innerHTML = `<p class="feedback error">${escapeHtml(error.message)}</p>`;
+    participatedList.innerHTML = `<p class="feedback error">${escapeHtml(error.message)}</p>`;
   }
+}
+
+function renderDashboardPollList(container, polls, options = {}) {
+  const emptyTitle = options.emptyTitle || "Keine Umfragen";
+  const emptyDescription = options.emptyDescription || "";
+
+  if (polls.length === 0) {
+    container.innerHTML = `
+      <article class="poll-card poll-empty-state">
+        <strong>${escapeHtml(emptyTitle)}</strong>
+        <p class="description">${escapeHtml(emptyDescription)}</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = polls.map((poll) => renderDashboardPollCard(poll, options)).join("");
+  container.querySelectorAll("[data-poll-link]").forEach((row) => {
+    row.addEventListener("click", (event) => handleDashboardRowOpen(event, row.dataset.pollLink || ""));
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        handleDashboardRowOpen(event, row.dataset.pollLink || "");
+      }
+    });
+  });
 }
 
 function handleDashboardRowOpen(event, href) {
@@ -771,11 +798,11 @@ function handleDashboardRowOpen(event, href) {
   navigateTo(href).catch(handleRenderError);
 }
 
-function renderDashboardPollCard(poll) {
-  const lastUpdated = poll.latestResponseAt || poll.updatedAt || poll.createdAt;
-  const lastUpdatedDate = typeof lastUpdated === "string" ? lastUpdated.slice(0, 10) : "";
+function renderDashboardPollCard(poll, options = {}) {
+  const dateField = options.dateField || "latestResponseAt";
+  const activityDate = poll[dateField] || poll.updatedAt || poll.createdAt;
+  const activityDay = typeof activityDate === "string" ? activityDate.slice(0, 10) : "";
   const status = getDashboardPollStatus(poll);
-  const type = getDashboardPollTypeMeta(poll.mode);
 
   return `
     <article class="poll-list-row" data-poll-link="${poll.shareUrl}" tabindex="0">
@@ -784,7 +811,7 @@ function renderDashboardPollCard(poll) {
       </div>
       <div class="poll-list-meta" aria-label="Zuletzt aktualisiert und Status">
         <span class="poll-list-date">
-          ${escapeHtml(lastUpdatedDate ? formatDateShort(lastUpdatedDate) : "-")}
+          ${escapeHtml(activityDay ? formatDateShort(activityDay) : "-")}
         </span>
         <span class="dashboard-status-badge dashboard-status-${status.tone}">${escapeHtml(status.label)}</span>
       </div>

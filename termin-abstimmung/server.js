@@ -688,6 +688,34 @@ function buildDashboardPayload(req, userId) {
   };
 }
 
+function buildParticipatedPollsPayload(req, userId) {
+  const rows = db
+    .prepare(`
+      SELECT DISTINCT
+        polls.*,
+        responses.created_at AS voted_at
+      FROM polls
+      JOIN responses ON responses.poll_id = polls.id
+      WHERE responses.user_id = ?
+        AND polls.user_id != ?
+      ORDER BY responses.created_at DESC
+      LIMIT 3
+    `)
+    .all(userId, userId);
+
+  const polls = rows.map((row) => ({
+    ...mapPollRow(row, req),
+    votedAt: row.voted_at || null,
+  }));
+
+  return {
+    polls,
+    stats: {
+      totalPolls: polls.length,
+    },
+  };
+}
+
 function parseCookies(headerValue) {
   const cookies = {};
   if (!headerValue) {
@@ -1361,6 +1389,15 @@ app.get("/api/user/dashboard", requireAuth, (req, res) => {
   } catch (error) {
     console.error("Fehler beim Laden des Dashboards:", error);
     res.status(500).json({ error: "Das Dashboard konnte nicht geladen werden." });
+  }
+});
+
+app.get("/api/user/participated-polls", requireAuth, (req, res) => {
+  try {
+    res.json(buildParticipatedPollsPayload(req, req.currentUser.id));
+  } catch (error) {
+    console.error("Fehler beim Laden der teilgenommenen Umfragen:", error);
+    res.status(500).json({ error: "Die teilgenommenen Umfragen konnten nicht geladen werden." });
   }
 });
 

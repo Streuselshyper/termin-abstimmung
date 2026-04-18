@@ -698,23 +698,39 @@
           </div>
         </article>
 
-        <article class="panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Meine Umfragen</p>
-              <h2>Zuletzt aktualisiert</h2>
+        <section class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Meine Umfragen</p>
+                <h2>Zuletzt aktualisiert</h2>
+              </div>
+              <button id="refresh-dashboard" class="ghost-button compact-button" type="button" aria-label="Aktualisieren">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
             </div>
-            <button id="refresh-dashboard" class="ghost-button compact-button" type="button" aria-label="Aktualisieren">
-              <i class="fa-solid fa-rotate"></i>
-            </button>
-          </div>
-          <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
-          <div class="dashboard-section-head">
-            <p class="muted-copy">Nur die wichtigsten Infos und schnelle Aktionen direkt im Dashboard.</p>
-            <span id="dashboard-list-summary" class="pill">0 Umfragen</span>
-          </div>
-          <div id="dashboard-polls" class="poll-list"></div>
-        </article>
+            <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
+            <div class="dashboard-section-head">
+              <p class="muted-copy">Nur die wichtigsten Infos und schnelle Aktionen direkt im Dashboard.</p>
+              <span id="dashboard-list-summary" class="pill">0 Umfragen</span>
+            </div>
+            <div id="dashboard-polls" class="poll-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">An denen ich teilgenommen habe</p>
+                <h2>Zuletzt abgestimmt</h2>
+              </div>
+            </div>
+            <div class="dashboard-section-head">
+              <p class="muted-copy">Deine letzten Teilnahmen an Umfragen anderer Personen.</p>
+              <span id="dashboard-participated-summary" class="pill">0 Umfragen</span>
+            </div>
+            <div id="dashboard-participated-polls" class="poll-list"></div>
+          </article>
+        </section>
       </section>
     </template>
 
