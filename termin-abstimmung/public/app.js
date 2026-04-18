@@ -1892,12 +1892,15 @@ function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
 
 function bindMatrixEditButtons() {
   const table = document.querySelector(".results-table");
-  if (!table || table.dataset.matrixActionsBound === "true") {
+  if (!table) {
     return;
   }
 
-  table.dataset.matrixActionsBound = "true";
-  table.addEventListener("click", (event) => {
+  // Remove old event listeners by cloning and replacing the table
+  const newTable = table.cloneNode(true);
+  table.parentNode.replaceChild(newTable, table);
+
+  newTable.addEventListener("click", (event) => {
     const editButton = event.target.closest(".matrix-edit-button");
     if (editButton) {
       event.preventDefault();
