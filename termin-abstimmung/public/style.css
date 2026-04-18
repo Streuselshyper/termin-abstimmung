@@ -390,6 +390,10 @@ h3 {
   gap: 1.4rem;
 }
 
+.overview-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .create-hero {
   align-items: start;
 }
@@ -405,11 +409,19 @@ h3 {
   max-width: 52rem;
 }
 
+.overview-hero .hero-copy {
+  max-width: 100%;
+}
+
 .hero-card h1 {
   margin: 0;
   font-size: clamp(2rem, 6vw, 4.3rem);
   line-height: 0.95;
   max-width: 11ch;
+}
+
+.overview-hero h1 {
+  max-width: 18ch;
 }
 
 .hero-text {

@@ -904,7 +904,7 @@ function renderPollOverviewPage(options) {
   const pagination = options.pagination || null;
   dynamicViewElement.innerHTML = `
     <section class="dashboard-shell overview-stack">
-      <article class="hero-card dashboard-hero">
+      <article class="hero-card dashboard-hero overview-hero">
         <div class="hero-copy">
           <div class="inline-action-row">
             <a class="ghost-link" href="/dashboard">
