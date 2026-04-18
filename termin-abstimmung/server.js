@@ -731,6 +731,52 @@ function buildDashboardPayload(req, userId, options = {}) {
   };
 }
 
+function buildMyPollsPayload(req, userId, options = {}) {
+  const pageSize = parsePaginationValue(options.pageSize, 12);
+  const requestedPage = parsePaginationValue(options.page, 1, 100000);
+  const total = Number(db.prepare("SELECT COUNT(*) AS count FROM polls WHERE user_id = ?").get(userId)?.count || 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const offset = (page - 1) * pageSize;
+
+  const rows = db
+    .prepare(`
+      SELECT
+        polls.*,
+        COUNT(responses.id) AS response_count,
+        MAX(responses.updated_at) AS latest_response_at
+      FROM polls
+      LEFT JOIN responses ON responses.poll_id = polls.id
+      WHERE polls.user_id = ?
+      GROUP BY polls.id
+      ORDER BY polls.created_at DESC, polls.id DESC
+      LIMIT ? OFFSET ?
+    `)
+    .all(userId, pageSize, offset);
+
+  const polls = rows.map((row) => {
+    const mapped = mapPollRow(row, req);
+    const responses = db.prepare("SELECT * FROM responses WHERE poll_id = ?").all(row.id).map(mapResponseRow);
+    const results = mapped.mode === "fixed"
+      ? calculateBestDates(mapped.dates, responses)
+      : calculateSuggestedDatesRanking(responses);
+
+    return {
+      ...mapped,
+      responseCount: Number(row.response_count || 0),
+      latestResponseAt: row.latest_response_at || null,
+      bestDates: results.bestDates,
+    };
+  });
+
+  return {
+    polls,
+    total,
+    page,
+    pageSize,
+  };
+}
+
 function buildParticipatedPollsPayload(req, userId, options = {}) {
   const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : null;
   const totalPolls = Number(
@@ -1461,7 +1507,7 @@ app.get("/api/user/my-polls", requireAuth, (req, res) => {
   try {
     const page = parsePaginationValue(req.query?.page, 1, 100000);
     const pageSize = parsePaginationValue(req.query?.pageSize, 12);
-    res.json(buildDashboardPayload(req, req.currentUser.id, { paginated: true, page, pageSize }));
+    res.json(buildMyPollsPayload(req, req.currentUser.id, { page, pageSize }));
   } catch (error) {
     console.error("Fehler beim Laden aller eigenen Umfragen:", error);
     res.status(500).json({ error: "Die eigenen Umfragen konnten nicht geladen werden." });

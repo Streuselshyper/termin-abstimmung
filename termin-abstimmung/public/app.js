@@ -832,22 +832,41 @@ async function renderMyPollsPage() {
   const pageSize = 12;
 
   showDynamicView();
-  dynamicViewElement.innerHTML = '<section class="panel"><p class="description">Deine Umfragen werden geladen ...</p></section>';
+  const template = document.querySelector("#my-polls-template");
+  dynamicViewElement.appendChild(template.content.cloneNode(true));
+  document.querySelector("#my-polls-list").innerHTML = '<p class="description">Deine Umfragen werden geladen ...</p>';
 
   try {
     const data = await apiFetch(`/api/user/my-polls?page=${page}&pageSize=${pageSize}`);
-    renderPollOverviewPage({
-      eyebrow: "Meine Umfragen",
-      title: "Alle erstellten Umfragen",
-      description: "Hier findest du deine komplette Liste mit denselben Karten wie im Dashboard.",
-      summaryLabel: formatPollCountLabel(data.pagination.totalItems),
-      containerId: "my-polls-list",
+    const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
+    const pagination = {
+      page: data.page,
+      pageSize: data.pageSize,
+      totalItems: data.total,
+      totalPages,
+    };
+    const summaryLabel = formatPollCountLabel(data.total);
+    const summaryElement = document.querySelector("#my-polls-summary-label");
+    const countPillElement = document.querySelector("#my-polls-count-pill");
+    const pagePillElement = document.querySelector("#my-polls-page-pill");
+    const paginationElement = document.querySelector("#my-polls-pagination");
+
+    summaryElement.textContent = summaryLabel;
+    countPillElement.textContent = summaryLabel;
+
+    if (totalPages > 1) {
+      pagePillElement.textContent = `Seite ${pagination.page} von ${pagination.totalPages}`;
+      pagePillElement.classList.remove("is-hidden");
+    } else {
+      pagePillElement.classList.add("is-hidden");
+      pagePillElement.textContent = "";
+    }
+
+    renderDashboardPollList(document.querySelector("#my-polls-list"), data.polls, {
       emptyTitle: "Noch keine Umfragen",
       emptyDescription: "Erstelle im Dashboard deine erste Termin-Abstimmung.",
-      polls: data.polls,
-      pagination: data.pagination,
-      basePath: "/my-polls",
     });
+    paginationElement.innerHTML = renderPaginationControls(pagination, "/my-polls");
   } catch (error) {
     if (error.status === 401) {
       await navigateTo("/login", { replace: true });
@@ -936,8 +955,8 @@ function renderPaginationControls(pagination, basePath) {
     return "";
   }
 
-  const prevHref = `${basePath}?page=${pagination.page - 1}`;
-  const nextHref = `${basePath}?page=${pagination.page + 1}`;
+  const prevHref = `${basePath}?page=${pagination.page - 1}&pageSize=${pagination.pageSize}`;
+  const nextHref = `${basePath}?page=${pagination.page + 1}&pageSize=${pagination.pageSize}`;
 
   return `
     <div class="pagination-row">
