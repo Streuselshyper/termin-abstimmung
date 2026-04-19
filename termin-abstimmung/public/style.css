@@ -143,6 +143,7 @@ a {
 }
 
 .dashboard-grid,
+.dashboard-layout,
 .dashboard-shell,
 .poll-shell,
 .stack-form,
@@ -156,6 +157,14 @@ a {
 .metric-grid {
   display: grid;
   gap: 1rem;
+}
+
+.dashboard-layout {
+  gap: 2rem;
+}
+
+.dashboard-hero + .dashboard-layout {
+  margin-top: 1.5rem;
 }
 
 .overview-link-grid,
