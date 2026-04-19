@@ -506,6 +506,10 @@ h3 {
   max-width: 42ch;
 }
 
+.overview-hero .hero-text {
+  max-width: 100%;
+}
+
 .hero-stats,
 .metric-grid {
   align-content: start;
