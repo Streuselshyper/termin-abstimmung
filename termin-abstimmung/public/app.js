@@ -460,52 +460,15 @@ async function renderAccountPage() {
             </div>
           </div>
 
-          <form id="account-password-form" class="stack-form">
-            <label>
-              <span>Aktuelles Passwort</span>
-              <input
-                id="account-current-password"
-                type="password"
-                name="currentPassword"
-                autocomplete="current-password"
-                required
-                placeholder="Aktuelles Passwort"
-              />
-            </label>
-
-            <label>
-              <span>Neues Passwort</span>
-              <input
-                id="account-new-password"
-                type="password"
-                name="newPassword"
-                autocomplete="new-password"
-                required
-                minlength="8"
-                placeholder="Mindestens 8 Zeichen"
-              />
-            </label>
-
-            <label>
-              <span>Neues Passwort bestaetigen</span>
-              <input
-                id="account-confirm-password"
-                type="password"
-                name="confirmPassword"
-                autocomplete="new-password"
-                required
-                minlength="8"
-                placeholder="Neues Passwort bestaetigen"
-              />
-            </label>
-
-            <div id="account-password-feedback" class="feedback" role="status" aria-live="polite"></div>
-
-            <button class="primary-button" type="submit">
+          <div class="stack-form">
+            <p class="description">
+              Aendere dein Passwort in einem separaten Dialog, ohne die restlichen Kontodaten zu unterbrechen.
+            </p>
+            <button id="open-password-modal" class="primary-button wide-button" type="button">
               <i class="fa-solid fa-key"></i>
               Passwort aendern
             </button>
-          </form>
+          </div>
         </article>
 
         <article class="panel">
@@ -548,8 +511,78 @@ async function renderAccountPage() {
           </div>
         </article>
       </section>
+
+      <div id="account-password-modal" class="modal" aria-hidden="true">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="account-password-modal-title">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Sicherheit</p>
+              <h2 id="account-password-modal-title">Passwort aendern</h2>
+            </div>
+          </div>
+
+          <form id="account-password-form" class="stack-form">
+            <label>
+              <span>Aktuelles Passwort</span>
+              <input
+                id="account-current-password"
+                type="password"
+                name="currentPassword"
+                autocomplete="current-password"
+                required
+                placeholder="Aktuelles Passwort"
+              />
+            </label>
+
+            <label>
+              <span>Neues Passwort</span>
+              <input
+                id="account-new-password"
+                type="password"
+                name="newPassword"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Mindestens 8 Zeichen"
+              />
+            </label>
+
+            <label>
+              <span>Neues Passwort bestaetigen</span>
+              <input
+                id="account-confirm-password"
+                type="password"
+                name="confirmPassword"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Neues Passwort bestaetigen"
+              />
+            </label>
+
+            <div id="account-password-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+            <div class="modal-actions">
+              <button id="close-password-modal" class="ghost-button wide-button" type="button">
+                Abbrechen
+              </button>
+              <button class="primary-button wide-button" type="submit">
+                <i class="fa-solid fa-key"></i>
+                Speichern
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     `;
 
+    document.querySelector("#open-password-modal").addEventListener("click", openPasswordModal);
+    document.querySelector("#close-password-modal").addEventListener("click", closePasswordModal);
+    document.querySelector("#account-password-modal").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) {
+        closePasswordModal();
+      }
+    });
     document.querySelector("#account-profile-form").addEventListener("submit", handleProfileSave);
     document.querySelector("#account-password-form").addEventListener("submit", handlePasswordChange);
     document.querySelector("#account-delete-button").addEventListener("click", handleAccountDelete);
@@ -1225,8 +1258,43 @@ async function handlePasswordChange(event) {
     });
     document.querySelector("#account-password-form").reset();
     setFeedback(feedback, "Passwort erfolgreich geaendert.", "success");
+    closePasswordModal();
   } catch (error) {
     setFeedback(feedback, error.message, "error");
+  }
+}
+
+function openPasswordModal() {
+  const modal = document.querySelector("#account-password-modal");
+  const currentPasswordField = document.querySelector("#account-current-password");
+  if (!modal) {
+    return;
+  }
+
+  modal.classList.add("is-open");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  if (currentPasswordField) {
+    currentPasswordField.focus();
+  }
+}
+
+function closePasswordModal() {
+  const modal = document.querySelector("#account-password-modal");
+  const form = document.querySelector("#account-password-form");
+  const feedback = document.querySelector("#account-password-feedback");
+  if (!modal) {
+    return;
+  }
+
+  modal.classList.remove("is-open");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+  if (form) {
+    form.reset();
+  }
+  if (feedback) {
+    setFeedback(feedback, "");
   }
 }
 

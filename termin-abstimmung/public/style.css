@@ -73,6 +73,10 @@ body {
   color: var(--text);
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 button,
 input,
 textarea,
@@ -142,6 +146,7 @@ a {
 .dashboard-shell,
 .poll-shell,
 .stack-form,
+.modal-content,
 .calendar-section,
 .selected-dates,
 .poll-list,
@@ -714,6 +719,37 @@ select:focus {
   z-index: 200;
   background: rgba(7, 17, 31, 0.52);
   backdrop-filter: blur(6px);
+}
+
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  padding: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.modal.is-open {
+  display: flex;
+}
+
+.modal-content {
+  width: min(32rem, 100%);
+  padding: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-strong-solid);
+  box-shadow: var(--shadow);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.85rem;
+  flex-wrap: wrap;
 }
 
 .poll-response-panel {
