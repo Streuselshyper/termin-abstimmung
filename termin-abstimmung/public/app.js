@@ -258,7 +258,7 @@ function renderTopbarNav() {
       <div class="dropdown-menu">
         <a class="dropdown-item" href="/account">Profil</a>
         <a class="dropdown-item" href="/my-polls">Meine Umfragen</a>
-        <a class="dropdown-item" href="/participated">Zuletzt teilgenommene</a>
+        <a class="dropdown-item" href="/participated">Fremde Umfragen</a>
         <hr class="dropdown-divider" />
         <a id="logout-link" class="dropdown-item" href="/">Logout</a>
       </div>
@@ -493,7 +493,7 @@ async function renderAccountPage() {
             </a>
             <a class="ghost-link" href="/participated">
               <i class="fa-regular fa-handshake"></i>
-              An denen ich teilgenommen habe
+              Fremde Umfragen
             </a>
           </div>
         </article>
@@ -800,7 +800,7 @@ async function loadDashboardPolls() {
   const participatedList = document.querySelector("#dashboard-participated-polls");
   const participatedSummary = document.querySelector("#dashboard-participated-summary");
   list.innerHTML = '<p class="description">Deine Umfragen werden geladen ...</p>';
-  participatedList.innerHTML = '<p class="description">Deine Teilnahmen werden geladen ...</p>';
+  participatedList.innerHTML = '<p class="description">Fremde Umfragen mit deiner Stimme werden geladen ...</p>';
 
   try {
     const [dashboardData, participatedData] = await Promise.all([
@@ -913,17 +913,19 @@ async function renderMyPollsPage() {
 
 async function renderParticipatedPage() {
   showDynamicView();
-  dynamicViewElement.innerHTML = '<section class="panel"><p class="description">Deine Teilnahmen werden geladen ...</p></section>';
+  dynamicViewElement.innerHTML =
+    '<section class="panel"><p class="description">Fremde Umfragen mit deiner Stimme werden geladen ...</p></section>';
 
   try {
     const data = await apiFetch("/api/user/all-participated");
     renderPollOverviewPage({
-      eyebrow: "Teilnahmen",
-      title: "Alle Umfragen mit deiner Stimme",
-      description: "Diese Liste enthaelt alle Umfragen, bei denen du bereits abgestimmt hast.",
+      eyebrow: "Fremde Umfragen",
+      title: "Umfragen anderer mit deiner Stimme",
+      description: "Diese Liste zeigt nur Umfragen anderer Personen, bei denen du bereits abgestimmt hast.",
       summaryLabel: formatParticipationCountLabel(data.stats.totalPolls),
-      sectionTitle: "Deine Teilnahmen",
-      sectionDescription: "Alle Umfragen, an denen du bereits mitgewirkt hast, mit der letzten Aktivitaet auf einen Blick.",
+      sectionTitle: "Fremde Umfragen mit deiner Stimme",
+      sectionDescription:
+        "Hier siehst du nur Umfragen anderer Personen, an denen du bereits mitgewirkt hast, mit der letzten Aktivitaet auf einen Blick.",
       containerId: "participated-polls-list",
       emptyTitle: "Noch keine Teilnahmen",
       emptyDescription: "Sobald du an Umfragen anderer Personen teilnimmst, erscheinen sie hier.",
