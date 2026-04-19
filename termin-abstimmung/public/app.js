@@ -820,11 +820,11 @@ async function loadDashboardPolls() {
 
     participatedSummary.textContent = formatParticipationCountLabel(participatedData.stats.totalPolls);
 
-    renderDashboardPollList(list, dashboardData.polls.slice(0, 3), {
+    renderDashboardPollList(list, dashboardData.polls.slice(0, 5), {
       emptyTitle: "Noch keine Umfragen",
       emptyDescription: "Erstelle oben deine erste Termin-Abstimmung.",
     });
-    renderDashboardPollList(participatedList, participatedData.polls.slice(0, 3), {
+    renderDashboardPollList(participatedList, participatedData.polls.slice(0, 5), {
       emptyTitle: "Noch keine Teilnahmen",
       emptyDescription: "Sobald du an Umfragen anderer Personen teilnimmst, erscheinen sie hier.",
       dateField: "votedAt",
