@@ -253,12 +253,19 @@ function renderTopbarNav() {
   `;
 
   navElement.innerHTML = `
-    <a class="ghost-link" href="/account"><i class="fa-regular fa-user"></i> Konto</a>
-    <span class="nav-user">${escapeHtml(state.auth.user.email)}</span>
-    <button id="logout-button" class="ghost-button wide-button" type="button">Logout</button>
+    <div class="dropdown">
+      <a class="ghost-link" href="/account"><i class="fa-regular fa-user"></i> Konto</a>
+      <div class="dropdown-menu">
+        <a class="dropdown-item" href="/account">Profil</a>
+        <a class="dropdown-item" href="/my-polls">Meine Umfragen</a>
+        <a class="dropdown-item" href="/participated">Zuletzt teilgenommene</a>
+        <hr class="dropdown-divider" />
+        <a id="logout-link" class="dropdown-item" href="/">Logout</a>
+      </div>
+    </div>
   `;
 
-  document.querySelector("#logout-button").addEventListener("click", handleLogout);
+  document.querySelector("#logout-link").addEventListener("click", handleLogout);
 }
 
 function getRoute() {
@@ -1200,7 +1207,9 @@ async function handleResetPassword(event) {
   }
 }
 
-async function handleLogout() {
+async function handleLogout(event) {
+  event?.preventDefault();
+
   try {
     await apiFetch("/api/auth/logout", { method: "POST" });
   } finally {
