@@ -477,6 +477,14 @@ h3 {
   line-height: 1.55;
 }
 
+#dashboard-create > .description {
+  margin-bottom: 1.4rem;
+}
+
+#dashboard-create > .dashboard-actions-grid {
+  margin-top: 0.35rem;
+}
+
 .auth-layout {
   align-items: stretch;
   flex-wrap: wrap;
