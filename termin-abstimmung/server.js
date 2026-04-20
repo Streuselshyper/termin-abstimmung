@@ -584,6 +584,7 @@ function mapPollRow(row, req) {
     title: row.title,
     description: row.description,
     dates: parseJsonArray(row.dates),
+    has_time_slots: Boolean(row.has_time_slots),
     timeSlots: parseJsonObject(row.time_slots),
     mode: normalizeMode(row.mode),
     allowTimeSlots: Boolean(row.allow_time_slots),
@@ -854,7 +855,9 @@ function loadPollWithResponses(pollId, currentUser = null, req = null) {
   const poll = mapPollRow(pollRow, req);
   const responses = responseRows.map(mapResponseRow);
   const results = poll.mode === "fixed"
-    ? calculateBestDates(poll.dates, responses)
+    ? (poll.allowTimeSlots || poll.has_time_slots)
+      ? calculateBestDateSlots(poll.timeSlots, responses)
+      : calculateBestDates(poll.dates, responses)
     : calculateSuggestedDatesRanking(responses);
 
   const owner = poll.userId
@@ -1848,8 +1851,8 @@ app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "p
     db.prepare(`
       INSERT INTO polls (
         id, title, description, dates, mode, created_at, updated_at, user_id,
-        invite_message, notification_email_enabled, allow_email_invites
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        invite_message, notification_email_enabled, allow_email_invites, has_time_slots, time_slots, allow_time_slots
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       pollId,
       input.title,
@@ -1861,7 +1864,10 @@ app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "p
       req.currentUser.id,
       input.inviteMessage,
       input.notificationEmailEnabled ? 1 : 0,
-      input.allowEmailInvites ? 1 : 0
+      input.allowEmailInvites ? 1 : 0,
+      input.allowTimeSlots ? 1 : 0,
+      JSON.stringify(input.timeSlots),
+      input.allowTimeSlots ? 1 : 0
     );
 
     const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId), req);
@@ -1912,7 +1918,7 @@ app.put("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
     db.prepare(`
       UPDATE polls
       SET title = ?, description = ?, dates = ?, mode = ?, updated_at = ?, invite_message = ?,
-          notification_email_enabled = ?, allow_email_invites = ?
+          notification_email_enabled = ?, allow_email_invites = ?, has_time_slots = ?, time_slots = ?, allow_time_slots = ?
       WHERE id = ?
     `).run(
       input.title,
@@ -1923,6 +1929,9 @@ app.put("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
       input.inviteMessage,
       input.notificationEmailEnabled ? 1 : 0,
       input.allowEmailInvites ? 1 : 0,
+      input.allowTimeSlots ? 1 : 0,
+      JSON.stringify(input.timeSlots),
+      input.allowTimeSlots ? 1 : 0,
       req.params.pollId
     );
 
@@ -2194,12 +2203,6 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
     let slotAvailabilities = {};
     let suggestedDates = [];
     if (data.poll.mode === "fixed") {
-      const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
-      if (!availabilityCheck.ok) {
-        return res.status(400).json({ error: availabilityCheck.message });
-      }
-      availabilities = availabilityCheck.value;
-
       const pollTimeSlots = listPollTimeSlots(data.poll);
       if (pollTimeSlots.length > 0) {
         const slotResponsesCheck = validateSlotResponses(data.poll, req.body?.slotResponses);
@@ -2207,6 +2210,12 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
           return res.status(400).json({ error: slotResponsesCheck.message });
         }
         slotAvailabilities = slotResponsesCheck.value;
+      } else {
+        const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
+        if (!availabilityCheck.ok) {
+          return res.status(400).json({ error: availabilityCheck.message });
+        }
+        availabilities = availabilityCheck.value;
       }
     } else {
       const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates);

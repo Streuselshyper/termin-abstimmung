@@ -21,6 +21,8 @@ const state = {
   dashboardPolls: [],
   participatedPolls: [],
   selectedDates: new Set(),
+  createTimeSlotsEnabled: false,
+  createTimeSlots: {},
   currentMonth: startOfMonth(new Date()),
   participantSelectedDates: new Set(),
   participantCurrentMonth: startOfMonth(new Date()),
@@ -610,6 +612,8 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
 
   state.createMode = mode === "free" ? "free" : "fixed";
   state.selectedDates = new Set();
+  state.createTimeSlotsEnabled = false;
+  state.createTimeSlots = {};
   state.currentMonth = startOfMonth(new Date());
 
   let existingPoll = null;
@@ -621,6 +625,8 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
     existingPoll = data.poll;
     state.createMode = existingPoll.mode;
     state.selectedDates = new Set(existingPoll.dates || []);
+    state.createTimeSlotsEnabled = Boolean(existingPoll.allowTimeSlots || existingPoll.has_time_slots);
+    state.createTimeSlots = cloneCreateTimeSlots(existingPoll.timeSlots || existingPoll.time_slots || {});
     state.currentMonth = startOfMonth(getFirstSelectedCreateDate(existingPoll.dates));
   }
 
@@ -660,8 +666,11 @@ function fillCreateForm(existingPoll) {
   });
 
   if (isFixed) {
+    ensureCreateTimeSlotControls();
+    syncCreateTimeSlotsWithSelectedDates();
     renderCreateCalendar();
     renderCreateSelectedDates();
+    renderCreateTimeSlots();
   }
 }
 
@@ -678,8 +687,16 @@ function bindCreateForm(existingPoll) {
 
   document.querySelector("#create-clear-dates").addEventListener("click", () => {
     state.selectedDates.clear();
+    state.createTimeSlots = {};
     renderCreateCalendar();
     renderCreateSelectedDates();
+    renderCreateTimeSlots();
+  });
+
+  document.querySelector("#create-time-slots-toggle")?.addEventListener("change", (event) => {
+    state.createTimeSlotsEnabled = Boolean(event.target.checked);
+    syncCreateTimeSlotsWithSelectedDates();
+    renderCreateTimeSlots();
   });
 
   document.querySelector("#create-form").addEventListener("submit", (event) => handleCreateSubmit(event, existingPoll?.id || ""));
@@ -721,8 +738,10 @@ function renderCreateCalendar() {
       } else {
         state.selectedDates.add(day.isoDate);
       }
+      syncCreateTimeSlotsWithSelectedDates();
       renderCreateCalendar();
       renderCreateSelectedDates();
+      renderCreateTimeSlots();
     });
     grid.appendChild(button);
   }
@@ -752,11 +771,140 @@ function renderCreateSelectedDates() {
     `;
     pill.querySelector("button").addEventListener("click", () => {
       state.selectedDates.delete(date);
+      syncCreateTimeSlotsWithSelectedDates();
       renderCreateCalendar();
       renderCreateSelectedDates();
+      renderCreateTimeSlots();
     });
     container.appendChild(pill);
   }
+}
+
+function ensureCreateTimeSlotControls() {
+  const fixedFields = document.querySelector("#create-fixed-fields");
+  if (!fixedFields || document.querySelector("#create-time-slots-controls")) {
+    return;
+  }
+
+  const controls = document.createElement("div");
+  controls.id = "create-time-slots-controls";
+  controls.className = "selected-dates-box create-time-slots-panel";
+  controls.innerHTML = `
+    <div class="selected-header create-toggle-row">
+      <div>
+        <span>Uhrzeiten erlauben</span>
+        <p class="description">Optional pro Datum konkrete Zeitfenster definieren.</p>
+      </div>
+      <label class="toggle-switch" for="create-time-slots-toggle">
+        <input id="create-time-slots-toggle" type="checkbox" ${state.createTimeSlotsEnabled ? "checked" : ""} />
+        <span class="toggle-track" aria-hidden="true"></span>
+      </label>
+    </div>
+    <div id="create-time-slots-editor" class="create-time-slots-editor"></div>
+  `;
+
+  fixedFields.appendChild(controls);
+}
+
+function renderCreateTimeSlots() {
+  const editor = document.querySelector("#create-time-slots-editor");
+  const toggle = document.querySelector("#create-time-slots-toggle");
+  if (!editor || !toggle) {
+    return;
+  }
+
+  toggle.checked = state.createTimeSlotsEnabled;
+
+  if (!state.createTimeSlotsEnabled) {
+    editor.innerHTML = '<p class="description">Aktiviere den Schalter, um pro Datum Uhrzeiten zu erfassen.</p>';
+    return;
+  }
+
+  const dates = Array.from(state.selectedDates).sort();
+  if (dates.length === 0) {
+    editor.innerHTML = '<p class="description">Waehle zuerst mindestens ein Datum aus.</p>';
+    return;
+  }
+
+  editor.innerHTML = "";
+  for (const date of dates) {
+    const card = document.createElement("div");
+    card.className = "time-slot-date-card";
+    const slots = state.createTimeSlots[date] || [""];
+    card.innerHTML = `
+      <div class="time-slot-date-head">
+        <strong>${escapeHtml(formatDateLong(date))}</strong>
+        <button class="ghost-button compact-button" type="button" data-action="add-slot" data-date="${date}">
+          <i class="fa-solid fa-plus"></i>
+          Slot
+        </button>
+      </div>
+      <div class="time-slot-list"></div>
+    `;
+
+    const list = card.querySelector(".time-slot-list");
+    slots.forEach((slotValue, index) => {
+      const row = document.createElement("div");
+      row.className = "time-slot-row";
+      row.innerHTML = `
+        <input
+          class="time-slot-input"
+          type="time"
+          value="${escapeHtml(slotValue || "")}"
+          placeholder="14:00"
+          data-date="${date}"
+          data-index="${index}"
+        />
+        <button class="text-button danger-text-button" type="button" data-action="remove-slot" data-date="${date}" data-index="${index}">
+          Entfernen
+        </button>
+      `;
+      list.appendChild(row);
+    });
+
+    editor.appendChild(card);
+  }
+
+  editor.querySelectorAll('[data-action="add-slot"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const { date } = button.dataset;
+      if (!date) {
+        return;
+      }
+      if (!Array.isArray(state.createTimeSlots[date])) {
+        state.createTimeSlots[date] = [""];
+      }
+      state.createTimeSlots[date].push("");
+      renderCreateTimeSlots();
+    });
+  });
+
+  editor.querySelectorAll(".time-slot-input").forEach((input) => {
+    input.addEventListener("input", () => {
+      const { date, index } = input.dataset;
+      if (!date || index === undefined) {
+        return;
+      }
+      if (!Array.isArray(state.createTimeSlots[date])) {
+        state.createTimeSlots[date] = [""];
+      }
+      state.createTimeSlots[date][Number(index)] = input.value.trim();
+    });
+  });
+
+  editor.querySelectorAll('[data-action="remove-slot"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const { date, index } = button.dataset;
+      if (!date || index === undefined || !Array.isArray(state.createTimeSlots[date])) {
+        return;
+      }
+      state.createTimeSlots[date].splice(Number(index), 1);
+      if (state.createTimeSlots[date].length === 0) {
+        state.createTimeSlots[date] = [""];
+      }
+      renderCreateTimeSlots();
+    });
+  });
 }
 
 async function handleCreateSubmit(event, pollId) {
@@ -764,11 +912,20 @@ async function handleCreateSubmit(event, pollId) {
   const feedback = document.querySelector("#create-feedback");
   const title = document.querySelector("#create-title").value.trim();
   const description = document.querySelector("#create-description").value.trim();
+  const normalizedTimeSlots = state.createTimeSlotsEnabled ? normalizeCreateTimeSlotsForSubmit() : {};
+
+  if (state.createTimeSlotsEnabled && normalizedTimeSlots === null) {
+    setFeedback(feedback, "Bitte hinterlege fuer jeden Termin mindestens eine gueltige Uhrzeit im Format HH:MM.", "error");
+    return;
+  }
+
   const payload = {
     title,
     description,
     mode: state.createMode,
     dates: state.createMode === "fixed" ? Array.from(state.selectedDates).sort() : [],
+    allowTimeSlots: state.createMode === "fixed" ? state.createTimeSlotsEnabled : false,
+    timeSlots: state.createMode === "fixed" ? normalizedTimeSlots : {},
   };
 
   try {
@@ -791,6 +948,49 @@ function getFirstSelectedCreateDate(dates) {
 
   const parsed = new Date(`${firstDate}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function cloneCreateTimeSlots(entries) {
+  const clone = {};
+  for (const [date, slots] of Object.entries(entries || {})) {
+    clone[date] = Array.isArray(slots) ? slots.map((slot) => (typeof slot === "string" ? slot.trim() : "")).filter(Boolean) : [];
+  }
+  return clone;
+}
+
+function syncCreateTimeSlotsWithSelectedDates() {
+  if (!state.createTimeSlotsEnabled) {
+    return;
+  }
+
+  const nextSlots = {};
+  for (const date of Array.from(state.selectedDates).sort()) {
+    const existingSlots = Array.isArray(state.createTimeSlots[date]) ? state.createTimeSlots[date] : [];
+    nextSlots[date] = existingSlots.length > 0 ? existingSlots : [""];
+  }
+  state.createTimeSlots = nextSlots;
+}
+
+function normalizeCreateTimeSlotsForSubmit() {
+  const normalized = {};
+  const dates = Array.from(state.selectedDates).sort();
+
+  for (const date of dates) {
+    const rawSlots = Array.isArray(state.createTimeSlots[date]) ? state.createTimeSlots[date] : [];
+    const uniqueSlots = new Set(
+      rawSlots
+        .map((slot) => (typeof slot === "string" ? slot.trim() : ""))
+        .filter((slot) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(slot))
+    );
+
+    if (uniqueSlots.size === 0) {
+      return null;
+    }
+
+    normalized[date] = Array.from(uniqueSlots).sort();
+  }
+
+  return normalized;
 }
 
 async function loadDashboardPolls() {
@@ -1377,8 +1577,17 @@ function initializeDraftFromPoll(poll) {
   }
 
   const defaultDraft = {};
-  for (const date of poll.dates) {
-    defaultDraft[date] = editableResponse?.availabilities?.[date] || "maybe";
+  if (poll.allowTimeSlots || poll.has_time_slots) {
+    for (const [date, slots] of Object.entries(poll.timeSlots || poll.time_slots || {})) {
+      defaultDraft[date] = {};
+      for (const slot of slots) {
+        defaultDraft[date][slot] = editableResponse?.slotAvailabilities?.[date]?.[slot] || "maybe";
+      }
+    }
+  } else {
+    for (const date of poll.dates) {
+      defaultDraft[date] = editableResponse?.availabilities?.[date] || "maybe";
+    }
   }
 
   state.responseDraft = defaultDraft;
@@ -1484,6 +1693,7 @@ function handleGlobalKeydown(event) {
 function fillPollSummary() {
   const { poll, owner, responses, results } = state.pollData;
   const isFixed = poll.mode === "fixed";
+  const hasTimeSlots = Boolean(poll.allowTimeSlots || poll.has_time_slots);
   const meta = document.querySelector("#poll-context-meta");
   const summaryEmpty = document.querySelector("#poll-summary-empty");
   const favoriteSummary = document.querySelector("#poll-favorite-summary");
@@ -1495,13 +1705,17 @@ function fillPollSummary() {
   document.querySelector("#poll-description-view").classList.toggle("is-hidden", !poll.description);
   favoriteSummary.textContent =
     responses.length > 0 && favorite
-      ? `🏆 Favorit: ${formatDateShort(favorite.date)} mit ${formatVoteCountLabel(favorite.votes)}`
+      ? `🏆 Favorit: ${formatDateShort(favorite.date)}${favorite.slot ? ` um ${favorite.slot}` : ""} mit ${formatVoteCountLabel(
+          favorite.votes
+        )}`
       : "";
   favoriteSummary.classList.toggle("is-hidden", !(responses.length > 0 && favorite));
   document.querySelector("#participant-form-title").textContent = hasEditableResponse()
     ? "Verfuegbarkeit anpassen"
     : isFixed
-      ? "Deine Verfuegbarkeit"
+      ? hasTimeSlots
+        ? "Deine Zeitfenster"
+        : "Deine Verfuegbarkeit"
       : "Teilnehmen";
   document.querySelector("#poll-back-link").setAttribute("href", state.auth.user ? "/dashboard" : "/");
   document.querySelector("#poll-back-link").innerHTML = state.auth.user
@@ -1510,7 +1724,13 @@ function fillPollSummary() {
 
   meta.innerHTML = [
     `<span class="pill"><i class="fa-regular fa-compass"></i> ${escapeHtml(isFixed ? "Feste Termine" : "Freie Wahl")}</span>`,
-    `<span class="pill"><i class="fa-regular fa-calendar"></i> ${escapeHtml(isFixed ? `${poll.dates.length} Termine` : `${results.summary.length || 0} genannte Tage`)}</span>`,
+    `<span class="pill"><i class="fa-regular fa-calendar"></i> ${escapeHtml(
+      isFixed
+        ? hasTimeSlots
+          ? `${countPollTimeSlots(poll.timeSlots || poll.time_slots || {})} Zeitfenster`
+          : `${poll.dates.length} Termine`
+        : `${results.summary.length || 0} genannte Tage`
+    )}</span>`,
     `<span class="pill"><i class="fa-regular fa-user"></i> ${escapeHtml(formatResponseCountLabel(responses.length))}</span>`,
     ownerLabel
       ? `<span class="pill"><i class="fa-regular fa-id-badge"></i> ${escapeHtml(ownerLabel)}</span>`
@@ -1715,6 +1935,12 @@ function renderAvailabilityForm() {
     return;
   }
 
+  if (state.pollData.poll.allowTimeSlots || state.pollData.poll.has_time_slots) {
+    legend.classList.remove("is-hidden");
+    renderFixedSlotAvailabilityForm(grid);
+    return;
+  }
+
   legend.classList.remove("is-hidden");
 
   for (const date of state.pollData.poll.dates) {
@@ -1744,6 +1970,51 @@ function renderAvailabilityForm() {
 
     card.appendChild(row);
     grid.appendChild(card);
+  }
+}
+
+function renderFixedSlotAvailabilityForm(grid) {
+  const timeSlots = state.pollData.poll.timeSlots || state.pollData.poll.time_slots || {};
+
+  for (const date of Object.keys(timeSlots).sort()) {
+    const dateCard = document.createElement("div");
+    dateCard.className = "availability-card availability-slot-card";
+    dateCard.innerHTML = `<strong>${formatDateLong(date)}</strong>`;
+
+    for (const slot of timeSlots[date] || []) {
+      const group = document.createElement("div");
+      group.className = "availability-slot-group";
+      group.innerHTML = `<div class="availability-slot-label">${escapeHtml(slot)}</div>`;
+
+      const row = document.createElement("div");
+      row.className = "status-row";
+
+      for (const status of ["yes", "maybe", "no"]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "status-chip";
+        button.dataset.date = date;
+        button.dataset.slot = slot;
+        button.dataset.status = status;
+        button.textContent = statusLabels[status];
+        if (state.responseDraft?.[date]?.[slot] === status) {
+          button.classList.add("active");
+        }
+        button.addEventListener("click", () => {
+          if (!state.responseDraft[date]) {
+            state.responseDraft[date] = {};
+          }
+          state.responseDraft[date][slot] = status;
+          renderAvailabilityForm();
+        });
+        row.appendChild(button);
+      }
+
+      group.appendChild(row);
+      dateCard.appendChild(group);
+    }
+
+    grid.appendChild(dateCard);
   }
 }
 
@@ -1932,6 +2203,7 @@ function renderResultsTable() {
 
   table.classList.toggle("free-choice-matrix", poll.mode === "free");
   table.classList.toggle("fixed-choice-matrix", poll.mode === "fixed");
+  table.classList.toggle("slot-choice-matrix", Boolean(poll.allowTimeSlots || poll.has_time_slots));
 
   if (poll.mode === "free") {
     foot.innerHTML = "";
@@ -2027,6 +2299,12 @@ function renderResultsTable() {
     return;
   }
 
+  if (poll.allowTimeSlots || poll.has_time_slots) {
+    renderFixedSlotResultsTable(poll, responses, editableResponse, showEditIcon);
+    bindMatrixEditButtons();
+    return;
+  }
+
   const dateStats = getFixedDateStats(poll.dates, responses);
   head.innerHTML = `
     <tr>
@@ -2103,6 +2381,92 @@ function renderResultsTable() {
   `;
 
   bindMatrixEditButtons();
+}
+
+function renderFixedSlotResultsTable(poll, responses, editableResponse, showEditIcon) {
+  const head = document.querySelector("#results-head");
+  const body = document.querySelector("#results-body");
+  const foot = document.querySelector("#results-foot");
+  const slotStats = getFixedSlotStats(poll.timeSlots || poll.time_slots || {}, responses);
+
+  head.innerHTML = `
+    <tr>
+      <th class="name-column">Name</th>
+      ${slotStats.entries
+        .map(
+          (entry) => `
+            <th class="${entry.key === slotStats.winnerKey ? "winner-column" : ""}">
+              <div class="results-matrix-header">
+                <strong>${escapeHtml(formatDateShort(entry.date))}</strong>
+                <span class="results-matrix-subline">${escapeHtml(entry.slot)}</span>
+              </div>
+            </th>
+          `
+        )
+        .join("")}
+    </tr>
+  `;
+
+  if (responses.length === 0) {
+    foot.innerHTML = "";
+    body.innerHTML = `
+      <tr>
+        <td colspan="${slotStats.entries.length + 1}" class="description">Noch keine Antworten eingetragen.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  body.innerHTML = responses
+    .map((response) => {
+      const cells = slotStats.entries
+        .map((entry) => {
+          const status = response.slotAvailabilities?.[entry.date]?.[entry.slot] || "no";
+          return `<td class="matrix-cell"><span class="result-badge ${status}">${statusLabels[status]}</span></td>`;
+        })
+        .join("");
+
+      return `<tr><td class="name-column">${renderMatrixNameCell(response.name, response, editableResponse, showEditIcon)}</td>${cells}</tr>`;
+    })
+    .join("");
+
+  foot.innerHTML = `
+    <tr>
+      <td class="name-column score-footer">Score</td>
+      ${slotStats.entries
+        .map(
+          (entry) => `
+            <td class="score-footer ${entry.key === slotStats.winnerKey ? "winner-column" : ""}">
+              <strong>${entry.score}</strong>
+              <div class="results-matrix-subline">${entry.yes} Ja</div>
+            </td>
+          `
+        )
+        .join("")}
+    </tr>
+    <tr>
+      <td class="name-column score-footer" style="position: sticky; bottom: 0; z-index: 3;">Stimmen</td>
+      ${slotStats.entries
+        .map((entry) => {
+          const percentage = responses.length > 0 ? Math.round((entry.yes / responses.length) * 100) : 0;
+          const isWinner = entry.key === slotStats.winnerKey;
+          return `
+            <td
+              class="score-footer ${isWinner ? "winner-column" : ""}"
+              style="position: sticky; bottom: 0; z-index: 3; ${
+                isWinner
+                  ? "background: rgba(16, 185, 129, 0.15); box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.35);"
+                  : ""
+              }"
+            >
+              <strong>${escapeHtml(formatVoteCountLabel(entry.yes))}</strong>
+              <div class="results-matrix-subline">${percentage}%</div>
+            </td>
+          `;
+        })
+        .join("")}
+    </tr>
+  `;
 }
 
 function refreshPollView() {
@@ -2211,7 +2575,14 @@ async function handleResponseSubmit(event) {
   const payload = {};
 
   if (isFixed) {
-    payload.availabilities = state.responseDraft;
+    if (state.pollData.poll.allowTimeSlots || state.pollData.poll.has_time_slots) {
+      payload.slotResponses = buildSlotResponsePayload(
+        state.pollData.poll,
+        state.responseDraft
+      );
+    } else {
+      payload.availabilities = state.responseDraft;
+    }
   } else {
     payload.suggestedDates = Array.from(state.participantSelectedDates).sort();
   }
@@ -2281,6 +2652,9 @@ function getPollExportDates(poll) {
   }
 
   if (poll.mode === "fixed") {
+    if (poll.allowTimeSlots || poll.has_time_slots) {
+      return Object.keys(poll.timeSlots || poll.time_slots || {}).sort();
+    }
     return [...poll.dates];
   }
 
@@ -2350,12 +2724,67 @@ function getFixedDateStats(dates, responses) {
   };
 }
 
+function getFixedSlotStats(timeSlots, responses) {
+  const entries = [];
+
+  for (const date of Object.keys(timeSlots || {}).sort()) {
+    for (const slot of timeSlots[date] || []) {
+      entries.push({
+        key: `${date}__${slot}`,
+        date,
+        slot,
+        score: 0,
+        yes: 0,
+        maybe: 0,
+        no: 0,
+      });
+    }
+  }
+
+  for (const response of responses || []) {
+    for (const entry of entries) {
+      const status = response.slotAvailabilities?.[entry.date]?.[entry.slot] || "no";
+      if (status === "yes") {
+        entry.yes += 1;
+        entry.score += getScoreForStatus(status, response.hasVeto);
+      } else if (status === "maybe") {
+        entry.maybe += 1;
+        entry.score += getScoreForStatus(status, response.hasVeto);
+      } else {
+        entry.no += 1;
+      }
+    }
+  }
+
+  const winnerEntry = entries.reduce((bestEntry, entry) => {
+    if (!bestEntry || entry.score > bestEntry.score) {
+      return entry;
+    }
+    if (bestEntry && entry.score === bestEntry.score && entry.yes > bestEntry.yes) {
+      return entry;
+    }
+    return bestEntry;
+  }, null);
+
+  return {
+    entries,
+    winnerKey: winnerEntry?.key || "",
+    winnerEntry,
+  };
+}
+
 function getPollFavorite(poll, responses, results) {
   if (!responses?.length) {
     return null;
   }
 
   if (poll.mode === "fixed") {
+    if (poll.allowTimeSlots || poll.has_time_slots) {
+      const { winnerEntry } = getFixedSlotStats(poll.timeSlots || poll.time_slots || {}, responses);
+      return winnerEntry
+        ? { date: winnerEntry.date, slot: winnerEntry.slot, votes: winnerEntry.yes, score: winnerEntry.score }
+        : null;
+    }
     const { winnerEntry } = getFixedDateStats(poll.dates, responses);
     return winnerEntry ? { date: winnerEntry.date, votes: winnerEntry.yes, score: winnerEntry.score } : null;
   }
@@ -2383,6 +2812,30 @@ function getScoreForStatus(status, hasVeto = false) {
     return 1;
   }
   return 0;
+}
+
+function countPollTimeSlots(timeSlots) {
+  return Object.values(timeSlots || {}).reduce(
+    (total, slots) => total + (Array.isArray(slots) ? slots.length : 0),
+    0
+  );
+}
+
+function buildSlotResponsePayload(poll, draft) {
+  const payload = [];
+  const timeSlots = poll.timeSlots || poll.time_slots || {};
+
+  for (const date of Object.keys(timeSlots).sort()) {
+    for (const slot of timeSlots[date] || []) {
+      payload.push({
+        dateId: date,
+        slotId: `${poll.id}:${date}:${slot.replace(":", "-")}`,
+        availability: draft?.[date]?.[slot] || "no",
+      });
+    }
+  }
+
+  return payload;
 }
 
 function syncParticipantRights(participantData) {
