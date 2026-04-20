@@ -54,6 +54,7 @@ db.exec(`
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     dates TEXT NOT NULL,
+    has_time_slots INTEGER NOT NULL DEFAULT 0,
     mode TEXT NOT NULL DEFAULT 'fixed',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -62,6 +63,14 @@ db.exec(`
     notification_email_enabled INTEGER NOT NULL DEFAULT 1,
     allow_email_invites INTEGER NOT NULL DEFAULT 1,
     last_response_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS time_slots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    poll_date_id INTEGER NOT NULL,
+    time TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    FOREIGN KEY (poll_date_id) REFERENCES poll_dates(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS responses (
@@ -98,6 +107,7 @@ ensureColumn("users", "notify_on_response", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("users", "daily_summary", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "daily_summary_last_sent_at", "TEXT");
 ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
+ensureColumn("polls", "has_time_slots", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("polls", "created_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("polls", "updated_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("polls", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
@@ -119,6 +129,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token);
   CREATE INDEX IF NOT EXISTS idx_polls_user_created ON polls(user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_polls_last_response_at ON polls(last_response_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_time_slots_poll_date_id ON time_slots(poll_date_id);
   CREATE INDEX IF NOT EXISTS idx_responses_poll_updated ON responses(poll_id, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_poll_participants_poll_id ON poll_participants(poll_id);
   CREATE INDEX IF NOT EXISTS idx_poll_participants_user_id ON poll_participants(user_id);
