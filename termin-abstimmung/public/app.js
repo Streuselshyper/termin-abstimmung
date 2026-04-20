@@ -625,7 +625,7 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
     existingPoll = data.poll;
     state.createMode = existingPoll.mode;
     state.selectedDates = new Set(existingPoll.dates || []);
-    state.createTimeSlotsEnabled = Boolean(existingPoll.allowTimeSlots || existingPoll.has_time_slots);
+    state.createTimeSlotsEnabled = state.createMode === "fixed" && Boolean(existingPoll.allowTimeSlots || existingPoll.has_time_slots);
     state.createTimeSlots = cloneCreateTimeSlots(existingPoll.timeSlots || existingPoll.time_slots || {});
     state.currentMonth = startOfMonth(getFirstSelectedCreateDate(existingPoll.dates));
   }
@@ -772,35 +772,32 @@ function updateCreateModeLayout() {
   const formTitle = document.querySelector("#create-form-title");
   const fixedFields = document.querySelector("#create-fixed-fields");
   const freeFields = document.querySelector("#create-free-fields");
+  const timeSlotControls = document.querySelector("#create-time-slots-controls");
   const timeSlotDescription = document.querySelector("#create-time-slots-description");
-  const showScheduleEditor = isFixed || state.createTimeSlotsEnabled;
+
+  if (!isFixed) {
+    state.createTimeSlotsEnabled = false;
+  }
 
   if (pageDescription) {
     pageDescription.textContent = isFixed
       ? "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab."
-      : state.createTimeSlotsEnabled
-        ? "Quick-Pick mit Zeitfenstern: Lege passende Tage und Uhrzeiten fest. Teilnehmende stimmen danach pro Slot ab."
-        : "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
+      : "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
   }
 
   if (formTitle) {
-    formTitle.textContent = isFixed
-      ? "Feste Termine konfigurieren"
-      : state.createTimeSlotsEnabled
-        ? "Quick-Pick mit Uhrzeiten konfigurieren"
-        : "Freie Wahl konfigurieren";
+    formTitle.textContent = isFixed ? "Feste Termine konfigurieren" : "Freie Wahl konfigurieren";
   }
 
-  fixedFields?.classList.toggle("is-hidden", !showScheduleEditor);
-  freeFields?.classList.toggle("is-hidden", isFixed || state.createTimeSlotsEnabled);
+  fixedFields?.classList.toggle("is-hidden", !isFixed);
+  freeFields?.classList.toggle("is-hidden", isFixed);
+  timeSlotControls?.classList.toggle("is-hidden", !isFixed);
 
   if (timeSlotDescription) {
-    timeSlotDescription.textContent = isFixed
-      ? "Optional pro Datum konkrete Zeitfenster definieren."
-      : "Aktiviert strukturierte Zeitfenster. Danach waehlst du passende Tage aus und hinterlegst Uhrzeiten pro Datum.";
+    timeSlotDescription.textContent = "Optional pro Datum konkrete Zeitfenster definieren.";
   }
 
-  if (showScheduleEditor) {
+  if (isFixed) {
     syncCreateTimeSlotsWithSelectedDates();
     renderCreateCalendar();
     renderCreateSelectedDates();
@@ -878,7 +875,11 @@ function renderCreateTimeSlots() {
       row.innerHTML = `
         <input
           class="time-slot-input"
-          type="time"
+          type="text"
+          inputmode="numeric"
+          autocomplete="off"
+          spellcheck="false"
+          maxlength="5"
           value="${escapeHtml(slotValue || "")}"
           placeholder="14:00"
           data-date="${date}"
@@ -917,7 +918,24 @@ function renderCreateTimeSlots() {
       if (!Array.isArray(state.createTimeSlots[date])) {
         state.createTimeSlots[date] = [""];
       }
-      state.createTimeSlots[date][Number(index)] = input.value.trim();
+      const filteredValue = filterTimeSlotInput(input.value);
+      if (filteredValue !== input.value) {
+        input.value = filteredValue;
+      }
+      state.createTimeSlots[date][Number(index)] = filteredValue;
+    });
+
+    input.addEventListener("blur", () => {
+      const { date, index } = input.dataset;
+      if (!date || index === undefined || !Array.isArray(state.createTimeSlots[date])) {
+        return;
+      }
+
+      const normalizedValue = normalizeTimeSlotValue(input.value);
+      if (normalizedValue) {
+        input.value = normalizedValue;
+        state.createTimeSlots[date][Number(index)] = normalizedValue;
+      }
     });
   });
 
@@ -952,9 +970,9 @@ async function handleCreateSubmit(event, pollId) {
     title,
     description,
     mode: state.createMode,
-    dates: state.createMode === "fixed" || state.createTimeSlotsEnabled ? Array.from(state.selectedDates).sort() : [],
-    allowTimeSlots: state.createTimeSlotsEnabled,
-    timeSlots: state.createTimeSlotsEnabled ? normalizedTimeSlots : {},
+    dates: state.createMode === "fixed" ? Array.from(state.selectedDates).sort() : [],
+    allowTimeSlots: state.createMode === "fixed" ? state.createTimeSlotsEnabled : false,
+    timeSlots: state.createMode === "fixed" && state.createTimeSlotsEnabled ? normalizedTimeSlots : {},
   };
 
   try {
@@ -979,10 +997,55 @@ function getFirstSelectedCreateDate(dates) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function filterTimeSlotInput(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.replace(/[^\d:.]/g, "").slice(0, 5);
+}
+
+function normalizeTimeSlotValue(value) {
+  const filteredValue = filterTimeSlotInput(typeof value === "string" ? value.trim() : "");
+  if (!filteredValue) {
+    return "";
+  }
+
+  let hours = "";
+  let minutes = "";
+  const separatedMatch = filteredValue.match(/^(\d{1,2})[:.](\d{2})$/);
+  if (separatedMatch) {
+    hours = separatedMatch[1];
+    minutes = separatedMatch[2];
+  } else if (/^\d{4}$/.test(filteredValue)) {
+    hours = filteredValue.slice(0, 2);
+    minutes = filteredValue.slice(2);
+  } else {
+    return "";
+  }
+
+  const hourValue = Number(hours);
+  const minuteValue = Number(minutes);
+  if (
+    !Number.isInteger(hourValue) ||
+    !Number.isInteger(minuteValue) ||
+    hourValue < 0 ||
+    hourValue > 23 ||
+    minuteValue < 0 ||
+    minuteValue > 59
+  ) {
+    return "";
+  }
+
+  return `${String(hourValue).padStart(2, "0")}:${String(minuteValue).padStart(2, "0")}`;
+}
+
 function cloneCreateTimeSlots(entries) {
   const clone = {};
   for (const [date, slots] of Object.entries(entries || {})) {
-    clone[date] = Array.isArray(slots) ? slots.map((slot) => (typeof slot === "string" ? slot.trim() : "")).filter(Boolean) : [];
+    clone[date] = Array.isArray(slots)
+      ? slots.map((slot) => normalizeTimeSlotValue(slot)).filter(Boolean)
+      : [];
   }
   return clone;
 }
@@ -1010,11 +1073,23 @@ function normalizeCreateTimeSlotsForSubmit() {
 
   for (const date of dates) {
     const rawSlots = Array.isArray(state.createTimeSlots[date]) ? state.createTimeSlots[date] : [];
-    const uniqueSlots = new Set(
-      rawSlots
-        .map((slot) => (typeof slot === "string" ? slot.trim() : ""))
-        .filter((slot) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(slot))
-    );
+    const normalizedSlots = [];
+
+    for (const slot of rawSlots) {
+      const rawValue = filterTimeSlotInput(typeof slot === "string" ? slot.trim() : "");
+      if (!rawValue) {
+        continue;
+      }
+
+      const normalizedValue = normalizeTimeSlotValue(rawValue);
+      if (!normalizedValue) {
+        return null;
+      }
+
+      normalizedSlots.push(normalizedValue);
+    }
+
+    const uniqueSlots = new Set(normalizedSlots);
 
     if (uniqueSlots.size === 0) {
       return null;
