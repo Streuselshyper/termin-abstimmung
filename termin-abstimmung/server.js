@@ -337,7 +337,31 @@ function validatePollInput(body) {
   const requestedTimeSlots = normalizeTimeSlotsByDate(normalizeDates(body?.dates), body?.timeSlots);
   const allowTimeSlots = mode === "fixed" && (normalizeBoolean(body?.allowTimeSlots, false) || hasTimeSlotEntries(requestedTimeSlots));
   const dates = mode === "fixed" ? normalizeDates(body?.dates) : [];
-  const timeSlots = allowTimeSlots ? normalizeTimeSlotsByDate(dates, body?.timeSlots) : {};
+  let timeSlots = {};
+  if (allowTimeSlots && body?.timeSlots && typeof body.timeSlots === "object" && !Array.isArray(body.timeSlots)) {
+    for (const date of dates) {
+      const slots = body.timeSlots[date];
+      if (!Array.isArray(slots) || slots.length === 0) {
+        continue;
+      }
+
+      const validSlots = [];
+      for (const slot of slots) {
+        if (typeof slot !== "string") {
+          continue;
+        }
+
+        const normalizedSlot = slot.trim();
+        if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(normalizedSlot)) {
+          validSlots.push(normalizedSlot);
+        }
+      }
+
+      if (validSlots.length > 0) {
+        timeSlots[date] = Array.from(new Set(validSlots)).sort();
+      }
+    }
+  }
   const inviteMessage = normalizeText(body?.inviteMessage, 500);
   const inviteEmails = normalizeInviteEmails(body?.inviteEmails);
 
@@ -352,6 +376,9 @@ function validatePollInput(body) {
   }
   if (dates.some((date) => Number.isNaN(new Date(`${date}T00:00:00Z`).getTime()))) {
     return { ok: false, message: "Mindestens ein Datum ist ungueltig." };
+  }
+  if (allowTimeSlots && Object.keys(timeSlots).length === 0) {
+    return { ok: false, message: "Bitte hinterlege mindestens eine gueltige Uhrzeit." };
   }
   if (allowTimeSlots && dates.some((date) => !Array.isArray(timeSlots[date]) || timeSlots[date].length === 0)) {
     return { ok: false, message: "Bitte hinterlege fuer jeden Termin mindestens eine Uhrzeit." };
