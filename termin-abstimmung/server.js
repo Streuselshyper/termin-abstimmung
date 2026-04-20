@@ -296,6 +296,10 @@ function normalizeTimeSlotsByDate(dates, entries) {
   return normalized;
 }
 
+function hasTimeSlotEntries(timeSlotsByDate) {
+  return Object.values(timeSlotsByDate || {}).some((slots) => Array.isArray(slots) && slots.length > 0);
+}
+
 function normalizeInviteEmails(entries) {
   const source = Array.isArray(entries)
     ? entries
@@ -329,8 +333,8 @@ function validatePollInput(body) {
   const title = normalizeText(body?.title, 120);
   const description = normalizeText(body?.description, 1200);
   const mode = normalizeMode(body?.mode);
-  const dates = mode === "fixed" ? normalizeDates(body?.dates) : [];
-  const allowTimeSlots = mode === "fixed" ? normalizeBoolean(body?.allowTimeSlots, false) : false;
+  const allowTimeSlots = normalizeBoolean(body?.allowTimeSlots, false);
+  const dates = mode === "fixed" || allowTimeSlots ? normalizeDates(body?.dates) : [];
   const timeSlots = allowTimeSlots ? normalizeTimeSlotsByDate(dates, body?.timeSlots) : {};
   const inviteMessage = normalizeText(body?.inviteMessage, 500);
   const inviteEmails = normalizeInviteEmails(body?.inviteEmails);
@@ -341,7 +345,7 @@ function validatePollInput(body) {
   if (description.length < 3) {
     return { ok: false, message: "Die Beschreibung muss mindestens 3 Zeichen lang sein." };
   }
-  if (mode === "fixed" && dates.length === 0) {
+  if ((mode === "fixed" || allowTimeSlots) && dates.length === 0) {
     return { ok: false, message: "Bitte waehle mindestens ein Datum aus." };
   }
   if (dates.some((date) => Number.isNaN(new Date(`${date}T00:00:00Z`).getTime()))) {
@@ -464,9 +468,14 @@ function listPollTimeSlots(poll) {
   return entries;
 }
 
+function pollUsesTimeSlots(poll) {
+  const timeSlotsByDate = poll?.timeSlots && typeof poll.timeSlots === "object" ? poll.timeSlots : {};
+  return Boolean(poll?.allowTimeSlots || poll?.has_time_slots || hasTimeSlotEntries(timeSlotsByDate));
+}
+
 function setPollTimeSlots(pollId, timeSlotsByDate) {
   const now = new Date().toISOString();
-  const hasTimeSlots = Object.values(timeSlotsByDate).some((slots) => Array.isArray(slots) && slots.length > 0);
+  const hasTimeSlots = hasTimeSlotEntries(timeSlotsByDate);
 
   db.prepare(`
     UPDATE polls
@@ -488,6 +497,9 @@ function validateSlotResponses(poll, entries) {
 
   const expectedSlots = listPollTimeSlots(poll);
   const remaining = new Map(expectedSlots.map((slot) => [slot.id, slot]));
+  const legacySlotIds = new Map(
+    expectedSlots.map((slot) => [`${poll.id}:${slot.dateId}:${slot.time.replace(":", "-")}`, slot.id])
+  );
   const normalized = {};
 
   for (const entry of entries) {
@@ -498,7 +510,8 @@ function validateSlotResponses(poll, entries) {
     const dateId = normalizeText(entry.dateId, 10);
     const slotId = normalizeText(entry.slotId, 120);
     const availability = entry.availability;
-    const slot = remaining.get(slotId);
+    const canonicalSlotId = legacySlotIds.get(slotId) || slotId;
+    const slot = remaining.get(canonicalSlotId);
 
     if (!slot || slot.dateId !== dateId) {
       return { ok: false, message: "Mindestens eine Uhrzeit-Antwort ist ungueltig." };
@@ -511,7 +524,7 @@ function validateSlotResponses(poll, entries) {
       normalized[dateId] = {};
     }
     normalized[dateId][slot.time] = availability;
-    remaining.delete(slotId);
+    remaining.delete(canonicalSlotId);
   }
 
   if (remaining.size > 0) {
@@ -663,7 +676,7 @@ function calculateBestDateSlots(timeSlots, responses) {
   const summary = [];
 
   for (const date of Object.keys(timeSlots).sort()) {
-    for (const slot of timeSlots[date]) {
+    for (const slot of Array.isArray(timeSlots[date]) ? timeSlots[date] : []) {
       let yes = 0;
       let maybe = 0;
       let no = 0;
@@ -703,6 +716,26 @@ function calculateBestDateSlots(timeSlots, responses) {
     summary,
     bestDates: sorted.filter((entry) => entry.score === bestScore && sorted.length > 0),
   };
+}
+
+function calculatePollResults(poll, responses) {
+  if (pollUsesTimeSlots(poll)) {
+    return calculateBestDateSlots(poll.timeSlots || {}, responses);
+  }
+
+  if (poll.mode === "fixed") {
+    return calculateBestDates(poll.dates, responses);
+  }
+
+  return calculateSuggestedDatesRanking(responses);
+}
+
+function formatBestDateEntry(entry) {
+  if (!entry) {
+    return "";
+  }
+
+  return entry.slot ? `${entry.date} ${entry.slot}` : entry.date;
 }
 
 function getDefaultParticipantRights() {
@@ -854,11 +887,7 @@ function loadPollWithResponses(pollId, currentUser = null, req = null) {
 
   const poll = mapPollRow(pollRow, req);
   const responses = responseRows.map(mapResponseRow);
-  const results = poll.mode === "fixed"
-    ? (poll.allowTimeSlots || poll.has_time_slots)
-      ? calculateBestDateSlots(poll.timeSlots, responses)
-      : calculateBestDates(poll.dates, responses)
-    : calculateSuggestedDatesRanking(responses);
+  const results = calculatePollResults(poll, responses);
 
   const owner = poll.userId
     ? db.prepare("SELECT id, email, name FROM users WHERE id = ?").get(poll.userId)
@@ -934,9 +963,7 @@ function buildDashboardPayload(req, userId, options = {}) {
   const polls = rows.map((row) => {
     const mapped = mapPollRow(row, req);
     const responses = db.prepare("SELECT * FROM responses WHERE poll_id = ?").all(row.id).map(mapResponseRow);
-    const results = mapped.mode === "fixed"
-      ? calculateBestDates(mapped.dates, responses)
-      : calculateSuggestedDatesRanking(responses);
+    const results = calculatePollResults(mapped, responses);
 
     return {
       ...mapped,
@@ -1007,9 +1034,7 @@ function buildMyPollsPayload(req, userId, options = {}) {
   const polls = rows.map((row) => {
     const mapped = mapPollRow(row, req);
     const responses = db.prepare("SELECT * FROM responses WHERE poll_id = ?").all(row.id).map(mapResponseRow);
-    const results = mapped.mode === "fixed"
-      ? calculateBestDates(mapped.dates, responses)
-      : calculateSuggestedDatesRanking(responses);
+    const results = calculatePollResults(mapped, responses);
 
     return {
       ...mapped,
@@ -1443,7 +1468,7 @@ function sendDailySummaryIfDue(req, userId) {
 
   const lines = polls.slice(0, 10).map((poll) => {
     const bestLabel = poll.bestDates.length > 0
-      ? poll.bestDates.map((entry) => entry.date).join(", ")
+      ? poll.bestDates.map((entry) => formatBestDateEntry(entry)).join(", ")
       : "noch keine Antworten";
     return `- ${poll.title}: ${poll.responseCount} Antworten, Top-Termine: ${bestLabel}`;
   });
@@ -1963,9 +1988,10 @@ app.post("/api/polls/:pollId/duplicate", requireCsrf, requireAuth, (req, res) =>
     db.prepare(`
       INSERT INTO polls (
         id, title, description, dates, mode, created_at, updated_at, user_id,
-        invite_message, notification_email_enabled, allow_email_invites
+        invite_message, notification_email_enabled, allow_email_invites,
+        has_time_slots, time_slots, allow_time_slots
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newId,
       `${existing.title} (Kopie)`.slice(0, 120),
@@ -1977,7 +2003,10 @@ app.post("/api/polls/:pollId/duplicate", requireCsrf, requireAuth, (req, res) =>
       req.currentUser.id,
       existing.invite_message || "",
       existing.notification_email_enabled,
-      existing.allow_email_invites
+      existing.allow_email_invites,
+      existing.has_time_slots || 0,
+      existing.time_slots || "{}",
+      existing.allow_time_slots || 0
     );
 
     res.status(201).json({
@@ -2202,21 +2231,18 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
     let availabilities = {};
     let slotAvailabilities = {};
     let suggestedDates = [];
-    if (data.poll.mode === "fixed") {
-      const pollTimeSlots = listPollTimeSlots(data.poll);
-      if (pollTimeSlots.length > 0) {
-        const slotResponsesCheck = validateSlotResponses(data.poll, req.body?.slotResponses);
-        if (!slotResponsesCheck.ok) {
-          return res.status(400).json({ error: slotResponsesCheck.message });
-        }
-        slotAvailabilities = slotResponsesCheck.value;
-      } else {
-        const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
-        if (!availabilityCheck.ok) {
-          return res.status(400).json({ error: availabilityCheck.message });
-        }
-        availabilities = availabilityCheck.value;
+    if (pollUsesTimeSlots(data.poll)) {
+      const slotResponsesCheck = validateSlotResponses(data.poll, req.body?.slotResponses);
+      if (!slotResponsesCheck.ok) {
+        return res.status(400).json({ error: slotResponsesCheck.message });
       }
+      slotAvailabilities = slotResponsesCheck.value;
+    } else if (data.poll.mode === "fixed") {
+      const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
+      if (!availabilityCheck.ok) {
+        return res.status(400).json({ error: availabilityCheck.message });
+      }
+      availabilities = availabilityCheck.value;
     } else {
       const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates);
       if (!suggestedDatesCheck.ok) {

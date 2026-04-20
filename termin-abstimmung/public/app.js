@@ -639,39 +639,25 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
 
 function fillCreateForm(existingPoll) {
   const isEditing = Boolean(existingPoll);
-  const isFixed = state.createMode === "fixed";
   const pageTitle = document.querySelector("#create-page-title");
-  const pageDescription = document.querySelector("#create-page-description");
   const pageBadge = document.querySelector("#create-page-badge");
-  const formTitle = document.querySelector("#create-form-title");
   const submitButton = document.querySelector("#create-submit-button");
 
   document.querySelector("#create-title").value = existingPoll?.title || "";
   document.querySelector("#create-description").value = existingPoll?.description || "";
   pageBadge.textContent = isEditing ? "Bearbeiten" : "Neue Umfrage";
   pageTitle.textContent = isEditing ? "Umfrage bearbeiten" : "Neue Termin-Abstimmung";
-  pageDescription.textContent = isFixed
-    ? "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab."
-    : "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
-  formTitle.textContent = isFixed ? "Feste Termine konfigurieren" : "Freie Wahl konfigurieren";
   submitButton.innerHTML = isEditing
     ? '<i class="fa-regular fa-floppy-disk"></i> Aenderungen speichern'
     : '<i class="fa-regular fa-floppy-disk"></i> Umfrage speichern';
 
-  document.querySelector("#create-fixed-fields").classList.toggle("is-hidden", !isFixed);
-  document.querySelector("#create-free-fields").classList.toggle("is-hidden", isFixed);
   document.querySelectorAll('.create-mode-card[href^="/create?mode="]').forEach((card) => {
     const url = new URL(card.href, window.location.origin);
     card.classList.toggle("is-active", url.searchParams.get("mode") === state.createMode);
   });
 
-  if (isFixed) {
-    ensureCreateTimeSlotControls();
-    syncCreateTimeSlotsWithSelectedDates();
-    renderCreateCalendar();
-    renderCreateSelectedDates();
-    renderCreateTimeSlots();
-  }
+  ensureCreateTimeSlotControls();
+  updateCreateModeLayout();
 }
 
 function bindCreateForm(existingPoll) {
@@ -696,7 +682,7 @@ function bindCreateForm(existingPoll) {
   document.querySelector("#create-time-slots-toggle")?.addEventListener("change", (event) => {
     state.createTimeSlotsEnabled = Boolean(event.target.checked);
     syncCreateTimeSlotsWithSelectedDates();
-    renderCreateTimeSlots();
+    updateCreateModeLayout();
   });
 
   document.querySelector("#create-form").addEventListener("submit", (event) => handleCreateSubmit(event, existingPoll?.id || ""));
@@ -780,9 +766,52 @@ function renderCreateSelectedDates() {
   }
 }
 
-function ensureCreateTimeSlotControls() {
+function updateCreateModeLayout() {
+  const isFixed = state.createMode === "fixed";
+  const pageDescription = document.querySelector("#create-page-description");
+  const formTitle = document.querySelector("#create-form-title");
   const fixedFields = document.querySelector("#create-fixed-fields");
-  if (!fixedFields || document.querySelector("#create-time-slots-controls")) {
+  const freeFields = document.querySelector("#create-free-fields");
+  const timeSlotDescription = document.querySelector("#create-time-slots-description");
+  const showScheduleEditor = isFixed || state.createTimeSlotsEnabled;
+
+  if (pageDescription) {
+    pageDescription.textContent = isFixed
+      ? "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab."
+      : state.createTimeSlotsEnabled
+        ? "Quick-Pick mit Zeitfenstern: Lege passende Tage und Uhrzeiten fest. Teilnehmende stimmen danach pro Slot ab."
+        : "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
+  }
+
+  if (formTitle) {
+    formTitle.textContent = isFixed
+      ? "Feste Termine konfigurieren"
+      : state.createTimeSlotsEnabled
+        ? "Quick-Pick mit Uhrzeiten konfigurieren"
+        : "Freie Wahl konfigurieren";
+  }
+
+  fixedFields?.classList.toggle("is-hidden", !showScheduleEditor);
+  freeFields?.classList.toggle("is-hidden", isFixed || state.createTimeSlotsEnabled);
+
+  if (timeSlotDescription) {
+    timeSlotDescription.textContent = isFixed
+      ? "Optional pro Datum konkrete Zeitfenster definieren."
+      : "Aktiviert strukturierte Zeitfenster. Danach waehlst du passende Tage aus und hinterlegst Uhrzeiten pro Datum.";
+  }
+
+  if (showScheduleEditor) {
+    syncCreateTimeSlotsWithSelectedDates();
+    renderCreateCalendar();
+    renderCreateSelectedDates();
+  }
+
+  renderCreateTimeSlots();
+}
+
+function ensureCreateTimeSlotControls() {
+  const host = document.querySelector("#create-time-slot-settings");
+  if (!host || document.querySelector("#create-time-slots-controls")) {
     return;
   }
 
@@ -793,7 +822,7 @@ function ensureCreateTimeSlotControls() {
     <div class="selected-header create-toggle-row">
       <div>
         <span>Uhrzeiten erlauben</span>
-        <p class="description">Optional pro Datum konkrete Zeitfenster definieren.</p>
+        <p id="create-time-slots-description" class="description">Optional pro Datum konkrete Zeitfenster definieren.</p>
       </div>
       <label class="toggle-switch" for="create-time-slots-toggle">
         <input id="create-time-slots-toggle" type="checkbox" ${state.createTimeSlotsEnabled ? "checked" : ""} />
@@ -803,7 +832,7 @@ function ensureCreateTimeSlotControls() {
     <div id="create-time-slots-editor" class="create-time-slots-editor"></div>
   `;
 
-  fixedFields.appendChild(controls);
+  host.appendChild(controls);
 }
 
 function renderCreateTimeSlots() {
@@ -923,9 +952,9 @@ async function handleCreateSubmit(event, pollId) {
     title,
     description,
     mode: state.createMode,
-    dates: state.createMode === "fixed" ? Array.from(state.selectedDates).sort() : [],
-    allowTimeSlots: state.createMode === "fixed" ? state.createTimeSlotsEnabled : false,
-    timeSlots: state.createMode === "fixed" ? normalizedTimeSlots : {},
+    dates: state.createMode === "fixed" || state.createTimeSlotsEnabled ? Array.from(state.selectedDates).sort() : [],
+    allowTimeSlots: state.createTimeSlotsEnabled,
+    timeSlots: state.createTimeSlotsEnabled ? normalizedTimeSlots : {},
   };
 
   try {
@@ -974,6 +1003,10 @@ function syncCreateTimeSlotsWithSelectedDates() {
 function normalizeCreateTimeSlotsForSubmit() {
   const normalized = {};
   const dates = Array.from(state.selectedDates).sort();
+
+  if (dates.length === 0) {
+    return null;
+  }
 
   for (const date of dates) {
     const rawSlots = Array.isArray(state.createTimeSlots[date]) ? state.createTimeSlots[date] : [];
@@ -1568,8 +1601,9 @@ async function renderPollPage(pollId) {
 function initializeDraftFromPoll(poll) {
   const editableResponse = getEditableResponse();
   state.participantCalendarExpanded = !window.matchMedia("(max-width: 720px)").matches;
+  const hasTimeSlots = pollHasTimeSlots(poll);
 
-  if (poll.mode === "free") {
+  if (poll.mode === "free" && !hasTimeSlots) {
     state.responseDraft = {};
     state.participantSelectedDates = new Set(editableResponse?.suggestedDates || []);
     state.participantCurrentMonth = startOfMonth(new Date());
@@ -1577,7 +1611,7 @@ function initializeDraftFromPoll(poll) {
   }
 
   const defaultDraft = {};
-  if (poll.allowTimeSlots || poll.has_time_slots) {
+  if (hasTimeSlots) {
     for (const [date, slots] of Object.entries(poll.timeSlots || poll.time_slots || {})) {
       defaultDraft[date] = {};
       for (const slot of slots) {
@@ -1693,7 +1727,7 @@ function handleGlobalKeydown(event) {
 function fillPollSummary() {
   const { poll, owner, responses, results } = state.pollData;
   const isFixed = poll.mode === "fixed";
-  const hasTimeSlots = Boolean(poll.allowTimeSlots || poll.has_time_slots);
+  const hasTimeSlots = pollHasTimeSlots(poll);
   const meta = document.querySelector("#poll-context-meta");
   const summaryEmpty = document.querySelector("#poll-summary-empty");
   const favoriteSummary = document.querySelector("#poll-favorite-summary");
@@ -1712,10 +1746,10 @@ function fillPollSummary() {
   favoriteSummary.classList.toggle("is-hidden", !(responses.length > 0 && favorite));
   document.querySelector("#participant-form-title").textContent = hasEditableResponse()
     ? "Verfuegbarkeit anpassen"
-    : isFixed
-      ? hasTimeSlots
-        ? "Deine Zeitfenster"
-        : "Deine Verfuegbarkeit"
+    : hasTimeSlots
+      ? "Deine Zeitfenster"
+      : isFixed
+        ? "Deine Verfuegbarkeit"
       : "Teilnehmen";
   document.querySelector("#poll-back-link").setAttribute("href", state.auth.user ? "/dashboard" : "/");
   document.querySelector("#poll-back-link").innerHTML = state.auth.user
@@ -1725,10 +1759,10 @@ function fillPollSummary() {
   meta.innerHTML = [
     `<span class="pill"><i class="fa-regular fa-compass"></i> ${escapeHtml(isFixed ? "Feste Termine" : "Freie Wahl")}</span>`,
     `<span class="pill"><i class="fa-regular fa-calendar"></i> ${escapeHtml(
-      isFixed
-        ? hasTimeSlots
-          ? `${countPollTimeSlots(poll.timeSlots || poll.time_slots || {})} Zeitfenster`
-          : `${poll.dates.length} Termine`
+      hasTimeSlots
+        ? `${countPollTimeSlots(poll.timeSlots || poll.time_slots || {})} Zeitfenster`
+        : isFixed
+          ? `${poll.dates.length} Termine`
         : `${results.summary.length || 0} genannte Tage`
     )}</span>`,
     `<span class="pill"><i class="fa-regular fa-user"></i> ${escapeHtml(formatResponseCountLabel(responses.length))}</span>`,
@@ -1747,7 +1781,7 @@ function fillPollSummary() {
   renderPollOwnerActions();
   updatePollResponseCta();
 
-  if (!isFixed) {
+  if (!isFixed && !hasTimeSlots) {
     if (results.bestDates.length === 0) {
       summaryEmpty.innerHTML = renderEmptyStateMarkup(
         "fa-regular fa-calendar-plus",
@@ -1929,15 +1963,15 @@ function renderAvailabilityForm() {
     return;
   }
 
-  if (state.pollData.poll.mode === "free") {
-    legend.classList.add("is-hidden");
-    renderFreeChoiceForm(grid);
+  if (pollHasTimeSlots(state.pollData.poll)) {
+    legend.classList.remove("is-hidden");
+    renderFixedSlotAvailabilityForm(grid);
     return;
   }
 
-  if (state.pollData.poll.allowTimeSlots || state.pollData.poll.has_time_slots) {
-    legend.classList.remove("is-hidden");
-    renderFixedSlotAvailabilityForm(grid);
+  if (state.pollData.poll.mode === "free") {
+    legend.classList.add("is-hidden");
+    renderFreeChoiceForm(grid);
     return;
   }
 
@@ -2200,10 +2234,17 @@ function renderResultsTable() {
   const table = document.querySelector(".results-table");
   const editableResponse = getEditableResponse();
   const showEditIcon = Boolean(editableResponse) && hasEditableResponse();
+  const hasTimeSlots = pollHasTimeSlots(poll);
 
-  table.classList.toggle("free-choice-matrix", poll.mode === "free");
-  table.classList.toggle("fixed-choice-matrix", poll.mode === "fixed");
-  table.classList.toggle("slot-choice-matrix", Boolean(poll.allowTimeSlots || poll.has_time_slots));
+  table.classList.toggle("free-choice-matrix", poll.mode === "free" && !hasTimeSlots);
+  table.classList.toggle("fixed-choice-matrix", poll.mode === "fixed" && !hasTimeSlots);
+  table.classList.toggle("slot-choice-matrix", hasTimeSlots);
+
+  if (hasTimeSlots) {
+    renderFixedSlotResultsTable(poll, responses, editableResponse, showEditIcon);
+    bindMatrixEditButtons();
+    return;
+  }
 
   if (poll.mode === "free") {
     foot.innerHTML = "";
@@ -2295,12 +2336,6 @@ function renderResultsTable() {
       </tr>
     `;
 
-    bindMatrixEditButtons();
-    return;
-  }
-
-  if (poll.allowTimeSlots || poll.has_time_slots) {
-    renderFixedSlotResultsTable(poll, responses, editableResponse, showEditIcon);
     bindMatrixEditButtons();
     return;
   }
@@ -2574,15 +2609,13 @@ async function handleResponseSubmit(event) {
   const isFixed = state.pollData.poll.mode === "fixed";
   const payload = {};
 
-  if (isFixed) {
-    if (state.pollData.poll.allowTimeSlots || state.pollData.poll.has_time_slots) {
-      payload.slotResponses = buildSlotResponsePayload(
-        state.pollData.poll,
-        state.responseDraft
-      );
-    } else {
-      payload.availabilities = state.responseDraft;
-    }
+  if (pollHasTimeSlots(state.pollData.poll)) {
+    payload.slotResponses = buildSlotResponsePayload(
+      state.pollData.poll,
+      state.responseDraft
+    );
+  } else if (isFixed) {
+    payload.availabilities = state.responseDraft;
   } else {
     payload.suggestedDates = Array.from(state.participantSelectedDates).sort();
   }
@@ -2651,10 +2684,11 @@ function getPollExportDates(poll) {
     return [];
   }
 
+  if (pollHasTimeSlots(poll)) {
+    return Object.keys(poll.timeSlots || poll.time_slots || {}).sort();
+  }
+
   if (poll.mode === "fixed") {
-    if (poll.allowTimeSlots || poll.has_time_slots) {
-      return Object.keys(poll.timeSlots || poll.time_slots || {}).sort();
-    }
     return [...poll.dates];
   }
 
@@ -2778,13 +2812,14 @@ function getPollFavorite(poll, responses, results) {
     return null;
   }
 
+  if (pollHasTimeSlots(poll)) {
+    const { winnerEntry } = getFixedSlotStats(poll.timeSlots || poll.time_slots || {}, responses);
+    return winnerEntry
+      ? { date: winnerEntry.date, slot: winnerEntry.slot, votes: winnerEntry.yes, score: winnerEntry.score }
+      : null;
+  }
+
   if (poll.mode === "fixed") {
-    if (poll.allowTimeSlots || poll.has_time_slots) {
-      const { winnerEntry } = getFixedSlotStats(poll.timeSlots || poll.time_slots || {}, responses);
-      return winnerEntry
-        ? { date: winnerEntry.date, slot: winnerEntry.slot, votes: winnerEntry.yes, score: winnerEntry.score }
-        : null;
-    }
     const { winnerEntry } = getFixedDateStats(poll.dates, responses);
     return winnerEntry ? { date: winnerEntry.date, votes: winnerEntry.yes, score: winnerEntry.score } : null;
   }
@@ -2821,6 +2856,15 @@ function countPollTimeSlots(timeSlots) {
   );
 }
 
+function pollHasTimeSlots(poll) {
+  return Boolean(
+    poll &&
+      (poll.allowTimeSlots ||
+        poll.has_time_slots ||
+        countPollTimeSlots(poll.timeSlots || poll.time_slots || {}) > 0)
+  );
+}
+
 function buildSlotResponsePayload(poll, draft) {
   const payload = [];
   const timeSlots = poll.timeSlots || poll.time_slots || {};
@@ -2829,7 +2873,7 @@ function buildSlotResponsePayload(poll, draft) {
     for (const slot of timeSlots[date] || []) {
       payload.push({
         dateId: date,
-        slotId: `${poll.id}:${date}:${slot.replace(":", "-")}`,
+        slotId: `${poll.id}__${date}__${slot.replace(":", "-")}`,
         availability: draft?.[date]?.[slot] || "no",
       });
     }
