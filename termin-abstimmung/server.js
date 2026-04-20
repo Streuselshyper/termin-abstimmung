@@ -264,6 +264,60 @@ function normalizeDates(dates) {
   return Array.from(uniqueDates).sort().slice(0, 90);
 }
 
+function normalizeSuggestedDateEntries(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  const byDate = new Map();
+
+  for (const entry of entries) {
+    let date = "";
+    let rawTimes = [];
+
+    if (typeof entry === "string") {
+      date = entry.trim();
+    } else if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      date = normalizeText(entry.date, 10);
+      rawTimes = Array.isArray(entry.times)
+        ? entry.times
+        : Array.isArray(entry.timeSlots)
+          ? entry.timeSlots
+          : [];
+    } else {
+      continue;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      continue;
+    }
+
+    if (!byDate.has(date)) {
+      byDate.set(date, new Set());
+    }
+
+    const timeSet = byDate.get(date);
+    for (const rawTime of rawTimes) {
+      if (typeof rawTime !== "string") {
+        continue;
+      }
+
+      const normalizedTime = rawTime.trim();
+      if (isValidTimeValue(normalizedTime)) {
+        timeSet.add(normalizedTime);
+      }
+    }
+  }
+
+  return Array.from(byDate.entries())
+    .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+    .slice(0, 90)
+    .map(([date, timeSet]) => ({
+      date,
+      times: Array.from(timeSet).sort(),
+    }));
+}
+
 function normalizeMode(mode) {
   return VALID_POLL_MODES.has(mode) ? mode : "fixed";
 }
@@ -570,11 +624,64 @@ function validateSlotResponses(poll, entries) {
 }
 
 function validateSuggestedDates(entries) {
-  const dates = normalizeDates(entries);
-  if (dates.length === 0) {
+  if (!Array.isArray(entries)) {
     return { ok: false, message: "Bitte trage mindestens einen moeglichen Tag ein." };
   }
-  return { ok: true, value: dates };
+
+  const byDate = new Map();
+  for (const entry of entries) {
+    let date = "";
+    let rawTimes = [];
+
+    if (typeof entry === "string") {
+      date = entry.trim();
+    } else if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      date = normalizeText(entry.date, 10);
+      rawTimes = Array.isArray(entry.times)
+        ? entry.times
+        : Array.isArray(entry.timeSlots)
+          ? entry.timeSlots
+          : [];
+    } else {
+      return { ok: false, message: "Bitte trage mindestens einen moeglichen Tag ein." };
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return { ok: false, message: "Mindestens ein vorgeschlagener Tag ist ungueltig." };
+    }
+
+    if (!byDate.has(date)) {
+      byDate.set(date, new Set());
+    }
+
+    const timeSet = byDate.get(date);
+    for (const rawTime of rawTimes) {
+      if (typeof rawTime !== "string") {
+        return { ok: false, message: `Fuer ${date} ist mindestens eine Uhrzeit ungueltig.` };
+      }
+
+      const normalizedTime = rawTime.trim();
+      if (!isValidTimeValue(normalizedTime)) {
+        return { ok: false, message: `Fuer ${date} ist mindestens eine Uhrzeit ungueltig.` };
+      }
+
+      timeSet.add(normalizedTime);
+    }
+  }
+
+  const normalized = Array.from(byDate.entries())
+    .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+    .slice(0, 90)
+    .map(([date, timeSet]) => ({
+      date,
+      times: Array.from(timeSet).sort(),
+    }));
+
+  if (normalized.length === 0) {
+    return { ok: false, message: "Bitte trage mindestens einen moeglichen Tag ein." };
+  }
+
+  return { ok: true, value: normalized };
 }
 
 function isValidEmail(email) {
@@ -650,6 +757,9 @@ function mapPollRow(row, req) {
 function mapResponseRow(row) {
   const suggestedDates = parseJsonArray(row.suggested_dates);
   const legacySuggestedDates = parseJsonArray(row.free_text_availabilities);
+  const suggestedDateEntries = normalizeSuggestedDateEntries(
+    suggestedDates.length > 0 ? suggestedDates : legacySuggestedDates
+  );
   const displayName = normalizeText(row.user_name || row.user_email || row.name || "", 320) || "Unbekannt";
   return {
     id: row.id,
@@ -658,7 +768,8 @@ function mapResponseRow(row) {
     name: displayName,
     availabilities: JSON.parse(row.availabilities),
     slotAvailabilities: parseJsonObject(row.slot_availabilities),
-    suggestedDates: suggestedDates.length > 0 ? suggestedDates : legacySuggestedDates,
+    suggestedDates: suggestedDateEntries.map((entry) => entry.date),
+    suggestedDateEntries,
     hasVeto: Boolean(row.has_veto),
     canVote: row.can_vote === null || row.can_vote === undefined ? true : Boolean(row.can_vote),
     isBlocked: Boolean(row.is_blocked),
@@ -876,15 +987,40 @@ function calculateSuggestedDatesRanking(responses) {
   const counts = new Map();
 
   for (const response of responses) {
-    for (const entry of normalizeDates(response.suggestedDates)) {
-      const current = counts.get(entry) || { date: entry, count: 0, participants: [] };
+    const suggestedEntries =
+      response?.suggestedDateEntries && response.suggestedDateEntries.length > 0
+        ? normalizeSuggestedDateEntries(response.suggestedDateEntries)
+        : normalizeSuggestedDateEntries(response?.suggestedDates);
+
+    for (const entry of suggestedEntries) {
+      const current = counts.get(entry.date) || {
+        date: entry.date,
+        count: 0,
+        participants: [],
+        timeSlots: new Map(),
+      };
       current.count += 1;
       current.participants.push(response.name);
-      counts.set(entry, current);
+
+      for (const time of entry.times) {
+        const currentSlot = current.timeSlots.get(time) || { time, count: 0, participants: [] };
+        currentSlot.count += 1;
+        currentSlot.participants.push(response.name);
+        current.timeSlots.set(time, currentSlot);
+      }
+
+      counts.set(entry.date, current);
     }
   }
 
-  const summary = Array.from(counts.values()).sort((left, right) => left.date.localeCompare(right.date));
+  const summary = Array.from(counts.values())
+    .map((entry) => ({
+      date: entry.date,
+      count: entry.count,
+      participants: entry.participants,
+      timeSlots: Array.from(entry.timeSlots.values()).sort((left, right) => left.time.localeCompare(right.time)),
+    }))
+    .sort((left, right) => left.date.localeCompare(right.date));
   const bestCount = summary.reduce((maxCount, entry) => Math.max(maxCount, entry.count), 0);
   return {
     summary,

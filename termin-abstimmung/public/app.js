@@ -25,6 +25,7 @@ const state = {
   createTimeSlots: {},
   currentMonth: startOfMonth(new Date()),
   participantSelectedDates: new Set(),
+  participantSuggestedTimes: {},
   participantCurrentMonth: startOfMonth(new Date()),
   participantCalendarExpanded: !window.matchMedia("(max-width: 720px)").matches,
   pollData: null,
@@ -1128,6 +1129,171 @@ function normalizeCreateTimeSlotsForSubmit() {
   return normalized;
 }
 
+function getSuggestedDateEntries(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  const byDate = new Map();
+
+  for (const entry of entries) {
+    let date = "";
+    let rawTimes = [];
+
+    if (typeof entry === "string") {
+      date = entry.trim();
+    } else if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      date = typeof entry.date === "string" ? entry.date.trim() : "";
+      rawTimes = Array.isArray(entry.times)
+        ? entry.times
+        : Array.isArray(entry.timeSlots)
+          ? entry.timeSlots
+          : [];
+    } else {
+      continue;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      continue;
+    }
+
+    if (!byDate.has(date)) {
+      byDate.set(date, new Set());
+    }
+
+    const timeSet = byDate.get(date);
+    for (const rawTime of rawTimes) {
+      const normalizedTime = normalizeTimeSlotValue(rawTime);
+      if (normalizedTime) {
+        timeSet.add(normalizedTime);
+      }
+    }
+  }
+
+  return Array.from(byDate.entries())
+    .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+    .map(([date, timeSet]) => ({
+      date,
+      times: Array.from(timeSet).sort(),
+    }));
+}
+
+function syncParticipantSuggestedTimesWithSelectedDates() {
+  const nextSlots = {};
+
+  for (const date of Array.from(state.participantSelectedDates).sort()) {
+    nextSlots[date] = Array.isArray(state.participantSuggestedTimes[date])
+      ? state.participantSuggestedTimes[date].map((slot) => (typeof slot === "string" ? slot : ""))
+      : [];
+  }
+
+  state.participantSuggestedTimes = nextSlots;
+}
+
+function syncParticipantSuggestedTimesFromEditor() {
+  const inputs = document.querySelectorAll(".participant-time-slot-input");
+  if (!inputs.length) {
+    return;
+  }
+
+  const nextSlots = {};
+  inputs.forEach((input) => {
+    const date = input.dataset.date;
+    const index = Number(input.dataset.index);
+    if (!date || Number.isNaN(index)) {
+      return;
+    }
+
+    if (!Array.isArray(nextSlots[date])) {
+      nextSlots[date] = [];
+    }
+
+    nextSlots[date][index] = filterTimeSlotInput(input.value);
+  });
+
+  for (const [date, slots] of Object.entries(nextSlots)) {
+    state.participantSuggestedTimes[date] = slots.map((slot) => (typeof slot === "string" ? slot : ""));
+  }
+}
+
+function normalizeParticipantSuggestionsForSubmit() {
+  const dates = Array.from(state.participantSelectedDates).sort();
+  if (dates.length === 0) {
+    return [];
+  }
+
+  const normalized = [];
+  for (const date of dates) {
+    const rawSlots = Array.isArray(state.participantSuggestedTimes[date]) ? state.participantSuggestedTimes[date] : [];
+    const normalizedSlots = [];
+
+    for (const slot of rawSlots) {
+      const rawValue = filterTimeSlotInput(typeof slot === "string" ? slot.trim() : "");
+      if (!rawValue) {
+        continue;
+      }
+
+      const normalizedValue = normalizeTimeSlotValue(rawValue);
+      if (!normalizedValue) {
+        return null;
+      }
+
+      normalizedSlots.push(normalizedValue);
+    }
+
+    normalized.push({
+      date,
+      times: Array.from(new Set(normalizedSlots)).sort(),
+    });
+  }
+
+  return normalized;
+}
+
+function formatSuggestedTimeValues(values, maxItems = Infinity) {
+  const normalizedValues = Array.isArray(values)
+    ? Array.from(new Set(values.map((value) => normalizeTimeSlotValue(value)).filter(Boolean))).sort()
+    : [];
+
+  if (normalizedValues.length === 0) {
+    return "";
+  }
+
+  if (!Number.isFinite(maxItems) || normalizedValues.length <= maxItems) {
+    return normalizedValues.join(", ");
+  }
+
+  return `${normalizedValues.slice(0, maxItems).join(", ")} +${normalizedValues.length - maxItems}`;
+}
+
+function formatSuggestedTimeSlotSummary(entries, maxItems = 3) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return "";
+  }
+
+  const labels = entries
+    .map((entry) => {
+      const time = normalizeTimeSlotValue(typeof entry === "string" ? entry : entry?.time);
+      if (!time) {
+        return "";
+      }
+
+      const count = Number.isFinite(entry?.count) ? Number(entry.count) : 0;
+      return count > 0 ? `${time} (${count})` : time;
+    })
+    .filter(Boolean);
+
+  if (labels.length === 0) {
+    return "";
+  }
+
+  if (labels.length <= maxItems) {
+    return labels.join(", ");
+  }
+
+  return `${labels.slice(0, maxItems).join(", ")} +${labels.length - maxItems}`;
+}
+
 async function loadDashboardPolls() {
   const list = document.querySelector("#dashboard-polls");
   const summary = document.querySelector("#dashboard-list-summary");
@@ -1706,9 +1872,16 @@ function initializeDraftFromPoll(poll) {
   const hasTimeSlots = pollHasTimeSlots(poll);
 
   if (poll.mode === "free" && !hasTimeSlots) {
+    const suggestedEntries = getSuggestedDateEntries(editableResponse?.suggestedDateEntries || editableResponse?.suggestedDates);
     state.responseDraft = {};
-    state.participantSelectedDates = new Set(editableResponse?.suggestedDates || []);
-    state.participantCurrentMonth = startOfMonth(new Date());
+    state.participantSelectedDates = new Set(suggestedEntries.map((entry) => entry.date));
+    state.participantSuggestedTimes = Object.fromEntries(
+      suggestedEntries.map((entry) => [entry.date, entry.times.length > 0 ? entry.times : [""]])
+    );
+    syncParticipantSuggestedTimesWithSelectedDates();
+    state.participantCurrentMonth = startOfMonth(
+      state.participantSelectedDates.size > 0 ? getFirstSelectedCreateDate(state.participantSelectedDates) : new Date()
+    );
     return;
   }
 
@@ -1728,6 +1901,7 @@ function initializeDraftFromPoll(poll) {
 
   state.responseDraft = defaultDraft;
   state.participantSelectedDates = new Set();
+  state.participantSuggestedTimes = {};
   state.participantCurrentMonth = startOfMonth(new Date());
 }
 
@@ -2188,7 +2362,7 @@ function renderFreeChoiceForm(grid) {
   intro.innerHTML = `
     <div>
       <strong>Waehle alle Tage, an denen du kannst</strong>
-      <p class="description">Du kannst beliebige Tage im Kalender markieren, auch in anderen Monaten oder Jahren.</p>
+      <p class="description">Du kannst beliebige Tage im Kalender markieren und optional passende Uhrzeiten je Datum vorschlagen.</p>
     </div>
     <button id="participant-toggle-calendar" class="ghost-button compact-button participant-mobile-toggle" type="button">
       ${state.participantCalendarExpanded ? "Kalender ausblenden" : "Teilnehmen"}
@@ -2215,7 +2389,7 @@ function renderFreeChoiceForm(grid) {
     <div id="participant-calendar-grid" class="calendar-grid" aria-live="polite"></div>
     <div class="selected-dates-box">
       <div class="selected-header">
-        <span>Deine gewaehlten Tage</span>
+        <span>Deine Vorschlaege</span>
         <button id="participant-clear-dates" class="text-button" type="button">Leeren</button>
       </div>
       <div id="participant-selected-dates" class="selected-dates"></div>
@@ -2242,6 +2416,7 @@ function renderFreeChoiceForm(grid) {
 
   document.querySelector("#participant-clear-dates").addEventListener("click", () => {
     state.participantSelectedDates.clear();
+    state.participantSuggestedTimes = {};
     renderAvailabilityForm();
   });
 
@@ -2284,9 +2459,14 @@ function renderParticipantCalendar() {
     button.addEventListener("click", () => {
       if (state.participantSelectedDates.has(day.isoDate)) {
         state.participantSelectedDates.delete(day.isoDate);
+        delete state.participantSuggestedTimes[day.isoDate];
       } else {
         state.participantSelectedDates.add(day.isoDate);
+        if (!Array.isArray(state.participantSuggestedTimes[day.isoDate])) {
+          state.participantSuggestedTimes[day.isoDate] = [""];
+        }
       }
+      syncParticipantSuggestedTimesWithSelectedDates();
       renderAvailabilityForm();
     });
 
@@ -2300,32 +2480,136 @@ function renderParticipantSelectedDates() {
     return;
   }
 
+  syncParticipantSuggestedTimesWithSelectedDates();
   const dates = Array.from(state.participantSelectedDates).sort();
   if (dates.length === 0) {
     container.innerHTML = renderEmptyStateMarkup(
       "fa-regular fa-hand-point-up",
       "Noch keine Tage ausgewaehlt",
-      "Markiere ein paar Optionen im Kalender, dann siehst du sie hier als schnelle Badge-Liste."
+      "Markiere ein paar Optionen im Kalender. Fuer jeden Vorschlag kannst du danach optional Uhrzeiten eintragen."
     );
     return;
   }
 
   container.innerHTML = "";
   for (const date of dates) {
-    const pill = document.createElement("div");
-    pill.className = "selected-date-pill";
-    pill.innerHTML = `
-      <span>${formatDateLong(date)}</span>
-      <button type="button" aria-label="Datum entfernen">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
+    const card = document.createElement("div");
+    card.className = "time-slot-date-card";
+    const slots = Array.isArray(state.participantSuggestedTimes[date]) ? state.participantSuggestedTimes[date] : [];
+    card.innerHTML = `
+      <div class="time-slot-date-head">
+        <strong>${escapeHtml(formatDateLong(date))}</strong>
+        <div class="calendar-actions">
+          <button class="ghost-button compact-button" type="button" data-action="add-slot" data-date="${date}">
+            <i class="fa-solid fa-plus"></i>
+            Zeit
+          </button>
+          <button class="text-button" type="button" data-action="remove-date" data-date="${date}">
+            Entfernen
+          </button>
+        </div>
+      </div>
+      <p class="description">Optional: passende Uhrzeiten fuer diesen Tag vorschlagen.</p>
+      <div class="time-slot-list"></div>
     `;
-    pill.querySelector("button").addEventListener("click", () => {
-      state.participantSelectedDates.delete(date);
+
+    const list = card.querySelector(".time-slot-list");
+    if (slots.length === 0) {
+      list.innerHTML = '<p class="description">Keine Uhrzeiten hinterlegt.</p>';
+    } else {
+      slots.forEach((slotValue, index) => {
+        const row = document.createElement("div");
+        row.className = "time-slot-row";
+        row.innerHTML = `
+          <input
+            class="time-slot-input participant-time-slot-input"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="5"
+            value="${escapeHtml(slotValue || "")}"
+            placeholder="14:00"
+            data-date="${date}"
+            data-index="${index}"
+          />
+          <button class="text-button danger-text-button" type="button" data-action="remove-slot" data-date="${date}" data-index="${index}">
+            Entfernen
+          </button>
+        `;
+        list.appendChild(row);
+      });
+    }
+
+    container.appendChild(card);
+  }
+
+  container.querySelectorAll('[data-action="add-slot"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const { date } = button.dataset;
+      if (!date) {
+        return;
+      }
+      if (!Array.isArray(state.participantSuggestedTimes[date])) {
+        state.participantSuggestedTimes[date] = [];
+      }
+      state.participantSuggestedTimes[date].push("");
       renderAvailabilityForm();
     });
-    container.appendChild(pill);
-  }
+  });
+
+  container.querySelectorAll('[data-action="remove-date"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const { date } = button.dataset;
+      if (!date) {
+        return;
+      }
+      state.participantSelectedDates.delete(date);
+      delete state.participantSuggestedTimes[date];
+      renderAvailabilityForm();
+    });
+  });
+
+  container.querySelectorAll(".participant-time-slot-input").forEach((input) => {
+    input.addEventListener("input", () => {
+      const { date, index } = input.dataset;
+      if (!date || index === undefined) {
+        return;
+      }
+      if (!Array.isArray(state.participantSuggestedTimes[date])) {
+        state.participantSuggestedTimes[date] = [];
+      }
+      const filteredValue = filterTimeSlotInput(input.value);
+      if (filteredValue !== input.value) {
+        input.value = filteredValue;
+      }
+      state.participantSuggestedTimes[date][Number(index)] = filteredValue;
+    });
+
+    input.addEventListener("blur", () => {
+      const { date, index } = input.dataset;
+      if (!date || index === undefined || !Array.isArray(state.participantSuggestedTimes[date])) {
+        return;
+      }
+
+      const normalizedValue = normalizeTimeSlotValue(input.value);
+      if (normalizedValue) {
+        input.value = normalizedValue;
+        state.participantSuggestedTimes[date][Number(index)] = normalizedValue;
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-action="remove-slot"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const { date, index } = button.dataset;
+      if (!date || index === undefined || !Array.isArray(state.participantSuggestedTimes[date])) {
+        return;
+      }
+      state.participantSuggestedTimes[date].splice(Number(index), 1);
+      renderAvailabilityForm();
+    });
+  });
 }
 
 function renderResultsTable() {
@@ -2361,6 +2645,11 @@ function renderResultsTable() {
               <th>
                 <div class="results-matrix-header">
                   <strong>${escapeHtml(formatDateShort(entry.date))}</strong>
+                  ${
+                    entry.timeSlots?.length
+                      ? `<span class="results-matrix-subline">${escapeHtml(formatSuggestedTimeSlotSummary(entry.timeSlots))}</span>`
+                      : ""
+                  }
                 </div>
               </th>
             `
@@ -2386,17 +2675,29 @@ function renderResultsTable() {
 
     body.innerHTML = responses
       .map((response) => {
-        const pickedDates = new Set(response.suggestedDates || []);
+        const pickedDates = new Map(
+          getSuggestedDateEntries(response.suggestedDateEntries || response.suggestedDates).map((entry) => [entry.date, entry])
+        );
         const items = matrixDates
           .map((entry) => {
-            const isAvailable = pickedDates.has(entry.date);
+            const suggestion = pickedDates.get(entry.date);
+            const isAvailable = Boolean(suggestion);
+            const timeLabel = formatSuggestedTimeValues(suggestion?.times, 3);
+            const fullTimeLabel = formatSuggestedTimeValues(suggestion?.times);
             return `
               <td class="matrix-cell ${isAvailable ? "is-available" : ""}" title="${escapeHtml(
-                `${response.name}: ${isAvailable ? "Ja" : "Nein"} fuer ${formatDateLong(entry.date)}`
+                `${response.name}: ${isAvailable ? "Ja" : "Nein"} fuer ${formatDateLong(entry.date)}${
+                  fullTimeLabel ? ` um ${fullTimeLabel}` : ""
+                }`
               )}">
                 ${
                   isAvailable
-                    ? '<i class="fa-solid fa-check matrix-check" aria-label="Ja"></i>'
+                    ? `
+                      <div>
+                        <i class="fa-solid fa-check matrix-check" aria-label="Ja"></i>
+                        ${timeLabel ? `<div class="results-matrix-subline">${escapeHtml(timeLabel)}</div>` : ""}
+                      </div>
+                    `
                     : '<span class="matrix-empty" aria-hidden="true">-</span>'
                 }
               </td>
@@ -2719,7 +3020,12 @@ async function handleResponseSubmit(event) {
   } else if (isFixed) {
     payload.availabilities = state.responseDraft;
   } else {
-    payload.suggestedDates = Array.from(state.participantSelectedDates).sort();
+    syncParticipantSuggestedTimesFromEditor();
+    payload.suggestedDates = normalizeParticipantSuggestionsForSubmit();
+    if (payload.suggestedDates === null) {
+      setFeedback(feedback, "Bitte nutze fuer optionale Uhrzeiten das Format HH:MM.", "error");
+      return;
+    }
   }
 
   try {
