@@ -55,7 +55,9 @@ db.exec(`
     description TEXT NOT NULL,
     dates TEXT NOT NULL,
     has_time_slots INTEGER NOT NULL DEFAULT 0,
+    time_slots TEXT NOT NULL DEFAULT '{}',
     mode TEXT NOT NULL DEFAULT 'fixed',
+    allow_time_slots INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -79,6 +81,7 @@ db.exec(`
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     availabilities TEXT NOT NULL,
+    slot_availabilities TEXT NOT NULL DEFAULT '{}',
     suggested_dates TEXT NOT NULL DEFAULT '[]',
     free_text_availabilities TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
@@ -108,6 +111,8 @@ ensureColumn("users", "daily_summary", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "daily_summary_last_sent_at", "TEXT");
 ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
 ensureColumn("polls", "has_time_slots", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("polls", "time_slots", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("polls", "allow_time_slots", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("polls", "created_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("polls", "updated_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("polls", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
@@ -116,6 +121,7 @@ ensureColumn("polls", "notification_email_enabled", "INTEGER NOT NULL DEFAULT 1"
 ensureColumn("polls", "allow_email_invites", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("polls", "last_response_at", "TEXT");
 ensureColumn("responses", "suggested_dates", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("responses", "slot_availabilities", "TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("responses", "free_text_availabilities", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("responses", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
 ensureColumn("poll_participants", "can_vote", "INTEGER NOT NULL DEFAULT 1");
@@ -224,6 +230,15 @@ function parseJsonArray(value) {
   }
 }
 
+function parseJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
 function getScoreForStatus(status, hasVeto = false) {
   const scoreMap = hasVeto ? VETO_SCORE_MAP : SCORE_MAP;
   return scoreMap[status] ?? 0;
@@ -251,6 +266,34 @@ function normalizeDates(dates) {
 
 function normalizeMode(mode) {
   return VALID_POLL_MODES.has(mode) ? mode : "fixed";
+}
+
+function normalizeTimeSlotsByDate(dates, entries) {
+  if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
+    return {};
+  }
+
+  const normalized = {};
+  for (const date of dates) {
+    const rawSlots = Array.isArray(entries[date]) ? entries[date] : [];
+    const uniqueSlots = new Set();
+    for (const slot of rawSlots) {
+      if (typeof slot !== "string") {
+        continue;
+      }
+
+      const normalizedSlot = slot.trim();
+      if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(normalizedSlot)) {
+        uniqueSlots.add(normalizedSlot);
+      }
+    }
+
+    if (uniqueSlots.size > 0) {
+      normalized[date] = Array.from(uniqueSlots).sort();
+    }
+  }
+
+  return normalized;
 }
 
 function normalizeInviteEmails(entries) {
@@ -287,6 +330,8 @@ function validatePollInput(body) {
   const description = normalizeText(body?.description, 1200);
   const mode = normalizeMode(body?.mode);
   const dates = mode === "fixed" ? normalizeDates(body?.dates) : [];
+  const allowTimeSlots = mode === "fixed" ? normalizeBoolean(body?.allowTimeSlots, false) : false;
+  const timeSlots = allowTimeSlots ? normalizeTimeSlotsByDate(dates, body?.timeSlots) : {};
   const inviteMessage = normalizeText(body?.inviteMessage, 500);
   const inviteEmails = normalizeInviteEmails(body?.inviteEmails);
 
@@ -302,6 +347,9 @@ function validatePollInput(body) {
   if (dates.some((date) => Number.isNaN(new Date(`${date}T00:00:00Z`).getTime()))) {
     return { ok: false, message: "Mindestens ein Datum ist ungueltig." };
   }
+  if (allowTimeSlots && dates.some((date) => !Array.isArray(timeSlots[date]) || timeSlots[date].length === 0)) {
+    return { ok: false, message: "Bitte hinterlege fuer jeden Termin mindestens eine Uhrzeit." };
+  }
 
   return {
     ok: true,
@@ -310,6 +358,8 @@ function validatePollInput(body) {
       description,
       mode,
       dates,
+      allowTimeSlots,
+      timeSlots,
       inviteMessage,
       inviteEmails,
       notificationEmailEnabled: normalizeBoolean(body?.notificationEmailEnabled, true),
@@ -331,6 +381,142 @@ function validateAvailabilities(dates, availabilities) {
       return { ok: false, message: `Fuer ${date} fehlt ein gueltiger Status.` };
     }
     normalized[date] = status;
+  }
+
+  return { ok: true, value: normalized };
+}
+
+function validateSlotAvailabilities(timeSlots, availabilities) {
+  if (!availabilities || typeof availabilities !== "object" || Array.isArray(availabilities)) {
+    return { ok: false, message: "Ungueltige Uhrzeit-Verfuegbarkeiten." };
+  }
+
+  const normalized = {};
+  for (const [date, slots] of Object.entries(timeSlots)) {
+    const dateAvailabilities = availabilities[date];
+    if (!dateAvailabilities || typeof dateAvailabilities !== "object" || Array.isArray(dateAvailabilities)) {
+      return { ok: false, message: `Fuer ${date} fehlen gueltige Uhrzeiten.` };
+    }
+
+    normalized[date] = {};
+    for (const slot of slots) {
+      const status = dateAvailabilities[slot];
+      if (!VALID_STATUSES.has(status)) {
+        return { ok: false, message: `Fuer ${date} ${slot} fehlt ein gueltiger Status.` };
+      }
+      normalized[date][slot] = status;
+    }
+  }
+
+  return { ok: true, value: normalized };
+}
+
+function isValidTimeValue(value) {
+  return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value.trim());
+}
+
+function buildTimeSlotId(pollId, dateId, time) {
+  return [pollId, dateId, time.replace(":", "-")].join("__");
+}
+
+function parseTimeSlotId(slotId) {
+  if (typeof slotId !== "string") {
+    return null;
+  }
+
+  const parts = slotId.split("__");
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  const [pollId, dateId, timePart] = parts;
+  const time = timePart.replace("-", ":");
+  if (!pollId || !/^\d{4}-\d{2}-\d{2}$/.test(dateId) || !isValidTimeValue(time)) {
+    return null;
+  }
+
+  return { pollId, dateId, time };
+}
+
+function mapTimeSlotEntry(pollId, dateId, time, position) {
+  return {
+    id: buildTimeSlotId(pollId, dateId, time),
+    pollId,
+    dateId,
+    time,
+    position,
+  };
+}
+
+function listPollTimeSlots(poll) {
+  const timeSlotsByDate = poll?.timeSlots && typeof poll.timeSlots === "object" ? poll.timeSlots : {};
+  const entries = [];
+
+  for (const dateId of Object.keys(timeSlotsByDate).sort()) {
+    const slots = Array.isArray(timeSlotsByDate[dateId]) ? timeSlotsByDate[dateId] : [];
+    slots.forEach((time, index) => {
+      if (isValidTimeValue(time)) {
+        entries.push(mapTimeSlotEntry(poll.id, dateId, time, index));
+      }
+    });
+  }
+
+  return entries;
+}
+
+function setPollTimeSlots(pollId, timeSlotsByDate) {
+  const now = new Date().toISOString();
+  const hasTimeSlots = Object.values(timeSlotsByDate).some((slots) => Array.isArray(slots) && slots.length > 0);
+
+  db.prepare(`
+    UPDATE polls
+    SET time_slots = ?, allow_time_slots = ?, has_time_slots = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    JSON.stringify(timeSlotsByDate),
+    hasTimeSlots ? 1 : 0,
+    hasTimeSlots ? 1 : 0,
+    now,
+    pollId
+  );
+}
+
+function validateSlotResponses(poll, entries) {
+  if (!Array.isArray(entries)) {
+    return { ok: false, message: "Ungueltige Uhrzeit-Antworten." };
+  }
+
+  const expectedSlots = listPollTimeSlots(poll);
+  const remaining = new Map(expectedSlots.map((slot) => [slot.id, slot]));
+  const normalized = {};
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return { ok: false, message: "Ungueltige Uhrzeit-Antworten." };
+    }
+
+    const dateId = normalizeText(entry.dateId, 10);
+    const slotId = normalizeText(entry.slotId, 120);
+    const availability = entry.availability;
+    const slot = remaining.get(slotId);
+
+    if (!slot || slot.dateId !== dateId) {
+      return { ok: false, message: "Mindestens eine Uhrzeit-Antwort ist ungueltig." };
+    }
+    if (!VALID_STATUSES.has(availability)) {
+      return { ok: false, message: `Fuer ${dateId} ${slot.time} fehlt ein gueltiger Status.` };
+    }
+
+    if (!normalized[dateId]) {
+      normalized[dateId] = {};
+    }
+    normalized[dateId][slot.time] = availability;
+    remaining.delete(slotId);
+  }
+
+  if (remaining.size > 0) {
+    const missingSlot = Array.from(remaining.values())[0];
+    return { ok: false, message: `Fuer ${missingSlot.dateId} ${missingSlot.time} fehlt ein gueltiger Status.` };
   }
 
   return { ok: true, value: normalized };
@@ -398,7 +584,9 @@ function mapPollRow(row, req) {
     title: row.title,
     description: row.description,
     dates: parseJsonArray(row.dates),
+    timeSlots: parseJsonObject(row.time_slots),
     mode: normalizeMode(row.mode),
+    allowTimeSlots: Boolean(row.allow_time_slots),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     userId: row.user_id ?? null,
@@ -421,6 +609,7 @@ function mapResponseRow(row) {
     userId: row.user_id ?? null,
     name: displayName,
     availabilities: JSON.parse(row.availabilities),
+    slotAvailabilities: parseJsonObject(row.slot_availabilities),
     suggestedDates: suggestedDates.length > 0 ? suggestedDates : legacySuggestedDates,
     hasVeto: Boolean(row.has_veto),
     canVote: row.can_vote === null || row.can_vote === undefined ? true : Boolean(row.can_vote),
@@ -460,6 +649,52 @@ function calculateBestDates(dates, responses) {
       return right.yes - left.yes;
     }
     return left.date.localeCompare(right.date);
+  });
+
+  const bestScore = sorted[0]?.score ?? 0;
+  return {
+    summary,
+    bestDates: sorted.filter((entry) => entry.score === bestScore && sorted.length > 0),
+  };
+}
+
+function calculateBestDateSlots(timeSlots, responses) {
+  const summary = [];
+
+  for (const date of Object.keys(timeSlots).sort()) {
+    for (const slot of timeSlots[date]) {
+      let yes = 0;
+      let maybe = 0;
+      let no = 0;
+      let score = 0;
+
+      for (const response of responses) {
+        const status = response.slotAvailabilities?.[date]?.[slot] || "no";
+        if (status === "yes") {
+          yes += 1;
+        } else if (status === "maybe") {
+          maybe += 1;
+        } else {
+          no += 1;
+        }
+        score += getScoreForStatus(status, Boolean(response.hasVeto));
+      }
+
+      summary.push({ date, slot, yes, maybe, no, score, participants: responses.length });
+    }
+  }
+
+  const sorted = [...summary].sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    if (right.yes !== left.yes) {
+      return right.yes - left.yes;
+    }
+    if (left.date !== right.date) {
+      return left.date.localeCompare(right.date);
+    }
+    return left.slot.localeCompare(right.slot);
   });
 
   const bestScore = sorted[0]?.score ?? 0;
@@ -1844,6 +2079,98 @@ app.put("/api/polls/:pollId/participants/:userId", requireCsrf, requireAuth, (re
   }
 });
 
+app.get("/api/polls/:pollId/time-slots", (req, res) => {
+  try {
+    const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(req.params.pollId), req);
+    if (!poll) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+
+    res.json({ timeSlots: listPollTimeSlots(poll) });
+  } catch (error) {
+    console.error("Fehler beim Laden der Uhrzeiten:", error);
+    res.status(500).json({ error: "Die Uhrzeiten konnten nicht geladen werden." });
+  }
+});
+
+app.post("/api/polls/:pollId/time-slots", requireCsrf, requireAuth, (req, res) => {
+  try {
+    const existing = getPollOwnerOrThrow(req.params.pollId, req.currentUser.id);
+    if (existing === null) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+    if (existing === false) {
+      return res.status(403).json({ error: "Nicht erlaubt." });
+    }
+
+    const pollDates = parseJsonArray(existing.dates);
+    const dateId = normalizeText(req.body?.dateId, 10);
+    const time = normalizeText(req.body?.time, 5);
+    if (!pollDates.includes(dateId)) {
+      return res.status(400).json({ error: "Ungueltiges Datum." });
+    }
+    if (!isValidTimeValue(time)) {
+      return res.status(400).json({ error: "Ungueltige Uhrzeit." });
+    }
+
+    const timeSlotsByDate = parseJsonObject(existing.time_slots);
+    const currentSlots = Array.isArray(timeSlotsByDate[dateId]) ? timeSlotsByDate[dateId] : [];
+    if (currentSlots.includes(time)) {
+      return res.status(409).json({ error: "Diese Uhrzeit existiert bereits." });
+    }
+
+    timeSlotsByDate[dateId] = [...currentSlots, time].sort();
+    setPollTimeSlots(existing.id, timeSlotsByDate);
+
+    const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(existing.id), req);
+    const slotsForDate = listPollTimeSlots(poll).filter((slot) => slot.dateId === dateId);
+    const slot = slotsForDate.find((entry) => entry.time === time);
+
+    res.status(201).json({ slot, timeSlots: listPollTimeSlots(poll) });
+  } catch (error) {
+    console.error("Fehler beim Hinzufuegen der Uhrzeit:", error);
+    res.status(500).json({ error: "Die Uhrzeit konnte nicht gespeichert werden." });
+  }
+});
+
+app.delete("/api/time-slots/:slotId", requireCsrf, requireAuth, (req, res) => {
+  try {
+    const parsedSlot = parseTimeSlotId(req.params.slotId);
+    if (!parsedSlot) {
+      return res.status(400).json({ error: "Ungueltige Uhrzeit." });
+    }
+
+    const existing = getPollOwnerOrThrow(parsedSlot.pollId, req.currentUser.id);
+    if (existing === null) {
+      return res.status(404).json({ error: "Poll nicht gefunden." });
+    }
+    if (existing === false) {
+      return res.status(403).json({ error: "Nicht erlaubt." });
+    }
+
+    const timeSlotsByDate = parseJsonObject(existing.time_slots);
+    const currentSlots = Array.isArray(timeSlotsByDate[parsedSlot.dateId]) ? timeSlotsByDate[parsedSlot.dateId] : [];
+    if (!currentSlots.includes(parsedSlot.time)) {
+      return res.status(404).json({ error: "Uhrzeit nicht gefunden." });
+    }
+
+    const nextSlots = currentSlots.filter((entry) => entry !== parsedSlot.time);
+    if (nextSlots.length > 0) {
+      timeSlotsByDate[parsedSlot.dateId] = nextSlots;
+    } else {
+      delete timeSlotsByDate[parsedSlot.dateId];
+    }
+
+    setPollTimeSlots(existing.id, timeSlotsByDate);
+    const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(existing.id), req);
+
+    res.json({ deleted: true, timeSlots: listPollTimeSlots(poll) });
+  } catch (error) {
+    console.error("Fehler beim Loeschen der Uhrzeit:", error);
+    res.status(500).json({ error: "Die Uhrzeit konnte nicht geloescht werden." });
+  }
+});
+
 app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefix: "responses", limit: 30 }), (req, res) => {
   try {
     if (!req.session?.userId || !req.currentUser) {
@@ -1864,6 +2191,7 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
     }
 
     let availabilities = {};
+    let slotAvailabilities = {};
     let suggestedDates = [];
     if (data.poll.mode === "fixed") {
       const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
@@ -1871,6 +2199,15 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
         return res.status(400).json({ error: availabilityCheck.message });
       }
       availabilities = availabilityCheck.value;
+
+      const pollTimeSlots = listPollTimeSlots(data.poll);
+      if (pollTimeSlots.length > 0) {
+        const slotResponsesCheck = validateSlotResponses(data.poll, req.body?.slotResponses);
+        if (!slotResponsesCheck.ok) {
+          return res.status(400).json({ error: slotResponsesCheck.message });
+        }
+        slotAvailabilities = slotResponsesCheck.value;
+      }
     } else {
       const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates);
       if (!suggestedDatesCheck.ok) {
@@ -1881,6 +2218,7 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
 
     const timestamp = new Date().toISOString();
     const serializedAvailabilities = JSON.stringify(availabilities);
+    const serializedSlotAvailabilities = JSON.stringify(slotAvailabilities);
     const serializedSuggestedDates = JSON.stringify(suggestedDates);
     const responseName = req.currentUser.name || req.currentUser.email;
     const existing = db
@@ -1897,14 +2235,33 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
     if (existing) {
       db.prepare(`
         UPDATE responses
-        SET name = ?, user_id = ?, availabilities = ?, suggested_dates = ?, updated_at = ?
+        SET name = ?, user_id = ?, availabilities = ?, slot_availabilities = ?, suggested_dates = ?, updated_at = ?
         WHERE id = ?
-      `).run(responseName, req.session.userId, serializedAvailabilities, serializedSuggestedDates, timestamp, existing.id);
+      `).run(
+        responseName,
+        req.session.userId,
+        serializedAvailabilities,
+        serializedSlotAvailabilities,
+        serializedSuggestedDates,
+        timestamp,
+        existing.id
+      );
     } else {
       db.prepare(`
-        INSERT INTO responses (poll_id, user_id, name, availabilities, suggested_dates, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(data.poll.id, req.session.userId, responseName, serializedAvailabilities, serializedSuggestedDates, timestamp, timestamp);
+        INSERT INTO responses (
+          poll_id, user_id, name, availabilities, slot_availabilities, suggested_dates, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        data.poll.id,
+        req.session.userId,
+        responseName,
+        serializedAvailabilities,
+        serializedSlotAvailabilities,
+        serializedSuggestedDates,
+        timestamp,
+        timestamp
+      );
     }
 
     ensurePollParticipant(data.poll.id, req.session.userId);
