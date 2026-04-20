@@ -330,6 +330,7 @@ function validatePassword(password) {
 }
 
 function validatePollInput(body) {
+  console.log("DEBUG validatePollInput - body:", JSON.stringify(body, null, 2));
   const title = normalizeText(body?.title, 120);
   const description = normalizeText(body?.description, 1200);
   const mode = normalizeMode(body?.mode);
@@ -355,6 +356,11 @@ function validatePollInput(body) {
   if (allowTimeSlots && dates.some((date) => !Array.isArray(timeSlots[date]) || timeSlots[date].length === 0)) {
     return { ok: false, message: "Bitte hinterlege fuer jeden Termin mindestens eine Uhrzeit." };
   }
+
+  console.log("DEBUG - dates:", dates);
+  console.log("DEBUG - requestedTimeSlots:", requestedTimeSlots);
+  console.log("DEBUG - allowTimeSlots:", allowTimeSlots);
+  console.log("DEBUG - final timeSlots:", timeSlots);
 
   return {
     ok: true,
