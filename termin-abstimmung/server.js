@@ -333,8 +333,9 @@ function validatePollInput(body) {
   const title = normalizeText(body?.title, 120);
   const description = normalizeText(body?.description, 1200);
   const mode = normalizeMode(body?.mode);
-  const allowTimeSlots = normalizeBoolean(body?.allowTimeSlots, false);
-  const dates = mode === "fixed" || allowTimeSlots ? normalizeDates(body?.dates) : [];
+  const requestedTimeSlots = normalizeTimeSlotsByDate(normalizeDates(body?.dates), body?.timeSlots);
+  const allowTimeSlots = mode === "fixed" && (normalizeBoolean(body?.allowTimeSlots, false) || hasTimeSlotEntries(requestedTimeSlots));
+  const dates = mode === "fixed" ? normalizeDates(body?.dates) : [];
   const timeSlots = allowTimeSlots ? normalizeTimeSlotsByDate(dates, body?.timeSlots) : {};
   const inviteMessage = normalizeText(body?.inviteMessage, 500);
   const inviteEmails = normalizeInviteEmails(body?.inviteEmails);

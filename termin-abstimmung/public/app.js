@@ -959,6 +959,7 @@ async function handleCreateSubmit(event, pollId) {
   const feedback = document.querySelector("#create-feedback");
   const title = document.querySelector("#create-title").value.trim();
   const description = document.querySelector("#create-description").value.trim();
+  syncCreateTimeSlotsFromEditor();
   const normalizedTimeSlots = state.createTimeSlotsEnabled ? normalizeCreateTimeSlotsForSubmit() : {};
 
   if (state.createTimeSlotsEnabled && normalizedTimeSlots === null) {
@@ -1003,6 +1004,32 @@ function filterTimeSlotInput(value) {
   }
 
   return value.replace(/[^\d:.]/g, "").slice(0, 5);
+}
+
+function syncCreateTimeSlotsFromEditor() {
+  const inputs = document.querySelectorAll(".time-slot-input");
+  if (!inputs.length) {
+    return;
+  }
+
+  const nextSlots = {};
+  inputs.forEach((input) => {
+    const date = input.dataset.date;
+    const index = Number(input.dataset.index);
+    if (!date || Number.isNaN(index)) {
+      return;
+    }
+
+    if (!Array.isArray(nextSlots[date])) {
+      nextSlots[date] = [];
+    }
+
+    nextSlots[date][index] = filterTimeSlotInput(input.value);
+  });
+
+  for (const [date, slots] of Object.entries(nextSlots)) {
+    state.createTimeSlots[date] = slots.map((slot) => (typeof slot === "string" ? slot : ""));
+  }
 }
 
 function normalizeTimeSlotValue(value) {
