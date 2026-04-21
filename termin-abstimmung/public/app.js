@@ -3031,7 +3031,7 @@ function renderParticipantSelectedDates() {
 }
 
 function supportsResultsCalendar(poll) {
-  return poll?.mode === "timeslots_free";
+  return CREATE_POLL_MODES.has(poll?.mode);
 }
 
 function ensureResultsCalendarPanel() {
