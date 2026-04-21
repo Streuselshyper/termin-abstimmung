@@ -523,8 +523,8 @@
               <p class="eyebrow">Schneller abstimmen</p>
               <h1>Umfragen erstellen, teilen und direkt auswerten</h1>
               <p class="hero-text">
-                Erstelle Termin-Abstimmungen mit festen Terminen, Zeitslots oder freier Wahl, teile Einladungslinks,
-                exportiere gewaehlte Tage nach iCal und behalte alle Antworten in deinem Dashboard im Blick.
+                Erstelle Termin-Abstimmungen mit festen Terminen, Zeitslots, freier Wahl oder freier Zeitslot-Wahl,
+                teile Einladungslinks, exportiere gewaehlte Tage nach iCal und behalte alle Antworten in deinem Dashboard im Blick.
               </p>
               <div class="hero-cta-row">
                 <a class="primary-link" href="/register">Konto erstellen</a>
@@ -534,8 +534,8 @@
 
             <div class="hero-stats">
               <article class="hero-stat">
-                <strong>3 Modi</strong>
-                <span>Feste Termine, Zeitslots oder freie Wahl</span>
+                <strong>4 Modi</strong>
+                <span>Feste Termine, Zeitslots, freie Wahl oder freie Zeitslots</span>
               </article>
               <article class="hero-stat">
                 <strong>Share-Links</strong>
@@ -783,6 +783,13 @@
                 <p class="description">Teilnehmende schlagen selbst passende Tage im Kalender vor.</p>
               </div>
             </a>
+            <a class="create-mode-card" href="/create?mode=timeslots_free">
+              <div class="create-mode-icon"><i class="fa-regular fa-calendar-plus"></i></div>
+              <div class="create-mode-copy">
+                <h3>Zeitslots Freie Wahl</h3>
+                <p class="description">Teilnehmende schlagen selbst Tage mit passenden Zeitfenstern wie 14:00-16:00 vor.</p>
+              </div>
+            </a>
           </div>
         </article>
 
@@ -922,6 +929,13 @@
                 <p class="description">Teilnehmende markieren selbst beliebige passende Tage im Kalender.</p>
               </div>
             </a>
+            <a class="create-mode-card" href="/create?mode=timeslots_free">
+              <div class="create-mode-icon"><i class="fa-regular fa-calendar-plus"></i></div>
+              <div class="create-mode-copy">
+                <h3>Zeitslots Freie Wahl</h3>
+                <p class="description">Teilnehmende markieren Tage und tragen dazu eigene Zeitfenster pro Datum ein.</p>
+              </div>
+            </a>
           </div>
         </article>
 
@@ -979,9 +993,9 @@
 
             <div id="create-free-fields" class="selected-dates-box is-hidden">
               <div class="selected-header">
-                <span>Freie Wahl</span>
+                <span id="create-free-mode-title">Freie Wahl</span>
               </div>
-              <p class="description">
+              <p id="create-free-mode-description" class="description">
                 In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst beliebige Tage im
                 Kalender markieren.
               </p>

@@ -15,7 +15,7 @@ const APP_BASE_URL = normalizeConfiguredBaseUrl(process.env.APP_BASE_URL || "");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
-const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free"]);
+const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
 const VETO_SCORE_MAP = { yes: 3, maybe: 2, no: 0 };
 const rateLimitBuckets = new Map();
@@ -330,8 +330,8 @@ function normalizeSuggestedDateEntries(entries) {
         continue;
       }
 
-      const normalizedTime = rawTime.trim();
-      if (isValidTimeValue(normalizedTime)) {
+      const normalizedTime = normalizeScheduleSlotValue(rawTime, { allowRanges: true });
+      if (normalizedTime) {
         timeSet.add(normalizedTime);
       }
     }
@@ -468,7 +468,7 @@ function validatePollInput(body) {
   const title = normalizeText(body?.title, 120);
   const description = normalizeText(body?.description, 1200);
   const mode = normalizeMode(body?.mode);
-  const dates = mode === "free" ? [] : normalizeDates(body?.dates);
+  const dates = mode === "fixed" || mode === "timeslots" ? normalizeDates(body?.dates) : [];
   const requestedTimeSlots = normalizeTimeSlotsByDate(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const invalidTimeSlot = findInvalidTimeSlotEntry(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const allowTimeSlots =
@@ -763,7 +763,8 @@ function validateSlotResponses(poll, entries) {
   };
 }
 
-function validateSuggestedDates(entries) {
+function validateSuggestedDates(entries, options = {}) {
+  const requireRanges = Boolean(options.requireRanges);
   const normalizedEntries = coerceSuggestedDateEntries(entries);
   if (!Array.isArray(normalizedEntries)) {
     return { ok: false, message: "Bitte trage mindestens einen moeglichen Tag ein." };
@@ -810,12 +811,22 @@ function validateSuggestedDates(entries) {
     const timeSet = byDate.get(date);
     for (const rawTime of rawTimes) {
       if (typeof rawTime !== "string") {
-        return { ok: false, message: `Fuer ${date} ist mindestens eine Uhrzeit ungueltig.` };
+        return {
+          ok: false,
+          message: requireRanges
+            ? `Fuer ${date} ist mindestens ein Zeitslot ungueltig. Nutze HH:MM-HH:MM.`
+            : `Fuer ${date} ist mindestens eine Uhrzeit ungueltig.`,
+        };
       }
 
-      const normalizedTime = rawTime.trim();
-      if (!isValidTimeValue(normalizedTime)) {
-        return { ok: false, message: `Fuer ${date} ist mindestens eine Uhrzeit ungueltig.` };
+      const normalizedTime = requireRanges ? normalizeTimeRangeValue(rawTime) : normalizeSingleTimeValue(rawTime);
+      if (!normalizedTime) {
+        return {
+          ok: false,
+          message: requireRanges
+            ? `Fuer ${date} ist mindestens ein Zeitslot ungueltig. Nutze HH:MM-HH:MM.`
+            : `Fuer ${date} ist mindestens eine Uhrzeit ungueltig.`,
+        };
       }
 
       timeSet.add(normalizedTime);
@@ -2580,7 +2591,9 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
         userId: req.session.userId,
         suggestedDates: req.body?.suggestedDates,
       });
-      const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates);
+      const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates, {
+        requireRanges: data.poll.mode === "timeslots_free",
+      });
       if (!suggestedDatesCheck.ok) {
         return res.status(400).json({ error: suggestedDatesCheck.message });
       }
