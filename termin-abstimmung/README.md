@@ -1,52 +1,80 @@
 # Termin-Abstimmung
 
-Moderne Termin-Abstimmungs-Webseite mit `Node.js`, `Express`, `better-sqlite3` und Vanilla JavaScript.
+Eine moderne Webanwendung zur einfachen Terminfindung mit mehreren Abstimmungsmodi.
 
-## Features
+## 🚀 Features
 
-- Polls mit Titel, Beschreibung und beliebig vielen Datumsauswahlen
-- Eindeutiger Share-Link pro Poll
-- Verfügbarkeiten mit `Ja`, `Vielleicht`, `Nein`
-- Automatische Berechnung der besten Termine
-- Heatmap-artige Auswertung und Teilnehmermatrix
-- Dark/Light-Mode, responsive Layout, mobile nutzbar
-- Login mit E-Mail/Passwort, Dashboard und Account-Verwaltung
-- Teilnahme an Umfragen weiterhin ohne Login per Namen möglich
+### Vier Abstimmungsmodi
 
-## Setup
+| Modus | Beschreibung |
+|-------|-------------|
+| **Feste Termine** | Ersteller definiert feste Zeitpunkte, Teilnehmer stimmen ab |
+| **Freie Wahl** | Teilnehmer schlagen eigene Tage vor |
+| **Zeitslots** | Ersteller definiert Zeitbereiche (z.B. 14:00-16:00) |
+| **Zeitslots Freie Wahl** | Teilnehmer schlagen eigene Zeitbereiche vor |
+
+### Zeitmanagement
+
+- ✅ **Optionale Zeitslots** – Pro Tag können feste Zeiten oder Zeitbereiche definiert werden
+- ✅ **Ganze Tage möglich** – Tage ohne Zeitslots gelten als "Ganzer Tag"
+- ✅ **Mehrere Slots pro Tag** – Flexible Planung mit mehreren Zeitfenstern
+
+### Ergebnisdarstellung
+
+- 📊 **Matrix-Ansicht** – Übersichtliche Tabellenansicht aller Teilnehmer
+- 📅 **Kalenderansicht** – Intuitive Darstellung mit Tag/Woche/Monat/Jahr
+- 🎨 **Farbige Teilnehmer** – Jeder Teilnehmer hat eine eindeutige Farbe
+- 📈 **Live-Ergebnisse** – Sofortige Aktualisierung bei neuen Antworten
+
+## 🛠️ Tech Stack
+
+- **Backend:** Node.js, Express, SQLite (better-sqlite3)
+- **Frontend:** Vanilla JavaScript, CSS Grid/Flexbox
+- **Auth:** Session-based mit bcrypt
+- **Security:** CSRF-Schutz, Rate Limiting
+
+## 🚀 Schnellstart
 
 ```bash
+# Repository klonen
+git clone https://github.com/Streuselshyper/termin-abstimmung.git
+
+# Abhängigkeiten installieren
 npm install
-npm start
+
+# Server starten
+PORT=18793 npm start
 ```
 
-Die Anwendung läuft standardmäßig auf `http://localhost:3000`.
+Die Anwendung läuft dann unter `http://localhost:18793`
 
-## Projektstruktur
+## 📁 Projektstruktur
 
-```text
+```
 termin-abstimmung/
-├── data/
+├── server.js           # Express Server & API
 ├── public/
-│   ├── app.js
-│   ├── index.html
-│   └── style.css
+│   ├── index.html      # HTML Templates
+│   ├── app.js          # Frontend Logik
+│   └── style.css       # Styling & Layout
 ├── package.json
-├── server.js
 └── README.md
 ```
 
-## API-Endpunkte
+## 🔧 Konfiguration
 
-- `POST /api/polls` erstellt einen Poll (eingeloggt)
-- `GET /api/polls/:pollId` lädt Poll, Antworten und Auswertung
-- `POST /api/polls/:pollId/responses` speichert oder aktualisiert eine Antwort
-- `DELETE /api/polls/:pollId` löscht einen eigenen Poll (eingeloggt + CSRF)
+Umgebungsvariablen:
+- `PORT` – Server-Port (default: 3000)
+- `HOST` – Bind-Adresse (default: 0.0.0.0)
 
-## Hinweise
+## 📱 Screenshots
 
-- Die SQLite-Datenbank wird automatisch unter `data/terminabstimmung.db` angelegt.
-- Antworten werden pro Poll und Name aktualisiert, statt doppelt angelegt zu werden.
-- Für Produktion kann der Port über `PORT` gesetzt werden.
-- Der Host kann über `HOST` gesetzt werden (Default: `0.0.0.0`).
-- Optional kann `APP_BASE_URL` gesetzt werden, um stabile absolute Links (z. B. für Passwort-Reset) zu erzeugen.
+*Coming soon...*
+
+## 📝 Lizenz
+
+Private Project – Alle Rechte vorbehalten.
+
+## 👤 Autor
+
+Yannik Strauß – [GitHub](https://github.com/Streuselshyper)
