@@ -10,6 +10,7 @@ const statusLabels = {
   maybe: "Vielleicht",
   no: "Nein",
 };
+const CREATE_POLL_MODES = new Set(["fixed", "timeslots", "free"]);
 
 const state = {
   auth: {
@@ -298,7 +299,7 @@ function getRoute() {
     return { type: "participated" };
   }
   if (pathname === "/create") {
-    const mode = ["fixed", "free"].includes(params.get("mode")) ? params.get("mode") : "fixed";
+    const mode = normalizeCreateMode(params.get("mode"));
     return { type: "create", mode, pollId: params.get("edit") || "" };
   }
   if (pathname === "/reset-password") {
@@ -611,7 +612,7 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
   showDynamicView();
   dynamicViewElement.innerHTML = '<section class="panel"><p class="description">Editor wird geladen ...</p></section>';
 
-  state.createMode = mode === "free" ? "free" : "fixed";
+  state.createMode = normalizeCreateMode(mode);
   state.selectedDates = new Set();
   state.createTimeSlotsEnabled = false;
   state.createTimeSlots = {};
@@ -624,10 +625,15 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
       throw new Error("Diese Umfrage kann nicht bearbeitet werden.");
     }
     existingPoll = data.poll;
-    state.createMode = existingPoll.mode;
+    state.createMode = normalizeCreateMode(existingPoll.mode);
     state.selectedDates = new Set(existingPoll.dates || []);
-    state.createTimeSlotsEnabled = state.createMode === "fixed" && Boolean(existingPoll.allowTimeSlots || existingPoll.has_time_slots);
-    state.createTimeSlots = cloneCreateTimeSlots(existingPoll.timeSlots || existingPoll.time_slots || {});
+    state.createTimeSlotsEnabled =
+      state.createMode === "timeslots" ||
+      (state.createMode === "fixed" && Boolean(existingPoll.allowTimeSlots || existingPoll.has_time_slots));
+    state.createTimeSlots = cloneCreateTimeSlots(
+      existingPoll.timeSlots || existingPoll.time_slots || {},
+      state.createMode
+    );
     state.currentMonth = startOfMonth(getFirstSelectedCreateDate(existingPoll.dates));
   }
 
@@ -767,38 +773,81 @@ function renderCreateSelectedDates() {
   }
 }
 
+function normalizeCreateMode(mode) {
+  return CREATE_POLL_MODES.has(mode) ? mode : "fixed";
+}
+
+function createModeUsesCalendar(mode = state.createMode) {
+  return mode !== "free";
+}
+
+function createModeRequiresTimeSlots(mode = state.createMode) {
+  return mode === "timeslots";
+}
+
+function createModeUsesRangeSlots(mode = state.createMode) {
+  return mode === "timeslots";
+}
+
 function updateCreateModeLayout() {
+  const isFree = state.createMode === "free";
   const isFixed = state.createMode === "fixed";
+  const isTimeslots = state.createMode === "timeslots";
   const pageDescription = document.querySelector("#create-page-description");
   const formTitle = document.querySelector("#create-form-title");
   const fixedFields = document.querySelector("#create-fixed-fields");
   const freeFields = document.querySelector("#create-free-fields");
   const timeSlotControls = document.querySelector("#create-time-slots-controls");
+  const timeSlotTitle = document.querySelector("#create-time-slots-title");
   const timeSlotDescription = document.querySelector("#create-time-slots-description");
+  const timeSlotToggleShell = document.querySelector("#create-time-slots-toggle-shell");
 
-  if (!isFixed) {
+  if (isFree) {
     state.createTimeSlotsEnabled = false;
+  } else if (isTimeslots) {
+    state.createTimeSlotsEnabled = true;
   }
 
   if (pageDescription) {
-    pageDescription.textContent = isFixed
-      ? "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab."
-      : "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
+    if (isFixed) {
+      pageDescription.textContent =
+        "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab.";
+    } else if (isTimeslots) {
+      pageDescription.textContent =
+        "Lege Titel, Beschreibung, Daten und feste Zeitfenster fest. Teilnehmende stimmen danach pro Zeitslot mit Ja, Vielleicht oder Nein ab.";
+    } else {
+      pageDescription.textContent =
+        "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
+    }
   }
 
   if (formTitle) {
-    formTitle.textContent = isFixed ? "Feste Termine konfigurieren" : "Freie Wahl konfigurieren";
+    if (isFixed) {
+      formTitle.textContent = "Feste Termine konfigurieren";
+    } else if (isTimeslots) {
+      formTitle.textContent = "Zeitslots konfigurieren";
+    } else {
+      formTitle.textContent = "Freie Wahl konfigurieren";
+    }
   }
 
-  fixedFields?.classList.toggle("is-hidden", !isFixed);
-  freeFields?.classList.toggle("is-hidden", isFixed);
-  timeSlotControls?.classList.toggle("is-hidden", !isFixed);
+  fixedFields?.classList.toggle("is-hidden", isFree);
+  freeFields?.classList.toggle("is-hidden", !isFree);
+  timeSlotControls?.classList.toggle("is-hidden", isFree);
+
+  if (timeSlotTitle) {
+    timeSlotTitle.textContent = isTimeslots ? "Zeitslots festlegen" : "Uhrzeiten erlauben";
+  }
 
   if (timeSlotDescription) {
-    timeSlotDescription.textContent = "Optionale feste Uhrzeiten pro Datum definieren";
+    timeSlotDescription.textContent = isTimeslots
+      ? "Lege pro Datum mindestens einen Zeitraum mit Start- und Endzeit fest."
+      : "Optionale feste Uhrzeiten pro Datum definieren.";
   }
 
-  if (isFixed) {
+  timeSlotToggleShell?.classList.toggle("is-hidden", isTimeslots);
+
+  if (createModeUsesCalendar()) {
     syncCreateTimeSlotsWithSelectedDates();
     renderCreateCalendar();
     renderCreateSelectedDates();
@@ -819,10 +868,10 @@ function ensureCreateTimeSlotControls() {
   controls.innerHTML = `
     <div class="selected-header create-toggle-row">
       <div>
-        <span>Uhrzeiten erlauben</span>
+        <span id="create-time-slots-title">Uhrzeiten erlauben</span>
         <p id="create-time-slots-description" class="description">Optionale feste Uhrzeiten pro Datum definieren</p>
       </div>
-      <label class="toggle-switch" for="create-time-slots-toggle">
+      <label id="create-time-slots-toggle-shell" class="toggle-switch" for="create-time-slots-toggle">
         <input id="create-time-slots-toggle" type="checkbox" ${state.createTimeSlotsEnabled ? "checked" : ""} />
         <span class="toggle-track" aria-hidden="true"></span>
       </label>
@@ -840,6 +889,7 @@ function renderCreateTimeSlots() {
     return;
   }
 
+  const usesRangeSlots = createModeUsesRangeSlots();
   toggle.checked = state.createTimeSlotsEnabled;
 
   if (!state.createTimeSlotsEnabled) {
@@ -863,34 +913,78 @@ function renderCreateTimeSlots() {
         <strong>${escapeHtml(formatDateLong(date))}</strong>
         <button class="ghost-button compact-button" type="button" data-action="add-slot" data-date="${date}">
           <i class="fa-solid fa-plus"></i>
-          Slot
+          ${usesRangeSlots ? "Zeitslot" : "Zeit"}
         </button>
       </div>
-      ${slots.length === 0 ? '<p class="description">Ganzer Tag verfuegbar.</p>' : ""}
+      ${
+        slots.length === 0
+          ? `<p class="description">${
+              usesRangeSlots ? "Noch keine Zeitslots definiert." : "Ganzer Tag verfuegbar."
+            }</p>`
+          : ""
+      }
       <div class="time-slot-list"></div>
     `;
 
     const list = card.querySelector(".time-slot-list");
     slots.forEach((slotValue, index) => {
       const row = document.createElement("div");
-      row.className = "time-slot-row";
-      row.innerHTML = `
-        <input
-          class="time-slot-input"
-          type="text"
-          inputmode="numeric"
-          autocomplete="off"
-          spellcheck="false"
-          maxlength="5"
-          value="${escapeHtml(slotValue || "")}"
-          placeholder="14:00"
-          data-date="${date}"
-          data-index="${index}"
-        />
-        <button class="text-button danger-text-button" type="button" data-action="remove-slot" data-date="${date}" data-index="${index}">
-          Entfernen
-        </button>
-      `;
+      row.className = `time-slot-row${usesRangeSlots ? " is-range" : ""}`;
+      if (usesRangeSlots) {
+        const draftRange = parseTimeRangeDraftValue(slotValue);
+        row.innerHTML = `
+          <div class="time-slot-range-fields">
+            <input
+              class="time-slot-input time-slot-range-input"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="5"
+              value="${escapeHtml(draftRange.start)}"
+              placeholder="14:00"
+              data-date="${date}"
+              data-index="${index}"
+              data-part="start"
+            />
+            <span class="time-slot-range-separator">bis</span>
+            <input
+              class="time-slot-input time-slot-range-input"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="5"
+              value="${escapeHtml(draftRange.end)}"
+              placeholder="16:00"
+              data-date="${date}"
+              data-index="${index}"
+              data-part="end"
+            />
+          </div>
+          <button class="text-button danger-text-button" type="button" data-action="remove-slot" data-date="${date}" data-index="${index}">
+            Entfernen
+          </button>
+        `;
+      } else {
+        row.innerHTML = `
+          <input
+            class="time-slot-input"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="5"
+            value="${escapeHtml(slotValue || "")}"
+            placeholder="14:00"
+            data-date="${date}"
+            data-index="${index}"
+          />
+          <button class="text-button danger-text-button" type="button" data-action="remove-slot" data-date="${date}" data-index="${index}">
+            Entfernen
+          </button>
+        `;
+      }
       list.appendChild(row);
     });
 
@@ -924,12 +1018,40 @@ function renderCreateTimeSlots() {
       if (filteredValue !== input.value) {
         input.value = filteredValue;
       }
+      if (usesRangeSlots) {
+        const row = input.closest(".time-slot-row");
+        const startInput = row?.querySelector('[data-part="start"]');
+        const endInput = row?.querySelector('[data-part="end"]');
+        state.createTimeSlots[date][Number(index)] = buildTimeRangeDraftValue(startInput?.value, endInput?.value);
+        return;
+      }
+
       state.createTimeSlots[date][Number(index)] = filteredValue;
     });
 
     input.addEventListener("blur", () => {
       const { date, index } = input.dataset;
       if (!date || index === undefined || !Array.isArray(state.createTimeSlots[date])) {
+        return;
+      }
+
+      if (usesRangeSlots) {
+        const row = input.closest(".time-slot-row");
+        const startInput = row?.querySelector('[data-part="start"]');
+        const endInput = row?.querySelector('[data-part="end"]');
+        const normalizedRange = normalizeTimeRangeValue(startInput?.value, endInput?.value);
+        if (normalizedRange) {
+          const parts = parseTimeRangeDraftValue(normalizedRange);
+          if (startInput) {
+            startInput.value = parts.start;
+          }
+          if (endInput) {
+            endInput.value = parts.end;
+          }
+          state.createTimeSlots[date][Number(index)] = normalizedRange;
+        } else {
+          state.createTimeSlots[date][Number(index)] = buildTimeRangeDraftValue(startInput?.value, endInput?.value);
+        }
         return;
       }
 
@@ -959,10 +1081,11 @@ async function handleCreateSubmit(event, pollId) {
   const title = document.querySelector("#create-title").value.trim();
   const description = document.querySelector("#create-description").value.trim();
   syncCreateTimeSlotsFromEditor();
-  const normalizedTimeSlots = state.createTimeSlotsEnabled ? normalizeCreateTimeSlotsForSubmit() : {};
+  const usesTimeSlots = createModeRequiresTimeSlots() || (state.createMode === "fixed" && state.createTimeSlotsEnabled);
+  const timeSlotValidation = usesTimeSlots ? normalizeCreateTimeSlotsForSubmit() : { ok: true, value: {} };
 
-  if (state.createTimeSlotsEnabled && normalizedTimeSlots === null) {
-    setFeedback(feedback, "Bitte nutze fuer optionale Uhrzeiten das Format HH:MM.", "error");
+  if (!timeSlotValidation.ok) {
+    setFeedback(feedback, timeSlotValidation.message, "error");
     return;
   }
 
@@ -970,9 +1093,9 @@ async function handleCreateSubmit(event, pollId) {
     title,
     description,
     mode: state.createMode,
-    dates: state.createMode === "fixed" ? Array.from(state.selectedDates).sort() : [],
-    allowTimeSlots: state.createMode === "fixed" ? state.createTimeSlotsEnabled : false,
-    timeSlots: state.createMode === "fixed" && state.createTimeSlotsEnabled ? normalizedTimeSlots : {},
+    dates: createModeUsesCalendar() ? Array.from(state.selectedDates).sort() : [],
+    allowTimeSlots: state.createMode === "timeslots" ? true : state.createMode === "fixed" ? state.createTimeSlotsEnabled : false,
+    timeSlots: usesTimeSlots ? timeSlotValidation.value : {},
   };
 
   try {
@@ -1005,7 +1128,65 @@ function filterTimeSlotInput(value) {
   return value.replace(/[^\d:.]/g, "").slice(0, 5);
 }
 
+function parseTimeRangeDraftValue(value) {
+  const rawValue = typeof value === "string" ? value.trim() : "";
+  if (!rawValue) {
+    return { start: "", end: "" };
+  }
+
+  const separatorIndex = rawValue.indexOf("-");
+  if (separatorIndex === -1) {
+    return { start: filterTimeSlotInput(rawValue), end: "" };
+  }
+
+  return {
+    start: filterTimeSlotInput(rawValue.slice(0, separatorIndex)),
+    end: filterTimeSlotInput(rawValue.slice(separatorIndex + 1)),
+  };
+}
+
+function buildTimeRangeDraftValue(startValue, endValue) {
+  const start = filterTimeSlotInput(typeof startValue === "string" ? startValue : "");
+  const end = filterTimeSlotInput(typeof endValue === "string" ? endValue : "");
+  if (!start && !end) {
+    return "";
+  }
+
+  return `${start}-${end}`;
+}
+
 function syncCreateTimeSlotsFromEditor() {
+  if (createModeUsesRangeSlots()) {
+    const inputs = document.querySelectorAll(".time-slot-range-input");
+    if (!inputs.length) {
+      return;
+    }
+
+    const nextSlots = {};
+    inputs.forEach((input) => {
+      const date = input.dataset.date;
+      const index = Number(input.dataset.index);
+      const part = input.dataset.part === "end" ? "end" : "start";
+      if (!date || Number.isNaN(index)) {
+        return;
+      }
+
+      if (!Array.isArray(nextSlots[date])) {
+        nextSlots[date] = [];
+      }
+      if (!nextSlots[date][index]) {
+        nextSlots[date][index] = { start: "", end: "" };
+      }
+
+      nextSlots[date][index][part] = filterTimeSlotInput(input.value);
+    });
+
+    for (const [date, slots] of Object.entries(nextSlots)) {
+      state.createTimeSlots[date] = slots.map((slot) => buildTimeRangeDraftValue(slot?.start, slot?.end));
+    }
+    return;
+  }
+
   const inputs = document.querySelectorAll(".time-slot-input");
   if (!inputs.length) {
     return;
@@ -1066,11 +1247,29 @@ function normalizeTimeSlotValue(value) {
   return `${String(hourValue).padStart(2, "0")}:${String(minuteValue).padStart(2, "0")}`;
 }
 
-function cloneCreateTimeSlots(entries) {
+function normalizeTimeRangeValue(value, endValue = null) {
+  const rangeParts =
+    endValue === null ? parseTimeRangeDraftValue(value) : { start: filterTimeSlotInput(value), end: filterTimeSlotInput(endValue) };
+  const start = normalizeTimeSlotValue(rangeParts.start);
+  const end = normalizeTimeSlotValue(rangeParts.end);
+  if (!start || !end || start >= end) {
+    return "";
+  }
+
+  return `${start}-${end}`;
+}
+
+function normalizePollSlotValue(value) {
+  return normalizeTimeRangeValue(value) || normalizeTimeSlotValue(value);
+}
+
+function cloneCreateTimeSlots(entries, mode = state.createMode) {
   const clone = {};
   for (const [date, slots] of Object.entries(entries || {})) {
     clone[date] = Array.isArray(slots)
-      ? slots.map((slot) => normalizeTimeSlotValue(slot)).filter(Boolean)
+      ? slots
+          .map((slot) => (createModeUsesRangeSlots(mode) ? normalizeTimeRangeValue(slot) : normalizeTimeSlotValue(slot)))
+          .filter(Boolean)
       : [];
   }
   return clone;
@@ -1094,7 +1293,7 @@ function normalizeCreateTimeSlotsForSubmit() {
   const dates = Array.from(state.selectedDates).sort();
 
   if (dates.length === 0) {
-    return null;
+    return { ok: false, message: "Bitte waehle mindestens ein Datum aus." };
   }
 
   for (const date of dates) {
@@ -1102,23 +1301,37 @@ function normalizeCreateTimeSlotsForSubmit() {
     const normalizedSlots = [];
 
     for (const slot of rawSlots) {
-      const rawValue = filterTimeSlotInput(typeof slot === "string" ? slot.trim() : "");
+      const rawValue = typeof slot === "string" ? slot.trim() : "";
       if (!rawValue) {
         continue;
       }
 
-      const normalizedValue = normalizeTimeSlotValue(rawValue);
+      const normalizedValue = createModeUsesRangeSlots()
+        ? normalizeTimeRangeValue(rawValue)
+        : normalizeTimeSlotValue(filterTimeSlotInput(rawValue));
       if (!normalizedValue) {
-        return null;
+        return {
+          ok: false,
+          message: createModeUsesRangeSlots()
+            ? "Bitte nutze fuer Zeitslots Start- und Endzeiten im Format HH:MM bis HH:MM."
+            : "Bitte nutze fuer optionale Uhrzeiten das Format HH:MM.",
+        };
       }
 
       normalizedSlots.push(normalizedValue);
     }
 
     normalized[date] = Array.from(new Set(normalizedSlots)).sort();
+
+    if (createModeRequiresTimeSlots() && normalized[date].length === 0) {
+      return {
+        ok: false,
+        message: "Bitte hinterlege fuer jedes ausgewaehlte Datum mindestens einen Zeitslot.",
+      };
+    }
   }
 
-  return normalized;
+  return { ok: true, value: normalized };
 }
 
 function getSuggestedDateEntries(entries) {
@@ -1578,6 +1791,9 @@ function getDashboardPollTypeMeta(mode) {
   if (mode === "fixed") {
     return { label: "Feste Termine", icon: "fa-regular fa-calendar" };
   }
+  if (mode === "timeslots") {
+    return { label: "Zeitslots", icon: "fa-regular fa-clock" };
+  }
 
   return { label: "Freie Wahl", icon: "fa-regular fa-pen-to-square" };
 }
@@ -1999,8 +2215,8 @@ function handleGlobalKeydown(event) {
 
 function fillPollSummary() {
   const { poll, owner, responses, results } = state.pollData;
-  const isFixed = poll.mode === "fixed";
   const hasTimeSlots = pollHasTimeSlots(poll);
+  const modeMeta = getDashboardPollTypeMeta(poll.mode);
   const meta = document.querySelector("#poll-context-meta");
   const summaryEmpty = document.querySelector("#poll-summary-empty");
   const favoriteSummary = document.querySelector("#poll-favorite-summary");
@@ -2012,7 +2228,7 @@ function fillPollSummary() {
   document.querySelector("#poll-description-view").classList.toggle("is-hidden", !poll.description);
   favoriteSummary.textContent =
     responses.length > 0 && favorite
-      ? `🏆 Favorit: ${formatDateShort(favorite.date)}${favorite.slot ? ` um ${favorite.slot}` : ""} mit ${formatVoteCountLabel(
+      ? `🏆 Favorit: ${formatDateShort(favorite.date)}${formatFavoriteSlotLabel(poll, favorite.slot)} mit ${formatVoteCountLabel(
           favorite.votes
         )}`
       : "";
@@ -2021,7 +2237,7 @@ function fillPollSummary() {
     ? "Verfuegbarkeit anpassen"
     : hasTimeSlots
       ? "Deine Zeitfenster"
-      : isFixed
+      : poll.mode === "fixed"
         ? "Deine Verfuegbarkeit"
       : "Teilnehmen";
   document.querySelector("#poll-back-link").setAttribute("href", state.auth.user ? "/dashboard" : "/");
@@ -2030,11 +2246,13 @@ function fillPollSummary() {
     : '<i class="fa-solid fa-arrow-left"></i> Start';
 
   meta.innerHTML = [
-    `<span class="pill"><i class="fa-regular fa-compass"></i> ${escapeHtml(isFixed ? "Feste Termine" : "Freie Wahl")}</span>`,
+    `<span class="pill"><i class="${escapeHtml(modeMeta.icon)}"></i> ${escapeHtml(modeMeta.label)}</span>`,
     `<span class="pill"><i class="fa-regular fa-calendar"></i> ${escapeHtml(
       hasTimeSlots
-        ? `${countPollScheduleEntries(poll)} Terminoptionen`
-        : isFixed
+        ? poll.mode === "timeslots"
+          ? `${countPollScheduleEntries(poll)} Zeitslots`
+          : `${countPollScheduleEntries(poll)} Terminoptionen`
+        : poll.mode === "fixed"
           ? `${poll.dates.length} Termine`
         : `${results.summary.length || 0} genannte Tage`
     )}</span>`,
@@ -2054,7 +2272,7 @@ function fillPollSummary() {
   renderPollOwnerActions();
   updatePollResponseCta();
 
-  if (!isFixed && !hasTimeSlots) {
+  if (poll.mode === "free" && !hasTimeSlots) {
     if (results.bestDates.length === 0) {
       summaryEmpty.innerHTML = renderEmptyStateMarkup(
         "fa-regular fa-calendar-plus",
@@ -2082,6 +2300,14 @@ function formatResponseCountLabel(count) {
 
 function formatVoteCountLabel(count) {
   return count === 1 ? "1 Stimme" : `${count} Stimmen`;
+}
+
+function formatFavoriteSlotLabel(poll, slot) {
+  if (!slot) {
+    return "";
+  }
+
+  return poll?.mode === "timeslots" ? ` (${slot})` : ` um ${slot}`;
 }
 
 function renderPollOwnerActions() {
@@ -3161,7 +3387,7 @@ function getPollTimeSlotsByDate(poll) {
 
   for (const date of dates) {
     normalized[date] = Array.isArray(source[date])
-      ? source[date].map((slot) => normalizeTimeSlotValue(slot)).filter(Boolean)
+      ? source[date].map((slot) => normalizePollSlotValue(slot)).filter(Boolean)
       : [];
   }
 
@@ -3349,7 +3575,8 @@ function countPollScheduleEntries(poll) {
 function pollHasTimeSlots(poll) {
   return Boolean(
     poll &&
-      (poll.allowTimeSlots ||
+      (poll.mode === "timeslots" ||
+        poll.allowTimeSlots ||
         poll.has_time_slots ||
         countPollTimeSlots(poll.timeSlots || poll.time_slots || {}) > 0)
   );

@@ -830,9 +830,32 @@ select:focus {
   flex-wrap: wrap;
 }
 
+.time-slot-row.is-range {
+  justify-content: space-between;
+}
+
 .time-slot-input {
   flex: 1 1 10rem;
   min-width: 0;
+}
+
+.time-slot-range-fields {
+  flex: 1 1 18rem;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.time-slot-range-fields .time-slot-input {
+  flex: 1 1 7rem;
+}
+
+.time-slot-range-separator {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .danger-text-button {

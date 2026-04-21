@@ -15,7 +15,7 @@ const APP_BASE_URL = normalizeConfiguredBaseUrl(process.env.APP_BASE_URL || "");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
-const VALID_POLL_MODES = new Set(["fixed", "free"]);
+const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
 const VETO_SCORE_MAP = { yes: 3, maybe: 2, no: 0 };
 const rateLimitBuckets = new Map();
@@ -350,7 +350,52 @@ function normalizeMode(mode) {
   return VALID_POLL_MODES.has(mode) ? mode : "fixed";
 }
 
-function normalizeTimeSlotsByDate(dates, entries) {
+function normalizeSingleTimeValue(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalizedValue = value.trim();
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(normalizedValue)) {
+    return "";
+  }
+
+  return normalizedValue;
+}
+
+function normalizeTimeRangeValue(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const parts = value.trim().split("-");
+  if (parts.length !== 2) {
+    return "";
+  }
+
+  const start = normalizeSingleTimeValue(parts[0]);
+  const end = normalizeSingleTimeValue(parts[1]);
+  if (!start || !end || start >= end) {
+    return "";
+  }
+
+  return `${start}-${end}`;
+}
+
+function normalizeScheduleSlotValue(value, { allowRanges = false } = {}) {
+  const normalizedTime = normalizeSingleTimeValue(value);
+  if (normalizedTime) {
+    return normalizedTime;
+  }
+
+  if (!allowRanges) {
+    return "";
+  }
+
+  return normalizeTimeRangeValue(value);
+}
+
+function normalizeTimeSlotsByDate(dates, entries, options = {}) {
   const source = entries && typeof entries === "object" && !Array.isArray(entries) ? entries : {};
 
   const normalized = {};
@@ -358,12 +403,8 @@ function normalizeTimeSlotsByDate(dates, entries) {
     const rawSlots = Array.isArray(source[date]) ? source[date] : [];
     const uniqueSlots = new Set();
     for (const slot of rawSlots) {
-      if (typeof slot !== "string") {
-        continue;
-      }
-
-      const normalizedSlot = slot.trim();
-      if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(normalizedSlot)) {
+      const normalizedSlot = normalizeScheduleSlotValue(slot, options);
+      if (normalizedSlot) {
         uniqueSlots.add(normalizedSlot);
       }
     }
@@ -372,6 +413,21 @@ function normalizeTimeSlotsByDate(dates, entries) {
   }
 
   return normalized;
+}
+
+function findInvalidTimeSlotEntry(dates, entries, options = {}) {
+  const source = entries && typeof entries === "object" && !Array.isArray(entries) ? entries : {};
+
+  for (const date of dates) {
+    const rawSlots = Array.isArray(source[date]) ? source[date] : [];
+    for (const slot of rawSlots) {
+      if (!normalizeScheduleSlotValue(slot, options)) {
+        return { date, slot: typeof slot === "string" ? slot.trim() : "" };
+      }
+    }
+  }
+
+  return null;
 }
 
 function hasTimeSlotEntries(timeSlotsByDate) {
@@ -412,9 +468,12 @@ function validatePollInput(body) {
   const title = normalizeText(body?.title, 120);
   const description = normalizeText(body?.description, 1200);
   const mode = normalizeMode(body?.mode);
-  const dates = mode === "fixed" ? normalizeDates(body?.dates) : [];
-  const requestedTimeSlots = normalizeTimeSlotsByDate(dates, body?.timeSlots);
-  const allowTimeSlots = mode === "fixed" && (normalizeBoolean(body?.allowTimeSlots, false) || hasTimeSlotEntries(requestedTimeSlots));
+  const dates = mode === "free" ? [] : normalizeDates(body?.dates);
+  const requestedTimeSlots = normalizeTimeSlotsByDate(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
+  const invalidTimeSlot = findInvalidTimeSlotEntry(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
+  const allowTimeSlots =
+    mode === "timeslots" ||
+    (mode === "fixed" && (normalizeBoolean(body?.allowTimeSlots, false) || hasTimeSlotEntries(requestedTimeSlots)));
   const timeSlots = allowTimeSlots ? requestedTimeSlots : {};
   const inviteMessage = normalizeText(body?.inviteMessage, 500);
   const inviteEmails = normalizeInviteEmails(body?.inviteEmails);
@@ -425,11 +484,26 @@ function validatePollInput(body) {
   if (description.length < 3) {
     return { ok: false, message: "Die Beschreibung muss mindestens 3 Zeichen lang sein." };
   }
-  if ((mode === "fixed" || allowTimeSlots) && dates.length === 0) {
+  if ((mode === "fixed" || mode === "timeslots" || allowTimeSlots) && dates.length === 0) {
     return { ok: false, message: "Bitte waehle mindestens ein Datum aus." };
   }
   if (dates.some((date) => Number.isNaN(new Date(`${date}T00:00:00Z`).getTime()))) {
     return { ok: false, message: "Mindestens ein Datum ist ungueltig." };
+  }
+  if (invalidTimeSlot) {
+    return {
+      ok: false,
+      message:
+        mode === "timeslots"
+          ? `Fuer ${invalidTimeSlot.date} ist mindestens ein Zeitslot ungueltig. Nutze HH:MM-HH:MM.`
+          : `Fuer ${invalidTimeSlot.date} ist mindestens eine Uhrzeit ungueltig. Nutze HH:MM.`,
+    };
+  }
+  if (mode === "timeslots") {
+    const missingDate = dates.find((date) => !Array.isArray(timeSlots[date]) || timeSlots[date].length === 0);
+    if (missingDate) {
+      return { ok: false, message: `Bitte hinterlege fuer ${missingDate} mindestens einen Zeitslot.` };
+    }
   }
 
   console.log("DEBUG - dates:", dates);
@@ -498,7 +572,11 @@ function validateSlotAvailabilities(timeSlots, availabilities) {
 }
 
 function isValidTimeValue(value) {
-  return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value.trim());
+  return Boolean(normalizeSingleTimeValue(value));
+}
+
+function isValidScheduleSlotValue(value) {
+  return Boolean(normalizeScheduleSlotValue(value, { allowRanges: true }));
 }
 
 function buildTimeSlotId(pollId, dateId, time) {
@@ -517,7 +595,7 @@ function parseTimeSlotId(slotId) {
 
   const [pollId, dateId, timePart] = parts;
   const time = timePart.replace("-", ":");
-  if (!pollId || !/^\d{4}-\d{2}-\d{2}$/.test(dateId) || !isValidTimeValue(time)) {
+  if (!pollId || !/^\d{4}-\d{2}-\d{2}$/.test(dateId) || !isValidScheduleSlotValue(time)) {
     return null;
   }
 
@@ -541,7 +619,9 @@ function getPollTimeSlotsByDate(poll) {
 
   for (const dateId of dates) {
     const slots = Array.isArray(source[dateId]) ? source[dateId] : [];
-    normalized[dateId] = Array.from(new Set(slots.filter((time) => isValidTimeValue(time)))).sort();
+    normalized[dateId] = Array.from(
+      new Set(slots.map((time) => normalizeScheduleSlotValue(time, { allowRanges: true })).filter(Boolean))
+    ).sort();
   }
 
   return normalized;
@@ -554,7 +634,7 @@ function listPollTimeSlots(poll) {
   for (const dateId of Object.keys(timeSlotsByDate).sort()) {
     const slots = Array.isArray(timeSlotsByDate[dateId]) ? timeSlotsByDate[dateId] : [];
     slots.forEach((time, index) => {
-      if (isValidTimeValue(time)) {
+      if (isValidScheduleSlotValue(time)) {
         entries.push(mapTimeSlotEntry(poll.id, dateId, time, index));
       }
     });
@@ -601,7 +681,7 @@ function listPollScheduleEntries(poll) {
 
 function pollUsesTimeSlots(poll) {
   const timeSlotsByDate = getPollTimeSlotsByDate(poll);
-  return Boolean(poll?.allowTimeSlots || poll?.has_time_slots || hasTimeSlotEntries(timeSlotsByDate));
+  return Boolean(poll?.mode === "timeslots" || poll?.allowTimeSlots || poll?.has_time_slots || hasTimeSlotEntries(timeSlotsByDate));
 }
 
 function setPollTimeSlots(pollId, timeSlotsByDate) {
@@ -2396,26 +2476,27 @@ app.post("/api/polls/:pollId/time-slots", requireCsrf, requireAuth, (req, res) =
 
     const pollDates = parseJsonArray(existing.dates);
     const dateId = normalizeText(req.body?.dateId, 10);
-    const time = normalizeText(req.body?.time, 5);
+    const time = normalizeText(req.body?.time, 11);
     if (!pollDates.includes(dateId)) {
       return res.status(400).json({ error: "Ungueltiges Datum." });
     }
-    if (!isValidTimeValue(time)) {
-      return res.status(400).json({ error: "Ungueltige Uhrzeit." });
+    const normalizedTime = normalizeScheduleSlotValue(time, { allowRanges: true });
+    if (!normalizedTime) {
+      return res.status(400).json({ error: "Ungueltiger Zeitslot." });
     }
 
     const timeSlotsByDate = parseJsonObject(existing.time_slots);
     const currentSlots = Array.isArray(timeSlotsByDate[dateId]) ? timeSlotsByDate[dateId] : [];
-    if (currentSlots.includes(time)) {
-      return res.status(409).json({ error: "Diese Uhrzeit existiert bereits." });
+    if (currentSlots.includes(normalizedTime)) {
+      return res.status(409).json({ error: "Dieser Zeitslot existiert bereits." });
     }
 
-    timeSlotsByDate[dateId] = [...currentSlots, time].sort();
+    timeSlotsByDate[dateId] = [...currentSlots, normalizedTime].sort();
     setPollTimeSlots(existing.id, timeSlotsByDate);
 
     const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(existing.id), req);
     const slotsForDate = listPollTimeSlots(poll).filter((slot) => slot.dateId === dateId);
-    const slot = slotsForDate.find((entry) => entry.time === time);
+    const slot = slotsForDate.find((entry) => entry.time === normalizedTime);
 
     res.status(201).json({ slot, timeSlots: listPollTimeSlots(poll) });
   } catch (error) {
