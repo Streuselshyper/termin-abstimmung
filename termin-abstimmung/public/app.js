@@ -795,7 +795,7 @@ function updateCreateModeLayout() {
   timeSlotControls?.classList.toggle("is-hidden", !isFixed);
 
   if (timeSlotDescription) {
-    timeSlotDescription.textContent = "Optional pro Datum konkrete Zeitfenster definieren.";
+    timeSlotDescription.textContent = "Optionale feste Uhrzeiten pro Datum definieren";
   }
 
   if (isFixed) {
@@ -820,7 +820,7 @@ function ensureCreateTimeSlotControls() {
     <div class="selected-header create-toggle-row">
       <div>
         <span>Uhrzeiten erlauben</span>
-        <p id="create-time-slots-description" class="description">Optional pro Datum konkrete Zeitfenster definieren.</p>
+        <p id="create-time-slots-description" class="description">Optionale feste Uhrzeiten pro Datum definieren</p>
       </div>
       <label class="toggle-switch" for="create-time-slots-toggle">
         <input id="create-time-slots-toggle" type="checkbox" ${state.createTimeSlotsEnabled ? "checked" : ""} />
