@@ -836,7 +836,7 @@ function updateCreateModeLayout() {
   timeSlotControls?.classList.toggle("is-hidden", isFree);
 
   if (timeSlotTitle) {
-    timeSlotTitle.textContent = isTimeslots ? "Zeitslots festlegen" : "Uhrzeiten erlauben";
+    timeSlotTitle.textContent = isTimeslots ? "Slots festlegen" : "Uhrzeiten erlauben";
   }
 
   if (timeSlotDescription) {
