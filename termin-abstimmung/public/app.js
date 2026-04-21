@@ -1875,9 +1875,7 @@ function initializeDraftFromPoll(poll) {
     const suggestedEntries = getSuggestedDateEntries(editableResponse?.suggestedDateEntries || editableResponse?.suggestedDates);
     state.responseDraft = {};
     state.participantSelectedDates = new Set(suggestedEntries.map((entry) => entry.date));
-    state.participantSuggestedTimes = Object.fromEntries(
-      suggestedEntries.map((entry) => [entry.date, entry.times.length > 0 ? entry.times : [""]])
-    );
+    state.participantSuggestedTimes = Object.fromEntries(suggestedEntries.map((entry) => [entry.date, entry.times]));
     syncParticipantSuggestedTimesWithSelectedDates();
     state.participantCurrentMonth = startOfMonth(
       state.participantSelectedDates.size > 0 ? getFirstSelectedCreateDate(state.participantSelectedDates) : new Date()
@@ -2462,9 +2460,6 @@ function renderParticipantCalendar() {
         delete state.participantSuggestedTimes[day.isoDate];
       } else {
         state.participantSelectedDates.add(day.isoDate);
-        if (!Array.isArray(state.participantSuggestedTimes[day.isoDate])) {
-          state.participantSuggestedTimes[day.isoDate] = [""];
-        }
       }
       syncParticipantSuggestedTimesWithSelectedDates();
       renderAvailabilityForm();

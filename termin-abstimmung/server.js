@@ -628,6 +628,18 @@ function validateSuggestedDates(entries) {
     return { ok: false, message: "Bitte trage mindestens einen moeglichen Tag ein." };
   }
 
+  if (entries.every((entry) => typeof entry === "string")) {
+    const dates = normalizeDates(entries);
+    if (dates.length === 0) {
+      return { ok: false, message: "Bitte trage mindestens einen moeglichen Tag ein." };
+    }
+
+    return {
+      ok: true,
+      value: dates.map((date) => ({ date, times: [] })),
+    };
+  }
+
   const byDate = new Map();
   for (const entry of entries) {
     let date = "";
