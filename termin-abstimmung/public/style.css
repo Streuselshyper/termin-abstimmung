@@ -1357,15 +1357,15 @@ body.poll-drawer-open {
 }
 
 .results-table.free-choice-matrix {
-  width: max(100%, 78rem);
+  width: max-content;
 }
 
 .results-table.fixed-choice-matrix {
-  width: max(100%, 68rem);
+  width: max-content;
 }
 
 .results-table.slot-choice-matrix {
-  width: max(100%, 76rem);
+  width: max-content;
 }
 
 .results-matrix-header {
@@ -2140,7 +2140,7 @@ body.poll-drawer-open {
 }
 
 .results-table {
-  width: max(100%, 64rem);
+  width: max-content;
   min-width: max-content;
   border-collapse: separate;
   border-spacing: 0;
@@ -2446,8 +2446,9 @@ body.poll-drawer-open {
 
   .results-table,
   .results-table.free-choice-matrix,
-  .results-table.fixed-choice-matrix {
-    width: max(100%, 42rem);
+  .results-table.fixed-choice-matrix,
+  .results-table.slot-choice-matrix {
+    width: max-content;
   }
 
   .results-table th:first-child,
