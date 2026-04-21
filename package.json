@@ -1,0 +1,23 @@
+{
+  "name": "termin-abstimmung",
+  "version": "1.0.0",
+  "description": "Coole Termin-Abstimmungs-Website mit Express und SQLite",
+  "main": "server.js",
+  "scripts": {
+    "start": "PORT=18793 node server.js",
+    "dev": "PORT=18793 node --watch server.js",
+    "test": "node -e \"console.log('Keine automatisierten Tests konfiguriert.')\""
+  },
+  "keywords": [
+    "terminplanung",
+    "express",
+    "sqlite"
+  ],
+  "author": "Codex",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.9.0",
+    "express": "^5.2.1"
+  }
+}
