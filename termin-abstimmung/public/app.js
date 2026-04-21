@@ -857,7 +857,7 @@ function renderCreateTimeSlots() {
   for (const date of dates) {
     const card = document.createElement("div");
     card.className = "time-slot-date-card";
-    const slots = state.createTimeSlots[date] || [""];
+    const slots = Array.isArray(state.createTimeSlots[date]) ? state.createTimeSlots[date] : [];
     card.innerHTML = `
       <div class="time-slot-date-head">
         <strong>${escapeHtml(formatDateLong(date))}</strong>
@@ -866,6 +866,7 @@ function renderCreateTimeSlots() {
           Slot
         </button>
       </div>
+      ${slots.length === 0 ? '<p class="description">Ganzer Tag verfuegbar.</p>' : ""}
       <div class="time-slot-list"></div>
     `;
 
@@ -903,7 +904,7 @@ function renderCreateTimeSlots() {
         return;
       }
       if (!Array.isArray(state.createTimeSlots[date])) {
-        state.createTimeSlots[date] = [""];
+        state.createTimeSlots[date] = [];
       }
       state.createTimeSlots[date].push("");
       renderCreateTimeSlots();
@@ -917,7 +918,7 @@ function renderCreateTimeSlots() {
         return;
       }
       if (!Array.isArray(state.createTimeSlots[date])) {
-        state.createTimeSlots[date] = [""];
+        state.createTimeSlots[date] = [];
       }
       const filteredValue = filterTimeSlotInput(input.value);
       if (filteredValue !== input.value) {
@@ -947,9 +948,6 @@ function renderCreateTimeSlots() {
         return;
       }
       state.createTimeSlots[date].splice(Number(index), 1);
-      if (state.createTimeSlots[date].length === 0) {
-        state.createTimeSlots[date] = [""];
-      }
       renderCreateTimeSlots();
     });
   });
@@ -964,7 +962,7 @@ async function handleCreateSubmit(event, pollId) {
   const normalizedTimeSlots = state.createTimeSlotsEnabled ? normalizeCreateTimeSlotsForSubmit() : {};
 
   if (state.createTimeSlotsEnabled && normalizedTimeSlots === null) {
-    setFeedback(feedback, "Bitte hinterlege fuer jeden Termin mindestens eine gueltige Uhrzeit im Format HH:MM.", "error");
+    setFeedback(feedback, "Bitte nutze fuer optionale Uhrzeiten das Format HH:MM.", "error");
     return;
   }
 
@@ -1086,7 +1084,7 @@ function syncCreateTimeSlotsWithSelectedDates() {
   const nextSlots = {};
   for (const date of Array.from(state.selectedDates).sort()) {
     const existingSlots = Array.isArray(state.createTimeSlots[date]) ? state.createTimeSlots[date] : [];
-    nextSlots[date] = existingSlots.length > 0 ? existingSlots : [""];
+    nextSlots[date] = existingSlots;
   }
   state.createTimeSlots = nextSlots;
 }
@@ -1117,13 +1115,7 @@ function normalizeCreateTimeSlotsForSubmit() {
       normalizedSlots.push(normalizedValue);
     }
 
-    const uniqueSlots = new Set(normalizedSlots);
-
-    if (uniqueSlots.size === 0) {
-      return null;
-    }
-
-    normalized[date] = Array.from(uniqueSlots).sort();
+    normalized[date] = Array.from(new Set(normalizedSlots)).sort();
   }
 
   return normalized;
@@ -1885,7 +1877,14 @@ function initializeDraftFromPoll(poll) {
 
   const defaultDraft = {};
   if (hasTimeSlots) {
-    for (const [date, slots] of Object.entries(poll.timeSlots || poll.time_slots || {})) {
+    const timeSlotsByDate = getPollTimeSlotsByDate(poll);
+    for (const date of [...(poll.dates || [])].sort()) {
+      const slots = timeSlotsByDate[date] || [];
+      if (slots.length === 0) {
+        defaultDraft[date] = editableResponse?.availabilities?.[date] || "maybe";
+        continue;
+      }
+
       defaultDraft[date] = {};
       for (const slot of slots) {
         defaultDraft[date][slot] = editableResponse?.slotAvailabilities?.[date]?.[slot] || "maybe";
@@ -2034,7 +2033,7 @@ function fillPollSummary() {
     `<span class="pill"><i class="fa-regular fa-compass"></i> ${escapeHtml(isFixed ? "Feste Termine" : "Freie Wahl")}</span>`,
     `<span class="pill"><i class="fa-regular fa-calendar"></i> ${escapeHtml(
       hasTimeSlots
-        ? `${countPollTimeSlots(poll.timeSlots || poll.time_slots || {})} Zeitfenster`
+        ? `${countPollScheduleEntries(poll)} Terminoptionen`
         : isFixed
           ? `${poll.dates.length} Termine`
         : `${results.summary.length || 0} genannte Tage`
@@ -2282,14 +2281,47 @@ function renderAvailabilityForm() {
 }
 
 function renderFixedSlotAvailabilityForm(grid) {
-  const timeSlots = state.pollData.poll.timeSlots || state.pollData.poll.time_slots || {};
+  const poll = state.pollData.poll;
+  const timeSlotsByDate = getPollTimeSlotsByDate(poll);
 
-  for (const date of Object.keys(timeSlots).sort()) {
+  for (const date of [...(poll.dates || [])].sort()) {
+    const slots = timeSlotsByDate[date] || [];
     const dateCard = document.createElement("div");
     dateCard.className = "availability-card availability-slot-card";
     dateCard.innerHTML = `<strong>${formatDateLong(date)}</strong>`;
 
-    for (const slot of timeSlots[date] || []) {
+    if (slots.length === 0) {
+      const group = document.createElement("div");
+      group.className = "availability-slot-group";
+      group.innerHTML = `<div class="availability-slot-label">Ganzer Tag</div>`;
+
+      const row = document.createElement("div");
+      row.className = "status-row";
+
+      for (const status of ["yes", "maybe", "no"]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "status-chip";
+        button.dataset.date = date;
+        button.dataset.status = status;
+        button.textContent = statusLabels[status];
+        if (state.responseDraft?.[date] === status) {
+          button.classList.add("active");
+        }
+        button.addEventListener("click", () => {
+          state.responseDraft[date] = status;
+          renderAvailabilityForm();
+        });
+        row.appendChild(button);
+      }
+
+      group.appendChild(row);
+      dateCard.appendChild(group);
+      grid.appendChild(dateCard);
+      continue;
+    }
+
+    for (const slot of slots) {
       const group = document.createElement("div");
       group.className = "availability-slot-group";
       group.innerHTML = `<div class="availability-slot-label">${escapeHtml(slot)}</div>`;
@@ -2820,7 +2852,7 @@ function renderFixedSlotResultsTable(poll, responses, editableResponse, showEdit
   const head = document.querySelector("#results-head");
   const body = document.querySelector("#results-body");
   const foot = document.querySelector("#results-foot");
-  const slotStats = getFixedSlotStats(poll.timeSlots || poll.time_slots || {}, responses);
+  const slotStats = getFixedSlotStats(poll, responses);
 
   head.innerHTML = `
     <tr>
@@ -2831,7 +2863,7 @@ function renderFixedSlotResultsTable(poll, responses, editableResponse, showEdit
             <th class="${entry.key === slotStats.winnerKey ? "winner-column" : ""}">
               <div class="results-matrix-header">
                 <strong>${escapeHtml(formatDateShort(entry.date))}</strong>
-                <span class="results-matrix-subline">${escapeHtml(entry.slot)}</span>
+                <span class="results-matrix-subline">${escapeHtml(entry.slot || "Ganzer Tag")}</span>
               </div>
             </th>
           `
@@ -2854,7 +2886,9 @@ function renderFixedSlotResultsTable(poll, responses, editableResponse, showEdit
     .map((response) => {
       const cells = slotStats.entries
         .map((entry) => {
-          const status = response.slotAvailabilities?.[entry.date]?.[entry.slot] || "no";
+          const status = entry.slot
+            ? response.slotAvailabilities?.[entry.date]?.[entry.slot] || "no"
+            : response.availabilities?.[entry.date] || "no";
           return `<td class="matrix-cell"><span class="result-badge ${status}">${statusLabels[status]}</span></td>`;
         })
         .join("");
@@ -3088,7 +3122,7 @@ function getPollExportDates(poll) {
   }
 
   if (pollHasTimeSlots(poll)) {
-    return Object.keys(poll.timeSlots || poll.time_slots || {}).sort();
+    return [...(poll.dates || [])].sort();
   }
 
   if (poll.mode === "fixed") {
@@ -3114,6 +3148,53 @@ function getSelectedExportDate() {
 
 function getTopMatrixDates(summary) {
   return [...(summary || [])].sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function getPollTimeSlotsByDate(poll) {
+  const source = poll?.timeSlots || poll?.time_slots || {};
+  const dates = Array.isArray(poll?.dates) ? [...poll.dates].sort() : Object.keys(source).sort();
+  const normalized = {};
+
+  for (const date of dates) {
+    normalized[date] = Array.isArray(source[date])
+      ? source[date].map((slot) => normalizeTimeSlotValue(slot)).filter(Boolean)
+      : [];
+  }
+
+  return normalized;
+}
+
+function getFixedScheduleEntries(poll) {
+  const usesTimeSlots = pollHasTimeSlots(poll);
+  if (!usesTimeSlots) {
+    return [];
+  }
+
+  const entries = [];
+  const timeSlotsByDate = getPollTimeSlotsByDate(poll);
+  for (const date of [...(poll?.dates || [])].sort()) {
+    const slots = timeSlotsByDate[date] || [];
+    if (slots.length === 0) {
+      entries.push({
+        key: `${date}__all-day`,
+        date,
+        slot: "",
+        label: "Ganzer Tag",
+      });
+      continue;
+    }
+
+    for (const slot of slots) {
+      entries.push({
+        key: `${date}__${slot}`,
+        date,
+        slot,
+        label: slot,
+      });
+    }
+  }
+
+  return entries;
 }
 
 function getFixedDateStats(dates, responses) {
@@ -3161,26 +3242,20 @@ function getFixedDateStats(dates, responses) {
   };
 }
 
-function getFixedSlotStats(timeSlots, responses) {
-  const entries = [];
-
-  for (const date of Object.keys(timeSlots || {}).sort()) {
-    for (const slot of timeSlots[date] || []) {
-      entries.push({
-        key: `${date}__${slot}`,
-        date,
-        slot,
-        score: 0,
-        yes: 0,
-        maybe: 0,
-        no: 0,
-      });
-    }
-  }
+function getFixedSlotStats(poll, responses) {
+  const entries = getFixedScheduleEntries(poll).map((entry) => ({
+    ...entry,
+    score: 0,
+    yes: 0,
+    maybe: 0,
+    no: 0,
+  }));
 
   for (const response of responses || []) {
     for (const entry of entries) {
-      const status = response.slotAvailabilities?.[entry.date]?.[entry.slot] || "no";
+      const status = entry.slot
+        ? response.slotAvailabilities?.[entry.date]?.[entry.slot] || "no"
+        : response.availabilities?.[entry.date] || "no";
       if (status === "yes") {
         entry.yes += 1;
         entry.score += getScoreForStatus(status, response.hasVeto);
@@ -3216,7 +3291,7 @@ function getPollFavorite(poll, responses, results) {
   }
 
   if (pollHasTimeSlots(poll)) {
-    const { winnerEntry } = getFixedSlotStats(poll.timeSlots || poll.time_slots || {}, responses);
+    const { winnerEntry } = getFixedSlotStats(poll, responses);
     return winnerEntry
       ? { date: winnerEntry.date, slot: winnerEntry.slot, votes: winnerEntry.yes, score: winnerEntry.score }
       : null;
@@ -3259,6 +3334,14 @@ function countPollTimeSlots(timeSlots) {
   );
 }
 
+function countPollScheduleEntries(poll) {
+  if (!pollHasTimeSlots(poll)) {
+    return Array.isArray(poll?.dates) ? poll.dates.length : 0;
+  }
+
+  return getFixedScheduleEntries(poll).length;
+}
+
 function pollHasTimeSlots(poll) {
   return Boolean(
     poll &&
@@ -3269,20 +3352,11 @@ function pollHasTimeSlots(poll) {
 }
 
 function buildSlotResponsePayload(poll, draft) {
-  const payload = [];
-  const timeSlots = poll.timeSlots || poll.time_slots || {};
-
-  for (const date of Object.keys(timeSlots).sort()) {
-    for (const slot of timeSlots[date] || []) {
-      payload.push({
-        dateId: date,
-        slotId: `${poll.id}__${date}__${slot.replace(":", "-")}`,
-        availability: draft?.[date]?.[slot] || "no",
-      });
-    }
-  }
-
-  return payload;
+  return getFixedScheduleEntries(poll).map((entry) => ({
+    dateId: entry.date,
+    slotId: entry.slot ? `${poll.id}__${entry.date}__${entry.slot.replace(":", "-")}` : `${poll.id}__${entry.date}__all-day`,
+    availability: entry.slot ? draft?.[entry.date]?.[entry.slot] || "no" : draft?.[entry.date] || "no",
+  }));
 }
 
 function syncParticipantRights(participantData) {

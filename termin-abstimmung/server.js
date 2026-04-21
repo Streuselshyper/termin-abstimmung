@@ -351,13 +351,11 @@ function normalizeMode(mode) {
 }
 
 function normalizeTimeSlotsByDate(dates, entries) {
-  if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
-    return {};
-  }
+  const source = entries && typeof entries === "object" && !Array.isArray(entries) ? entries : {};
 
   const normalized = {};
   for (const date of dates) {
-    const rawSlots = Array.isArray(entries[date]) ? entries[date] : [];
+    const rawSlots = Array.isArray(source[date]) ? source[date] : [];
     const uniqueSlots = new Set();
     for (const slot of rawSlots) {
       if (typeof slot !== "string") {
@@ -370,9 +368,7 @@ function normalizeTimeSlotsByDate(dates, entries) {
       }
     }
 
-    if (uniqueSlots.size > 0) {
-      normalized[date] = Array.from(uniqueSlots).sort();
-    }
+    normalized[date] = Array.from(uniqueSlots).sort();
   }
 
   return normalized;
@@ -416,34 +412,10 @@ function validatePollInput(body) {
   const title = normalizeText(body?.title, 120);
   const description = normalizeText(body?.description, 1200);
   const mode = normalizeMode(body?.mode);
-  const requestedTimeSlots = normalizeTimeSlotsByDate(normalizeDates(body?.dates), body?.timeSlots);
-  const allowTimeSlots = mode === "fixed" && (normalizeBoolean(body?.allowTimeSlots, false) || hasTimeSlotEntries(requestedTimeSlots));
   const dates = mode === "fixed" ? normalizeDates(body?.dates) : [];
-  let timeSlots = {};
-  if (allowTimeSlots && body?.timeSlots && typeof body.timeSlots === "object" && !Array.isArray(body.timeSlots)) {
-    for (const date of dates) {
-      const slots = body.timeSlots[date];
-      if (!Array.isArray(slots) || slots.length === 0) {
-        continue;
-      }
-
-      const validSlots = [];
-      for (const slot of slots) {
-        if (typeof slot !== "string") {
-          continue;
-        }
-
-        const normalizedSlot = slot.trim();
-        if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(normalizedSlot)) {
-          validSlots.push(normalizedSlot);
-        }
-      }
-
-      if (validSlots.length > 0) {
-        timeSlots[date] = Array.from(new Set(validSlots)).sort();
-      }
-    }
-  }
+  const requestedTimeSlots = normalizeTimeSlotsByDate(dates, body?.timeSlots);
+  const allowTimeSlots = mode === "fixed" && (normalizeBoolean(body?.allowTimeSlots, false) || hasTimeSlotEntries(requestedTimeSlots));
+  const timeSlots = allowTimeSlots ? requestedTimeSlots : {};
   const inviteMessage = normalizeText(body?.inviteMessage, 500);
   const inviteEmails = normalizeInviteEmails(body?.inviteEmails);
 
@@ -458,12 +430,6 @@ function validatePollInput(body) {
   }
   if (dates.some((date) => Number.isNaN(new Date(`${date}T00:00:00Z`).getTime()))) {
     return { ok: false, message: "Mindestens ein Datum ist ungueltig." };
-  }
-  if (allowTimeSlots && Object.keys(timeSlots).length === 0) {
-    return { ok: false, message: "Bitte hinterlege mindestens eine gueltige Uhrzeit." };
-  }
-  if (allowTimeSlots && dates.some((date) => !Array.isArray(timeSlots[date]) || timeSlots[date].length === 0)) {
-    return { ok: false, message: "Bitte hinterlege fuer jeden Termin mindestens eine Uhrzeit." };
   }
 
   console.log("DEBUG - dates:", dates);
@@ -568,8 +534,21 @@ function mapTimeSlotEntry(pollId, dateId, time, position) {
   };
 }
 
+function getPollTimeSlotsByDate(poll) {
+  const source = poll?.timeSlots && typeof poll.timeSlots === "object" ? poll.timeSlots : {};
+  const dates = Array.isArray(poll?.dates) ? [...poll.dates].sort() : Object.keys(source).sort();
+  const normalized = {};
+
+  for (const dateId of dates) {
+    const slots = Array.isArray(source[dateId]) ? source[dateId] : [];
+    normalized[dateId] = Array.from(new Set(slots.filter((time) => isValidTimeValue(time)))).sort();
+  }
+
+  return normalized;
+}
+
 function listPollTimeSlots(poll) {
-  const timeSlotsByDate = poll?.timeSlots && typeof poll.timeSlots === "object" ? poll.timeSlots : {};
+  const timeSlotsByDate = getPollTimeSlotsByDate(poll);
   const entries = [];
 
   for (const dateId of Object.keys(timeSlotsByDate).sort()) {
@@ -584,14 +563,51 @@ function listPollTimeSlots(poll) {
   return entries;
 }
 
+function buildPollScheduleEntryId(pollId, dateId, slot = "") {
+  return slot ? buildTimeSlotId(pollId, dateId, slot) : `${pollId}__${dateId}__all-day`;
+}
+
+function listPollScheduleEntries(poll) {
+  if (!pollUsesTimeSlots(poll)) {
+    return [];
+  }
+
+  const timeSlotsByDate = getPollTimeSlotsByDate(poll);
+  const entries = [];
+
+  for (const dateId of Array.isArray(poll?.dates) ? [...poll.dates].sort() : []) {
+    const slots = timeSlotsByDate[dateId] || [];
+    if (slots.length === 0) {
+      entries.push({
+        id: buildPollScheduleEntryId(poll.id, dateId),
+        pollId: poll.id,
+        dateId,
+        slot: "",
+      });
+      continue;
+    }
+
+    slots.forEach((time, index) => {
+      entries.push({
+        ...mapTimeSlotEntry(poll.id, dateId, time, index),
+        id: buildPollScheduleEntryId(poll.id, dateId, time),
+        slot: time,
+      });
+    });
+  }
+
+  return entries;
+}
+
 function pollUsesTimeSlots(poll) {
-  const timeSlotsByDate = poll?.timeSlots && typeof poll.timeSlots === "object" ? poll.timeSlots : {};
+  const timeSlotsByDate = getPollTimeSlotsByDate(poll);
   return Boolean(poll?.allowTimeSlots || poll?.has_time_slots || hasTimeSlotEntries(timeSlotsByDate));
 }
 
 function setPollTimeSlots(pollId, timeSlotsByDate) {
   const now = new Date().toISOString();
   const hasTimeSlots = hasTimeSlotEntries(timeSlotsByDate);
+  const allowTimeSlots = Object.keys(timeSlotsByDate || {}).length > 0;
 
   db.prepare(`
     UPDATE polls
@@ -599,7 +615,7 @@ function setPollTimeSlots(pollId, timeSlotsByDate) {
     WHERE id = ?
   `).run(
     JSON.stringify(timeSlotsByDate),
-    hasTimeSlots ? 1 : 0,
+    allowTimeSlots ? 1 : 0,
     hasTimeSlots ? 1 : 0,
     now,
     pollId
@@ -611,11 +627,14 @@ function validateSlotResponses(poll, entries) {
     return { ok: false, message: "Ungueltige Uhrzeit-Antworten." };
   }
 
-  const expectedSlots = listPollTimeSlots(poll);
+  const expectedSlots = listPollScheduleEntries(poll);
   const remaining = new Map(expectedSlots.map((slot) => [slot.id, slot]));
   const legacySlotIds = new Map(
-    expectedSlots.map((slot) => [`${poll.id}:${slot.dateId}:${slot.time.replace(":", "-")}`, slot.id])
+    expectedSlots
+      .filter((slot) => slot.slot)
+      .map((slot) => [`${poll.id}:${slot.dateId}:${slot.slot.replace(":", "-")}`, slot.id])
   );
+  const normalizedAvailabilities = {};
   const normalized = {};
 
   for (const entry of entries) {
@@ -633,22 +652,35 @@ function validateSlotResponses(poll, entries) {
       return { ok: false, message: "Mindestens eine Uhrzeit-Antwort ist ungueltig." };
     }
     if (!VALID_STATUSES.has(availability)) {
-      return { ok: false, message: `Fuer ${dateId} ${slot.time} fehlt ein gueltiger Status.` };
+      return { ok: false, message: `Fuer ${dateId}${slot.slot ? ` ${slot.slot}` : ""} fehlt ein gueltiger Status.` };
     }
 
-    if (!normalized[dateId]) {
-      normalized[dateId] = {};
+    if (slot.slot) {
+      if (!normalized[dateId]) {
+        normalized[dateId] = {};
+      }
+      normalized[dateId][slot.slot] = availability;
+    } else {
+      normalizedAvailabilities[dateId] = availability;
     }
-    normalized[dateId][slot.time] = availability;
     remaining.delete(canonicalSlotId);
   }
 
   if (remaining.size > 0) {
     const missingSlot = Array.from(remaining.values())[0];
-    return { ok: false, message: `Fuer ${missingSlot.dateId} ${missingSlot.time} fehlt ein gueltiger Status.` };
+    return {
+      ok: false,
+      message: `Fuer ${missingSlot.dateId}${missingSlot.slot ? ` ${missingSlot.slot}` : ""} fehlt ein gueltiger Status.`,
+    };
   }
 
-  return { ok: true, value: normalized };
+  return {
+    ok: true,
+    value: {
+      availabilities: normalizedAvailabilities,
+      slotAvailabilities: normalized,
+    },
+  };
 }
 
 function validateSuggestedDates(entries) {
@@ -858,30 +890,38 @@ function calculateBestDates(dates, responses) {
   };
 }
 
-function calculateBestDateSlots(timeSlots, responses) {
+function calculateBestDateSlots(poll, responses) {
   const summary = [];
 
-  for (const date of Object.keys(timeSlots).sort()) {
-    for (const slot of Array.isArray(timeSlots[date]) ? timeSlots[date] : []) {
-      let yes = 0;
-      let maybe = 0;
-      let no = 0;
-      let score = 0;
+  for (const entry of listPollScheduleEntries(poll)) {
+    let yes = 0;
+    let maybe = 0;
+    let no = 0;
+    let score = 0;
 
-      for (const response of responses) {
-        const status = response.slotAvailabilities?.[date]?.[slot] || "no";
-        if (status === "yes") {
-          yes += 1;
-        } else if (status === "maybe") {
-          maybe += 1;
-        } else {
-          no += 1;
-        }
-        score += getScoreForStatus(status, Boolean(response.hasVeto));
+    for (const response of responses) {
+      const status = entry.slot
+        ? response.slotAvailabilities?.[entry.dateId]?.[entry.slot] || "no"
+        : response.availabilities?.[entry.dateId] || "no";
+      if (status === "yes") {
+        yes += 1;
+      } else if (status === "maybe") {
+        maybe += 1;
+      } else {
+        no += 1;
       }
-
-      summary.push({ date, slot, yes, maybe, no, score, participants: responses.length });
+      score += getScoreForStatus(status, Boolean(response.hasVeto));
     }
+
+    summary.push({
+      date: entry.dateId,
+      slot: entry.slot || "",
+      yes,
+      maybe,
+      no,
+      score,
+      participants: responses.length,
+    });
   }
 
   const sorted = [...summary].sort((left, right) => {
@@ -906,7 +946,7 @@ function calculateBestDateSlots(timeSlots, responses) {
 
 function calculatePollResults(poll, responses) {
   if (pollUsesTimeSlots(poll)) {
-    return calculateBestDateSlots(poll.timeSlots || {}, responses);
+    return calculateBestDateSlots(poll, responses);
   }
 
   if (poll.mode === "fixed") {
@@ -2081,6 +2121,7 @@ app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "p
     }
 
     const input = validation.value;
+    const hasTimeSlots = hasTimeSlotEntries(input.timeSlots);
     const now = new Date().toISOString();
     const pollId = createToken(6);
 
@@ -2101,7 +2142,7 @@ app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "p
       input.inviteMessage,
       input.notificationEmailEnabled ? 1 : 0,
       input.allowEmailInvites ? 1 : 0,
-      input.allowTimeSlots ? 1 : 0,
+      hasTimeSlots ? 1 : 0,
       JSON.stringify(input.timeSlots),
       input.allowTimeSlots ? 1 : 0
     );
@@ -2150,6 +2191,7 @@ app.put("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
     }
 
     const input = validation.value;
+    const hasTimeSlots = hasTimeSlotEntries(input.timeSlots);
     const now = new Date().toISOString();
     db.prepare(`
       UPDATE polls
@@ -2165,7 +2207,7 @@ app.put("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
       input.inviteMessage,
       input.notificationEmailEnabled ? 1 : 0,
       input.allowEmailInvites ? 1 : 0,
-      input.allowTimeSlots ? 1 : 0,
+      hasTimeSlots ? 1 : 0,
       JSON.stringify(input.timeSlots),
       input.allowTimeSlots ? 1 : 0,
       req.params.pollId
@@ -2404,11 +2446,7 @@ app.delete("/api/time-slots/:slotId", requireCsrf, requireAuth, (req, res) => {
     }
 
     const nextSlots = currentSlots.filter((entry) => entry !== parsedSlot.time);
-    if (nextSlots.length > 0) {
-      timeSlotsByDate[parsedSlot.dateId] = nextSlots;
-    } else {
-      delete timeSlotsByDate[parsedSlot.dateId];
-    }
+    timeSlotsByDate[parsedSlot.dateId] = nextSlots;
 
     setPollTimeSlots(existing.id, timeSlotsByDate);
     const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(existing.id), req);
@@ -2447,7 +2485,8 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
       if (!slotResponsesCheck.ok) {
         return res.status(400).json({ error: slotResponsesCheck.message });
       }
-      slotAvailabilities = slotResponsesCheck.value;
+      availabilities = slotResponsesCheck.value.availabilities;
+      slotAvailabilities = slotResponsesCheck.value.slotAvailabilities;
     } else if (data.poll.mode === "fixed") {
       const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
       if (!availabilityCheck.ok) {
