@@ -33,6 +33,9 @@ const state = {
   responseDraft: {},
   pollDrawerOpen: false,
   createMode: "fixed",
+  resultsView: "matrix",
+  resultsCalendarView: "week",
+  resultsCalendarDate: new Date(),
 };
 
 let toastTimeoutId = 0;
@@ -2118,6 +2121,7 @@ async function renderPollPage(pollId) {
     const data = await apiFetch(`/api/polls/${pollId}`);
     state.pollData = data;
     state.pollDrawerOpen = false;
+    initializeResultsCalendarState(data.poll, data.responses, data.results);
     dynamicViewElement.innerHTML = "";
     dynamicViewElement.appendChild(template.content.cloneNode(true));
 
@@ -2185,6 +2189,18 @@ function initializeDraftFromPoll(poll) {
   state.participantSelectedDates = new Set();
   state.participantSuggestedTimes = {};
   state.participantCurrentMonth = startOfMonth(new Date());
+}
+
+function initializeResultsCalendarState(poll, responses, results) {
+  const anchorDate =
+    collectResultsCalendarEvents(responses)[0]?.date ||
+    getTopMatrixDates(results?.summary || [])[0]?.date ||
+    (Array.isArray(poll?.dates) ? [...poll.dates].sort()[0] : "") ||
+    toIsoDate(new Date());
+
+  state.resultsView = "matrix";
+  state.resultsCalendarView = "week";
+  state.resultsCalendarDate = new Date(`${anchorDate}T00:00:00`);
 }
 
 function getEditableResponse() {
@@ -3016,15 +3032,827 @@ function renderParticipantSelectedDates() {
   });
 }
 
+function supportsResultsCalendar(poll) {
+  return poll?.mode === "timeslots_free";
+}
+
+function ensureResultsViewScaffold() {
+  const table = document.querySelector(".results-table");
+  const resultsPanel = table?.closest("article.panel");
+  const tableWrap = resultsPanel?.querySelector(".table-wrap");
+  if (!resultsPanel || !tableWrap) {
+    return {};
+  }
+
+  let controls = resultsPanel.querySelector("#results-view-controls");
+  if (!controls) {
+    controls = document.createElement("div");
+    controls.id = "results-view-controls";
+    controls.className = "results-view-controls is-hidden";
+    tableWrap.before(controls);
+  }
+
+  let calendarShell = resultsPanel.querySelector("#results-calendar-shell");
+  if (!calendarShell) {
+    calendarShell = document.createElement("section");
+    calendarShell.id = "results-calendar-shell";
+    calendarShell.className = "results-calendar-shell is-hidden";
+    tableWrap.after(calendarShell);
+  }
+
+  return { table, resultsPanel, tableWrap, controls, calendarShell };
+}
+
+function renderResultsViewControls(poll) {
+  const { controls } = ensureResultsViewScaffold();
+  if (!controls) {
+    return;
+  }
+
+  if (!supportsResultsCalendar(poll)) {
+    controls.innerHTML = "";
+    controls.classList.add("is-hidden");
+    return;
+  }
+
+  controls.classList.remove("is-hidden");
+  controls.innerHTML = `
+    <div class="results-view-switch">
+      <div class="results-view-tabs" role="tablist" aria-label="Ergebnisansicht">
+        <button
+          class="results-view-tab${state.resultsView === "matrix" ? " is-active" : ""}"
+          type="button"
+          data-results-view="matrix"
+          aria-pressed="${state.resultsView === "matrix"}"
+        >
+          Matrix
+        </button>
+        <button
+          class="results-view-tab${state.resultsView === "calendar" ? " is-active" : ""}"
+          type="button"
+          data-results-view="calendar"
+          aria-pressed="${state.resultsView === "calendar"}"
+        >
+          Kalender
+        </button>
+      </div>
+
+      ${
+        state.resultsView === "calendar"
+          ? `
+            <div class="results-calendar-toolbar">
+              <div class="results-view-tabs" role="tablist" aria-label="Kalenderansicht">
+                ${[
+                  ["day", "Tag"],
+                  ["week", "Woche"],
+                  ["month", "Monat"],
+                  ["year", "Jahr"],
+                ]
+                  .map(
+                    ([view, label]) => `
+                      <button
+                        class="results-view-tab${state.resultsCalendarView === view ? " is-active" : ""}"
+                        type="button"
+                        data-calendar-view="${view}"
+                        aria-pressed="${state.resultsCalendarView === view}"
+                      >
+                        ${label}
+                      </button>
+                    `
+                  )
+                  .join("")}
+              </div>
+
+              <div class="results-calendar-nav">
+                <button class="ghost-button compact-button" type="button" data-calendar-shift="-1" aria-label="Vorheriger Zeitraum">
+                  <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <strong>${escapeHtml(formatResultsCalendarRangeLabel(state.resultsCalendarView, state.resultsCalendarDate))}</strong>
+                <button class="ghost-button compact-button" type="button" data-calendar-shift="1" aria-label="Naechster Zeitraum">
+                  <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </div>
+            </div>
+          `
+          : ""
+      }
+    </div>
+  `;
+
+  controls.querySelectorAll("[data-results-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextView = button.dataset.resultsView === "calendar" ? "calendar" : "matrix";
+      if (state.resultsView === nextView) {
+        return;
+      }
+      state.resultsView = nextView;
+      renderResultsTable();
+    });
+  });
+
+  controls.querySelectorAll("[data-calendar-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextView = button.dataset.calendarView || "week";
+      if (state.resultsCalendarView === nextView) {
+        return;
+      }
+      state.resultsCalendarView = nextView;
+      renderResultsTable();
+    });
+  });
+
+  controls.querySelectorAll("[data-calendar-shift]").forEach((button) => {
+    button.addEventListener("click", () => {
+      shiftResultsCalendar(Number(button.dataset.calendarShift) || 0);
+      renderResultsTable();
+    });
+  });
+}
+
+function shiftResultsCalendar(delta) {
+  if (!delta) {
+    return;
+  }
+
+  const currentDate =
+    state.resultsCalendarDate instanceof Date && !Number.isNaN(state.resultsCalendarDate.getTime())
+      ? new Date(state.resultsCalendarDate.getFullYear(), state.resultsCalendarDate.getMonth(), state.resultsCalendarDate.getDate())
+      : new Date();
+
+  if (state.resultsCalendarView === "day") {
+    state.resultsCalendarDate = addDays(currentDate, delta);
+    return;
+  }
+
+  if (state.resultsCalendarView === "week") {
+    state.resultsCalendarDate = addDays(currentDate, delta * 7);
+    return;
+  }
+
+  if (state.resultsCalendarView === "year") {
+    state.resultsCalendarDate = new Date(currentDate.getFullYear() + delta, currentDate.getMonth(), 1);
+    return;
+  }
+
+  state.resultsCalendarDate = addMonths(currentDate, delta);
+}
+
+function getParticipantCalendarColor(name) {
+  const normalizedName = typeof name === "string" && name.trim() ? name.trim() : "Teilnehmer";
+  const baseHues = [10, 38, 74, 128, 176, 214, 266, 320];
+  let hash = 0;
+
+  for (const character of normalizedName) {
+    hash = (hash << 5) - hash + character.charCodeAt(0);
+    hash |= 0;
+  }
+
+  const safeHash = Math.abs(hash);
+  const baseHue = baseHues[safeHash % baseHues.length];
+  const hueOffset = ((safeHash >> 3) % 18) - 9;
+  const hue = (baseHue + hueOffset + 360) % 360;
+  const saturation = 66 + (safeHash % 10);
+  const lightness = 48 + ((safeHash >> 5) % 10);
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
+function collectResultsCalendarEvents(responses) {
+  const events = [];
+
+  for (const response of responses || []) {
+    const participantName = response?.name?.trim() || "Unbekannt";
+    const color = getParticipantCalendarColor(participantName);
+    const dateEntries = getSuggestedDateEntries(response?.suggestedDateEntries || response?.suggestedDates);
+
+    for (const entry of dateEntries) {
+      const timeValues = Array.isArray(entry.times) && entry.times.length > 0 ? entry.times : [""];
+      for (const value of timeValues) {
+        const slot = parseResultsCalendarTimeSlot(value);
+        events.push({
+          id: `${response.id || participantName}-${entry.date}-${slot.label}-${events.length}`,
+          date: entry.date,
+          name: participantName,
+          color,
+          isAllDay: slot.isAllDay,
+          start: slot.start,
+          end: slot.end,
+          startMinutes: slot.startMinutes,
+          endMinutes: slot.endMinutes,
+          label: slot.label,
+          title: `${participantName} · ${formatDateLong(entry.date)} · ${slot.label}`,
+        });
+      }
+    }
+  }
+
+  return events.sort((left, right) => {
+    if (left.date !== right.date) {
+      return left.date.localeCompare(right.date);
+    }
+    if (left.isAllDay !== right.isAllDay) {
+      return left.isAllDay ? -1 : 1;
+    }
+    if (left.startMinutes !== right.startMinutes) {
+      return left.startMinutes - right.startMinutes;
+    }
+    if (left.endMinutes !== right.endMinutes) {
+      return left.endMinutes - right.endMinutes;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
+
+function parseResultsCalendarTimeSlot(value) {
+  const normalizedRange = normalizeTimeRangeValue(value);
+  if (normalizedRange) {
+    const [start, end] = normalizedRange.split("-");
+    return {
+      isAllDay: false,
+      start,
+      end,
+      startMinutes: timeLabelToMinutes(start),
+      endMinutes: timeLabelToMinutes(end),
+      label: `${start}-${end}`,
+    };
+  }
+
+  const normalizedTime = normalizeTimeSlotValue(value);
+  if (normalizedTime) {
+    const startMinutes = timeLabelToMinutes(normalizedTime);
+    const endMinutes = Math.min(startMinutes + 60, 24 * 60);
+    return {
+      isAllDay: false,
+      start: normalizedTime,
+      end: minutesToTimeLabel(endMinutes),
+      startMinutes,
+      endMinutes,
+      label: `${normalizedTime}-${minutesToTimeLabel(endMinutes)}`,
+    };
+  }
+
+  return {
+    isAllDay: true,
+    start: "00:00",
+    end: "24:00",
+    startMinutes: 0,
+    endMinutes: 24 * 60,
+    label: "Ganztägig",
+  };
+}
+
+function timeLabelToMinutes(value) {
+  if (!/^\d{2}:\d{2}$/.test(value || "")) {
+    return 0;
+  }
+
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function minutesToTimeLabel(value) {
+  const totalMinutes = Math.max(0, Math.min(24 * 60, Number(value) || 0));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function addDays(date, delta) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + delta);
+}
+
+function startOfWeek(date) {
+  const nextDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const weekdayIndex = (nextDate.getDay() + 6) % 7;
+  return addDays(nextDate, -weekdayIndex);
+}
+
+function formatResultsCalendarRangeLabel(view, anchorDate) {
+  const currentDate =
+    anchorDate instanceof Date && !Number.isNaN(anchorDate.getTime()) ? anchorDate : new Date();
+
+  if (view === "day") {
+    return new Intl.DateTimeFormat("de-DE", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }).format(currentDate);
+  }
+
+  if (view === "week") {
+    const weekStart = startOfWeek(currentDate);
+    const weekEnd = addDays(weekStart, 6);
+    const startLabel = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" }).format(weekStart);
+    const endLabel = new Intl.DateTimeFormat("de-DE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(weekEnd);
+    return `${startLabel} - ${endLabel}`;
+  }
+
+  if (view === "year") {
+    return String(currentDate.getFullYear());
+  }
+
+  return formatMonthYear(currentDate);
+}
+
+function getResultsCalendarVisibleRange(view, anchorDate) {
+  const currentDate =
+    anchorDate instanceof Date && !Number.isNaN(anchorDate.getTime()) ? anchorDate : new Date();
+
+  if (view === "day") {
+    const isoDate = toIsoDate(currentDate);
+    return { start: isoDate, end: isoDate };
+  }
+
+  if (view === "week") {
+    const weekStart = startOfWeek(currentDate);
+    return { start: toIsoDate(weekStart), end: toIsoDate(addDays(weekStart, 6)) };
+  }
+
+  if (view === "year") {
+    return { start: `${currentDate.getFullYear()}-01-01`, end: `${currentDate.getFullYear()}-12-31` };
+  }
+
+  const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+  return { start: toIsoDate(monthStart), end: toIsoDate(monthEnd) };
+}
+
+function filterResultsCalendarEvents(events, view, anchorDate) {
+  const range = getResultsCalendarVisibleRange(view, anchorDate);
+  return (events || []).filter((event) => event.date >= range.start && event.date <= range.end);
+}
+
+function groupResultsCalendarEventsByDate(events) {
+  const groupedEvents = new Map();
+
+  for (const event of events || []) {
+    if (!groupedEvents.has(event.date)) {
+      groupedEvents.set(event.date, []);
+    }
+    groupedEvents.get(event.date).push(event);
+  }
+
+  for (const [date, items] of groupedEvents.entries()) {
+    groupedEvents.set(
+      date,
+      items.slice().sort((left, right) => {
+        if (left.isAllDay !== right.isAllDay) {
+          return left.isAllDay ? -1 : 1;
+        }
+        if (left.startMinutes !== right.startMinutes) {
+          return left.startMinutes - right.startMinutes;
+        }
+        if (left.endMinutes !== right.endMinutes) {
+          return left.endMinutes - right.endMinutes;
+        }
+        return left.name.localeCompare(right.name);
+      })
+    );
+  }
+
+  return groupedEvents;
+}
+
+function layoutResultsCalendarCluster(cluster) {
+  const laneEndTimes = [];
+  const positionedEvents = cluster.map((event) => {
+    let laneIndex = laneEndTimes.findIndex((endMinute) => endMinute <= event.startMinutes);
+    if (laneIndex === -1) {
+      laneIndex = laneEndTimes.length;
+      laneEndTimes.push(event.endMinutes);
+    } else {
+      laneEndTimes[laneIndex] = event.endMinutes;
+    }
+
+    return { ...event, laneIndex };
+  });
+
+  const laneCount = Math.max(laneEndTimes.length, 1);
+  return positionedEvents.map((event) => ({ ...event, laneCount }));
+}
+
+function layoutResultsCalendarTimedEvents(events) {
+  const sortedEvents = (events || []).slice().sort((left, right) => {
+    if (left.startMinutes !== right.startMinutes) {
+      return left.startMinutes - right.startMinutes;
+    }
+    if (left.endMinutes !== right.endMinutes) {
+      return left.endMinutes - right.endMinutes;
+    }
+    return left.name.localeCompare(right.name);
+  });
+
+  const positionedEvents = [];
+  let cluster = [];
+  let clusterEndMinute = -1;
+
+  const flushCluster = () => {
+    if (cluster.length === 0) {
+      return;
+    }
+    positionedEvents.push(...layoutResultsCalendarCluster(cluster));
+    cluster = [];
+    clusterEndMinute = -1;
+  };
+
+  for (const event of sortedEvents) {
+    if (cluster.length === 0 || event.startMinutes < clusterEndMinute) {
+      cluster.push(event);
+      clusterEndMinute = Math.max(clusterEndMinute, event.endMinutes);
+      continue;
+    }
+
+    flushCluster();
+    cluster.push(event);
+    clusterEndMinute = event.endMinutes;
+  }
+
+  flushCluster();
+  return positionedEvents;
+}
+
+function getResultsCalendarParticipants(events) {
+  const participants = new Map();
+
+  for (const event of events || []) {
+    if (!participants.has(event.name)) {
+      participants.set(event.name, { name: event.name, color: event.color });
+    }
+  }
+
+  return Array.from(participants.values()).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function renderResultsCalendarLegend(participants) {
+  if (!participants.length) {
+    return "";
+  }
+
+  return `
+    <div class="results-calendar-legend">
+      ${participants
+        .map(
+          (participant) => `
+            <span class="results-calendar-legend-item" style="--participant-color: ${escapeHtml(participant.color)};">
+              <span class="results-calendar-legend-dot"></span>
+              <span>${escapeHtml(participant.name)}</span>
+            </span>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderResultsCalendarAllDayItems(events) {
+  if (!events.length) {
+    return '<span class="results-calendar-lane-empty">Keine ganztägigen Eintraege</span>';
+  }
+
+  return events
+    .map(
+      (event) => `
+        <span class="results-calendar-chip" style="--participant-color: ${escapeHtml(event.color)};" title="${escapeHtml(event.title)}">
+          <span class="results-calendar-chip-dot"></span>
+          <span class="results-calendar-chip-copy">
+            <strong>${escapeHtml(event.name)}</strong>
+            <small>${escapeHtml(event.label)}</small>
+          </span>
+        </span>
+      `
+    )
+    .join("");
+}
+
+function renderResultsCalendarTimedItem(event) {
+  const top = (event.startMinutes / (24 * 60)) * 100;
+  const rawHeight = ((event.endMinutes - event.startMinutes) / (24 * 60)) * 100;
+  const height = Math.min(100 - top, Math.max(rawHeight, 1.8));
+  const laneWidth = 100 / Math.max(event.laneCount || 1, 1);
+  const left = laneWidth * (event.laneIndex || 0);
+
+  return `
+    <article
+      class="results-calendar-event"
+      style="
+        --participant-color: ${escapeHtml(event.color)};
+        top: ${top.toFixed(4)}%;
+        height: ${height.toFixed(4)}%;
+        left: calc(${left.toFixed(4)}% + 0.2rem);
+        width: calc(${laneWidth.toFixed(4)}% - 0.35rem);
+      "
+      title="${escapeHtml(event.title)}"
+    >
+      <strong>${escapeHtml(event.name)}</strong>
+      <span>${escapeHtml(event.label)}</span>
+    </article>
+  `;
+}
+
+function renderResultsCalendarTimeline(days, eventsByDate, options = {}) {
+  const isSingleDay = Boolean(options.singleDay);
+  const currentIsoDate = toIsoDate(new Date());
+
+  return `
+    <div class="results-calendar-stage results-calendar-stage--timeline${isSingleDay ? " is-single-day" : ""}">
+      <div class="results-calendar-axis-column">
+        <div class="results-calendar-axis-head">Zeit</div>
+        <div class="results-calendar-axis-all-day">Ganzt.</div>
+        <div class="results-calendar-axis-body">
+          ${Array.from({ length: 24 }, (_, hour) => {
+            const top = (hour / 24) * 100;
+            return `<span class="results-calendar-axis-label" style="top: ${top.toFixed(4)}%;">${String(hour).padStart(
+              2,
+              "0"
+            )}:00</span>`;
+          }).join("")}
+        </div>
+      </div>
+
+      <div class="results-calendar-columns${isSingleDay ? " is-single-day" : ""}">
+        ${days
+          .map((date) => {
+            const dayEvents = eventsByDate.get(date) || [];
+            const allDayEvents = dayEvents.filter((event) => event.isAllDay);
+            const timedEvents = layoutResultsCalendarTimedEvents(dayEvents.filter((event) => !event.isAllDay));
+            const headerDate = new Date(`${date}T00:00:00`);
+            const weekdayLabel = new Intl.DateTimeFormat("de-DE", {
+              weekday: isSingleDay ? "long" : "short",
+            }).format(headerDate);
+            const dateLabel = new Intl.DateTimeFormat("de-DE", {
+              day: "2-digit",
+              month: isSingleDay ? "long" : "2-digit",
+            }).format(headerDate);
+
+            return `
+              <section class="results-calendar-column">
+                <header class="results-calendar-column-head${date === currentIsoDate ? " is-today" : ""}">
+                  <strong>${escapeHtml(weekdayLabel)}</strong>
+                  <span>${escapeHtml(dateLabel)}</span>
+                </header>
+                <div class="results-calendar-all-day-lane">
+                  ${renderResultsCalendarAllDayItems(allDayEvents)}
+                </div>
+                <div class="results-calendar-time-lane">
+                  ${Array.from({ length: 25 }, (_, hour) => {
+                    const top = (hour / 24) * 100;
+                    return `<span class="results-calendar-hour-line" style="top: ${top.toFixed(4)}%;"></span>`;
+                  }).join("")}
+                  ${
+                    timedEvents.length > 0
+                      ? timedEvents.map((event) => renderResultsCalendarTimedItem(event)).join("")
+                      : '<span class="results-calendar-time-empty">Keine Zeitslots</span>'
+                  }
+                </div>
+              </section>
+            `;
+          })
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderResultsCalendarDayView(anchorDate, eventsByDate) {
+  return renderResultsCalendarTimeline([toIsoDate(anchorDate)], eventsByDate, { singleDay: true });
+}
+
+function renderResultsCalendarWeekView(anchorDate, eventsByDate) {
+  const weekStart = startOfWeek(anchorDate);
+  const dates = Array.from({ length: 7 }, (_, index) => toIsoDate(addDays(weekStart, index)));
+  return renderResultsCalendarTimeline(dates, eventsByDate);
+}
+
+function renderResultsCalendarMonthEntries(events) {
+  if (!events.length) {
+    return "";
+  }
+
+  const visibleEvents = events.slice(0, 3);
+  return `
+    <div class="results-calendar-month-list">
+      ${visibleEvents
+        .map(
+          (event) => `
+            <div class="results-calendar-mini-event" style="--participant-color: ${escapeHtml(event.color)};" title="${escapeHtml(
+              event.title
+            )}">
+              <span class="results-calendar-mini-dot"></span>
+              <span class="results-calendar-mini-time">${escapeHtml(event.isAllDay ? "Ganzt." : event.label)}</span>
+              <span class="results-calendar-mini-name">${escapeHtml(event.name)}</span>
+            </div>
+          `
+        )
+        .join("")}
+      ${
+        events.length > visibleEvents.length
+          ? `<span class="results-calendar-more">+${events.length - visibleEvents.length} weitere</span>`
+          : ""
+      }
+    </div>
+  `;
+}
+
+function renderResultsCalendarMonthView(anchorDate, eventsByDate) {
+  const days = buildCalendarDays(anchorDate.getFullYear(), anchorDate.getMonth());
+  const currentIsoDate = toIsoDate(new Date());
+
+  return `
+    <div class="results-calendar-stage results-calendar-stage--month">
+      <div class="results-calendar-month-grid">
+        ${weekdayLabels
+          .map((weekday) => `<div class="results-calendar-month-weekday">${escapeHtml(weekday)}</div>`)
+          .join("")}
+        ${days
+          .map((day) => {
+            const dayEvents = eventsByDate.get(day.isoDate) || [];
+            return `
+              <article class="results-calendar-month-day${day.inCurrentMonth ? "" : " is-muted"}${
+                day.isoDate === currentIsoDate ? " is-today" : ""
+              }">
+                <div class="results-calendar-month-day-head">
+                  <strong>${day.date.getDate()}</strong>
+                  ${dayEvents.length > 0 ? `<span>${dayEvents.length}</span>` : ""}
+                </div>
+                ${renderResultsCalendarMonthEntries(dayEvents)}
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderResultsCalendarYearMonth(year, monthIndex, anchorDate, eventsByDate) {
+  const monthDate = new Date(year, monthIndex, 1);
+  const days = buildCalendarDays(year, monthIndex);
+  const anchorMonth = anchorDate.getMonth();
+  const currentIsoDate = toIsoDate(new Date());
+
+  return `
+    <section class="results-calendar-year-month${anchorMonth === monthIndex ? " is-active" : ""}">
+      <header class="results-calendar-year-month-head">
+        <strong>${escapeHtml(formatMonthYear(monthDate))}</strong>
+      </header>
+      <div class="results-calendar-year-weekdays">
+        ${weekdayLabels.map((weekday) => `<span>${escapeHtml(weekday)}</span>`).join("")}
+      </div>
+      <div class="results-calendar-year-days">
+        ${days
+          .map((day) => {
+            const dayEvents = eventsByDate.get(day.isoDate) || [];
+            const visibleParticipants = getResultsCalendarParticipants(dayEvents).slice(0, 3);
+            const title =
+              dayEvents.length > 0 ? dayEvents.map((event) => `${event.name}: ${event.label}`).join(" | ") : "";
+
+            return `
+              <div
+                class="results-calendar-year-day${day.inCurrentMonth ? "" : " is-muted"}${
+                  day.isoDate === currentIsoDate ? " is-today" : ""
+                }${dayEvents.length > 0 ? " has-events" : ""}"
+                ${title ? `title="${escapeHtml(title)}"` : ""}
+              >
+                <span class="results-calendar-year-number">${day.date.getDate()}</span>
+                <span class="results-calendar-year-dots">
+                  ${visibleParticipants
+                    .map(
+                      (participant) => `
+                        <span
+                          class="results-calendar-year-dot"
+                          style="--participant-color: ${escapeHtml(participant.color)};"
+                        ></span>
+                      `
+                    )
+                    .join("")}
+                </span>
+                ${dayEvents.length > visibleParticipants.length ? `<small>+${dayEvents.length - visibleParticipants.length}</small>` : ""}
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderResultsCalendarYearView(anchorDate, eventsByDate) {
+  const year = anchorDate.getFullYear();
+  return `
+    <div class="results-calendar-stage results-calendar-stage--year">
+      <div class="results-calendar-year-grid">
+        ${Array.from({ length: 12 }, (_, monthIndex) =>
+          renderResultsCalendarYearMonth(year, monthIndex, anchorDate, eventsByDate)
+        ).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderResultsCalendar(calendarEvents) {
+  const { tableWrap, calendarShell } = ensureResultsViewScaffold();
+  if (!tableWrap || !calendarShell) {
+    return;
+  }
+
+  tableWrap.classList.add("is-hidden");
+  calendarShell.classList.remove("is-hidden");
+
+  const visibleEvents = filterResultsCalendarEvents(
+    calendarEvents,
+    state.resultsCalendarView,
+    state.resultsCalendarDate
+  );
+  const eventsByDate = groupResultsCalendarEventsByDate(visibleEvents);
+  const legendParticipants = getResultsCalendarParticipants(visibleEvents.length > 0 ? visibleEvents : calendarEvents);
+  const visibleDateCount = new Set(visibleEvents.map((event) => event.date)).size;
+
+  let calendarMarkup = "";
+  if (state.resultsCalendarView === "day") {
+    calendarMarkup = renderResultsCalendarDayView(state.resultsCalendarDate, eventsByDate);
+  } else if (state.resultsCalendarView === "week") {
+    calendarMarkup = renderResultsCalendarWeekView(state.resultsCalendarDate, eventsByDate);
+  } else if (state.resultsCalendarView === "year") {
+    calendarMarkup = renderResultsCalendarYearView(state.resultsCalendarDate, eventsByDate);
+  } else {
+    calendarMarkup = renderResultsCalendarMonthView(state.resultsCalendarDate, eventsByDate);
+  }
+
+  calendarShell.innerHTML = `
+    <div class="results-calendar-summary">
+      <div class="results-calendar-summary-copy">
+        <strong>${
+          visibleEvents.length > 0
+            ? `${visibleEvents.length} Eintraege auf ${visibleDateCount} ${visibleDateCount === 1 ? "Tag" : "Tagen"}`
+            : "Keine Eintraege in diesem Zeitraum"
+        }</strong>
+        <p class="description">${
+          calendarEvents.length > 0
+            ? "Farben markieren die Teilnehmenden. Blaettere oder wechsle die Ansicht fuer mehr Kontext."
+            : "Sobald Antworten mit Zeitfenstern eingehen, erscheint hier die Kalender-Ansicht."
+        }</p>
+      </div>
+      ${renderResultsCalendarLegend(legendParticipants)}
+    </div>
+    ${
+      calendarEvents.length === 0
+        ? renderEmptyStateMarkup(
+            "fa-regular fa-calendar-plus",
+            "Noch keine Zeitslots vorhanden",
+            "Die Kalenderansicht fuellt sich automatisch, sobald Teilnehmende freie Zeitfenster eintragen."
+          )
+        : visibleEvents.length === 0
+          ? renderEmptyStateMarkup(
+              "fa-regular fa-calendar",
+              "Keine Zeitslots in diesem Zeitraum",
+              "Wechsle die Ansicht oder springe in einen anderen Zeitraum."
+            )
+          : calendarMarkup
+    }
+  `;
+}
+
 function renderResultsTable() {
   const { poll, responses, results } = state.pollData;
+  const { table, tableWrap, calendarShell } = ensureResultsViewScaffold();
+  const editableResponse = getEditableResponse();
+  const showEditIcon = Boolean(editableResponse) && hasEditableResponse();
+  const hasTimeSlots = pollHasTimeSlots(poll);
+  const calendarEvents = collectResultsCalendarEvents(responses);
+
+  if (!table) {
+    return;
+  }
+
+  if (!supportsResultsCalendar(poll)) {
+    state.resultsView = "matrix";
+  }
+
+  renderResultsViewControls(poll);
+
+  if (state.resultsView === "calendar" && supportsResultsCalendar(poll)) {
+    renderResultsCalendar(calendarEvents);
+    return;
+  }
+
+  tableWrap?.classList.remove("is-hidden");
+  calendarShell?.classList.add("is-hidden");
+  renderResultsMatrixTable(poll, responses, results, editableResponse, showEditIcon, hasTimeSlots);
+}
+
+function renderResultsMatrixTable(poll, responses, results, editableResponse, showEditIcon, hasTimeSlots = pollHasTimeSlots(poll)) {
   const head = document.querySelector("#results-head");
   const body = document.querySelector("#results-body");
   const foot = document.querySelector("#results-foot");
   const table = document.querySelector(".results-table");
-  const editableResponse = getEditableResponse();
-  const showEditIcon = Boolean(editableResponse) && hasEditableResponse();
-  const hasTimeSlots = pollHasTimeSlots(poll);
+  if (!head || !body || !foot || !table) {
+    return;
+  }
 
   table.classList.toggle("free-choice-matrix", pollUsesParticipantSuggestions(poll.mode) && !hasTimeSlots);
   table.classList.toggle("fixed-choice-matrix", poll.mode === "fixed" && !hasTimeSlots);
