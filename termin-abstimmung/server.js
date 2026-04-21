@@ -264,14 +264,42 @@ function normalizeDates(dates) {
   return Array.from(uniqueDates).sort().slice(0, 90);
 }
 
+function coerceSuggestedDateEntries(entries) {
+  if (Array.isArray(entries)) {
+    return entries;
+  }
+
+  if (!entries || typeof entries !== "object") {
+    return [];
+  }
+
+  return Object.entries(entries).map(([date, value]) => {
+    if (Array.isArray(value)) {
+      return { date, times: value };
+    }
+
+    if (value && typeof value === "object") {
+      if (Array.isArray(value.times)) {
+        return { date, times: value.times };
+      }
+      if (Array.isArray(value.timeSlots)) {
+        return { date, timeSlots: value.timeSlots };
+      }
+    }
+
+    return { date, times: [] };
+  });
+}
+
 function normalizeSuggestedDateEntries(entries) {
-  if (!Array.isArray(entries)) {
+  const normalizedEntries = coerceSuggestedDateEntries(entries);
+  if (!Array.isArray(normalizedEntries)) {
     return [];
   }
 
   const byDate = new Map();
 
-  for (const entry of entries) {
+  for (const entry of normalizedEntries) {
     let date = "";
     let rawTimes = [];
 
@@ -624,12 +652,13 @@ function validateSlotResponses(poll, entries) {
 }
 
 function validateSuggestedDates(entries) {
-  if (!Array.isArray(entries)) {
+  const normalizedEntries = coerceSuggestedDateEntries(entries);
+  if (!Array.isArray(normalizedEntries)) {
     return { ok: false, message: "Bitte trage mindestens einen moeglichen Tag ein." };
   }
 
-  if (entries.every((entry) => typeof entry === "string")) {
-    const dates = normalizeDates(entries);
+  if (normalizedEntries.every((entry) => typeof entry === "string")) {
+    const dates = normalizeDates(normalizedEntries);
     if (dates.length === 0) {
       return { ok: false, message: "Bitte trage mindestens einen moeglichen Tag ein." };
     }
@@ -641,7 +670,7 @@ function validateSuggestedDates(entries) {
   }
 
   const byDate = new Map();
-  for (const entry of entries) {
+  for (const entry of normalizedEntries) {
     let date = "";
     let rawTimes = [];
 
@@ -2426,6 +2455,11 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
       }
       availabilities = availabilityCheck.value;
     } else {
+      console.log("[responses] free-choice suggestedDates payload", {
+        pollId: data.poll.id,
+        userId: req.session.userId,
+        suggestedDates: req.body?.suggestedDates,
+      });
       const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates);
       if (!suggestedDatesCheck.ok) {
         return res.status(400).json({ error: suggestedDatesCheck.message });

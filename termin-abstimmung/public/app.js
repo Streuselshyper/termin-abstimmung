@@ -2504,7 +2504,7 @@ function renderParticipantSelectedDates() {
           </button>
         </div>
       </div>
-      <p class="description">Optional: passende Uhrzeiten fuer diesen Tag vorschlagen.</p>
+      ${slots.length === 0 ? '<p class="description">Optional: passende Uhrzeiten fuer diesen Tag vorschlagen.</p>' : ""}
       <div class="time-slot-list"></div>
     `;
 
