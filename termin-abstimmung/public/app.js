@@ -2834,7 +2834,7 @@ function renderParticipantSelectedDates() {
         <div class="calendar-actions">
           <button class="ghost-button compact-button" type="button" data-action="add-slot" data-date="${date}">
             <i class="fa-solid fa-plus"></i>
-            ${usesRangeSlots ? "Zeitslot" : "Zeit"}
+            ${usesRangeSlots ? "Slot" : "Zeit"}
           </button>
           <button class="text-button" type="button" data-action="remove-date" data-date="${date}">
             Entfernen
