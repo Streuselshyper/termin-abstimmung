@@ -3471,13 +3471,13 @@ function renderResultsCalendarAllDayItems(events) {
   return events
     .map(
       (event) => `
-        <span class="results-calendar-chip" style="--participant-color: ${escapeHtml(event.color)};" title="${escapeHtml(event.title)}">
-          <span class="results-calendar-chip-dot"></span>
-          <span class="results-calendar-chip-copy">
-            <strong>${escapeHtml(event.name)}</strong>
-            <small>${escapeHtml(event.label)}</small>
-          </span>
-        </span>
+        <span
+          class="results-calendar-chip"
+          style="--participant-color: ${escapeHtml(event.color)};"
+          title="${escapeHtml(event.title)}"
+          aria-label="${escapeHtml(event.title)}"
+          tabindex="0"
+        ></span>
       `
     )
     .join("");
@@ -3501,10 +3501,9 @@ function renderResultsCalendarTimedItem(event) {
         width: calc(${laneWidth.toFixed(4)}% - 0.35rem);
       "
       title="${escapeHtml(event.title)}"
-    >
-      <strong>${escapeHtml(event.name)}</strong>
-      <span>${escapeHtml(event.label)}</span>
-    </article>
+      aria-label="${escapeHtml(event.title)}"
+      tabindex="0"
+    ></article>
   `;
 }
 
@@ -3595,13 +3594,13 @@ function renderResultsCalendarMonthEntries(events) {
       ${visibleEvents
         .map(
           (event) => `
-            <div class="results-calendar-mini-event" style="--participant-color: ${escapeHtml(event.color)};" title="${escapeHtml(
-              event.title
-            )}">
-              <span class="results-calendar-mini-dot"></span>
-              <span class="results-calendar-mini-time">${escapeHtml(event.isAllDay ? "Ganzt." : event.label)}</span>
-              <span class="results-calendar-mini-name">${escapeHtml(event.name)}</span>
-            </div>
+            <div
+              class="results-calendar-mini-event"
+              style="--participant-color: ${escapeHtml(event.color)};"
+              title="${escapeHtml(event.title)}"
+              aria-label="${escapeHtml(event.title)}"
+              tabindex="0"
+            ></div>
           `
         )
         .join("")}
