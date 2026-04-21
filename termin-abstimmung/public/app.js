@@ -2536,13 +2536,17 @@ function renderParticipantSelectedDates() {
           </button>
         </div>
       </div>
-      ${slots.length === 0 ? '<p class="description">Optional: passende Uhrzeiten fuer diesen Tag vorschlagen.</p>' : ""}
+      ${
+        slots.length === 0
+          ? '<p class="description"><strong>Ganzer Tag</strong></p><p class="description">Optional: Falls nur bestimmte Zeiten gehen, kannst du sie mit "+ Zeit" hinzufuegen.</p>'
+          : ""
+      }
       <div class="time-slot-list"></div>
     `;
 
     const list = card.querySelector(".time-slot-list");
     if (slots.length === 0) {
-      list.innerHTML = '<p class="description">Keine Uhrzeiten hinterlegt.</p>';
+      list.innerHTML = "";
     } else {
       slots.forEach((slotValue, index) => {
         const row = document.createElement("div");
