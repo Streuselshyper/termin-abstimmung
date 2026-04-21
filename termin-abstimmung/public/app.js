@@ -33,7 +33,6 @@ const state = {
   responseDraft: {},
   pollDrawerOpen: false,
   createMode: "fixed",
-  resultsView: "matrix",
   resultsCalendarView: "week",
   resultsCalendarDate: new Date(),
 };
@@ -2198,7 +2197,6 @@ function initializeResultsCalendarState(poll, responses, results) {
     (Array.isArray(poll?.dates) ? [...poll.dates].sort()[0] : "") ||
     toIsoDate(new Date());
 
-  state.resultsView = "matrix";
   state.resultsCalendarView = "week";
   state.resultsCalendarDate = new Date(`${anchorDate}T00:00:00`);
 }
@@ -3036,137 +3034,24 @@ function supportsResultsCalendar(poll) {
   return poll?.mode === "timeslots_free";
 }
 
-function ensureResultsViewScaffold() {
+function ensureResultsCalendarPanel() {
   const table = document.querySelector(".results-table");
   const resultsPanel = table?.closest("article.panel");
-  const tableWrap = resultsPanel?.querySelector(".table-wrap");
-  if (!resultsPanel || !tableWrap) {
+  if (!resultsPanel) {
     return {};
   }
 
-  let controls = resultsPanel.querySelector("#results-view-controls");
-  if (!controls) {
-    controls = document.createElement("div");
-    controls.id = "results-view-controls";
-    controls.className = "results-view-controls is-hidden";
-    tableWrap.before(controls);
+  resultsPanel.classList.add("results-panel");
+
+  let calendarPanel = document.querySelector("#results-calendar-panel");
+  if (!calendarPanel) {
+    calendarPanel = document.createElement("article");
+    calendarPanel.id = "results-calendar-panel";
+    calendarPanel.className = "panel results-calendar-panel is-hidden";
+    resultsPanel.after(calendarPanel);
   }
 
-  let calendarShell = resultsPanel.querySelector("#results-calendar-shell");
-  if (!calendarShell) {
-    calendarShell = document.createElement("section");
-    calendarShell.id = "results-calendar-shell";
-    calendarShell.className = "results-calendar-shell is-hidden";
-    tableWrap.after(calendarShell);
-  }
-
-  return { table, resultsPanel, tableWrap, controls, calendarShell };
-}
-
-function renderResultsViewControls(poll) {
-  const { controls } = ensureResultsViewScaffold();
-  if (!controls) {
-    return;
-  }
-
-  if (!supportsResultsCalendar(poll)) {
-    controls.innerHTML = "";
-    controls.classList.add("is-hidden");
-    return;
-  }
-
-  controls.classList.remove("is-hidden");
-  controls.innerHTML = `
-    <div class="results-view-switch">
-      <div class="results-view-tabs" role="tablist" aria-label="Ergebnisansicht">
-        <button
-          class="results-view-tab${state.resultsView === "matrix" ? " is-active" : ""}"
-          type="button"
-          data-results-view="matrix"
-          aria-pressed="${state.resultsView === "matrix"}"
-        >
-          Matrix
-        </button>
-        <button
-          class="results-view-tab${state.resultsView === "calendar" ? " is-active" : ""}"
-          type="button"
-          data-results-view="calendar"
-          aria-pressed="${state.resultsView === "calendar"}"
-        >
-          Kalender
-        </button>
-      </div>
-
-      ${
-        state.resultsView === "calendar"
-          ? `
-            <div class="results-calendar-toolbar">
-              <div class="results-view-tabs" role="tablist" aria-label="Kalenderansicht">
-                ${[
-                  ["day", "Tag"],
-                  ["week", "Woche"],
-                  ["month", "Monat"],
-                  ["year", "Jahr"],
-                ]
-                  .map(
-                    ([view, label]) => `
-                      <button
-                        class="results-view-tab${state.resultsCalendarView === view ? " is-active" : ""}"
-                        type="button"
-                        data-calendar-view="${view}"
-                        aria-pressed="${state.resultsCalendarView === view}"
-                      >
-                        ${label}
-                      </button>
-                    `
-                  )
-                  .join("")}
-              </div>
-
-              <div class="results-calendar-nav">
-                <button class="ghost-button compact-button" type="button" data-calendar-shift="-1" aria-label="Vorheriger Zeitraum">
-                  <i class="fa-solid fa-chevron-left"></i>
-                </button>
-                <strong>${escapeHtml(formatResultsCalendarRangeLabel(state.resultsCalendarView, state.resultsCalendarDate))}</strong>
-                <button class="ghost-button compact-button" type="button" data-calendar-shift="1" aria-label="Naechster Zeitraum">
-                  <i class="fa-solid fa-chevron-right"></i>
-                </button>
-              </div>
-            </div>
-          `
-          : ""
-      }
-    </div>
-  `;
-
-  controls.querySelectorAll("[data-results-view]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextView = button.dataset.resultsView === "calendar" ? "calendar" : "matrix";
-      if (state.resultsView === nextView) {
-        return;
-      }
-      state.resultsView = nextView;
-      renderResultsTable();
-    });
-  });
-
-  controls.querySelectorAll("[data-calendar-view]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextView = button.dataset.calendarView || "week";
-      if (state.resultsCalendarView === nextView) {
-        return;
-      }
-      state.resultsCalendarView = nextView;
-      renderResultsTable();
-    });
-  });
-
-  controls.querySelectorAll("[data-calendar-shift]").forEach((button) => {
-    button.addEventListener("click", () => {
-      shiftResultsCalendar(Number(button.dataset.calendarShift) || 0);
-      renderResultsTable();
-    });
-  });
+  return { table, resultsPanel, calendarPanel };
 }
 
 function shiftResultsCalendar(delta) {
@@ -3755,13 +3640,12 @@ function renderResultsCalendarYearView(anchorDate, eventsByDate) {
 }
 
 function renderResultsCalendar(calendarEvents) {
-  const { tableWrap, calendarShell } = ensureResultsViewScaffold();
-  if (!tableWrap || !calendarShell) {
+  const { calendarPanel } = ensureResultsCalendarPanel();
+  if (!calendarPanel) {
     return;
   }
 
-  tableWrap.classList.add("is-hidden");
-  calendarShell.classList.remove("is-hidden");
+  calendarPanel.classList.remove("is-hidden");
 
   const visibleEvents = filterResultsCalendarEvents(
     calendarEvents,
@@ -3783,7 +3667,46 @@ function renderResultsCalendar(calendarEvents) {
     calendarMarkup = renderResultsCalendarMonthView(state.resultsCalendarDate, eventsByDate);
   }
 
-  calendarShell.innerHTML = `
+  calendarPanel.innerHTML = `
+    <div class="panel-header results-calendar-header">
+      <div>
+        <p class="eyebrow">Zusatzansicht</p>
+        <h2>Kalenderansicht</h2>
+      </div>
+      <div class="results-calendar-toolbar">
+        <div class="results-view-tabs" role="tablist" aria-label="Kalenderansicht">
+          ${[
+            ["day", "Tag"],
+            ["week", "Woche"],
+            ["month", "Monat"],
+            ["year", "Jahr"],
+          ]
+            .map(
+              ([view, label]) => `
+                <button
+                  class="results-view-tab${state.resultsCalendarView === view ? " is-active" : ""}"
+                  type="button"
+                  data-calendar-view="${view}"
+                  aria-pressed="${state.resultsCalendarView === view}"
+                >
+                  ${label}
+                </button>
+              `
+            )
+            .join("")}
+        </div>
+
+        <div class="results-calendar-nav">
+          <button class="ghost-button compact-button" type="button" data-calendar-shift="-1" aria-label="Vorheriger Zeitraum">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <strong>${escapeHtml(formatResultsCalendarRangeLabel(state.resultsCalendarView, state.resultsCalendarDate))}</strong>
+          <button class="ghost-button compact-button" type="button" data-calendar-shift="1" aria-label="Naechster Zeitraum">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="results-calendar-summary">
       <div class="results-calendar-summary-copy">
         <strong>${
@@ -3815,11 +3738,29 @@ function renderResultsCalendar(calendarEvents) {
           : calendarMarkup
     }
   `;
+
+  calendarPanel.querySelectorAll("[data-calendar-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextView = button.dataset.calendarView || "week";
+      if (state.resultsCalendarView === nextView) {
+        return;
+      }
+      state.resultsCalendarView = nextView;
+      renderResultsTable();
+    });
+  });
+
+  calendarPanel.querySelectorAll("[data-calendar-shift]").forEach((button) => {
+    button.addEventListener("click", () => {
+      shiftResultsCalendar(Number(button.dataset.calendarShift) || 0);
+      renderResultsTable();
+    });
+  });
 }
 
 function renderResultsTable() {
   const { poll, responses, results } = state.pollData;
-  const { table, tableWrap, calendarShell } = ensureResultsViewScaffold();
+  const { table, calendarPanel } = ensureResultsCalendarPanel();
   const editableResponse = getEditableResponse();
   const showEditIcon = Boolean(editableResponse) && hasEditableResponse();
   const hasTimeSlots = pollHasTimeSlots(poll);
@@ -3829,20 +3770,14 @@ function renderResultsTable() {
     return;
   }
 
-  if (!supportsResultsCalendar(poll)) {
-    state.resultsView = "matrix";
-  }
-
-  renderResultsViewControls(poll);
-
-  if (state.resultsView === "calendar" && supportsResultsCalendar(poll)) {
-    renderResultsCalendar(calendarEvents);
-    return;
-  }
-
-  tableWrap?.classList.remove("is-hidden");
-  calendarShell?.classList.add("is-hidden");
   renderResultsMatrixTable(poll, responses, results, editableResponse, showEditIcon, hasTimeSlots);
+
+  if (supportsResultsCalendar(poll)) {
+    renderResultsCalendar(calendarEvents);
+  } else if (calendarPanel) {
+    calendarPanel.classList.add("is-hidden");
+    calendarPanel.innerHTML = "";
+  }
 }
 
 function renderResultsMatrixTable(poll, responses, results, editableResponse, showEditIcon, hasTimeSlots = pollHasTimeSlots(poll)) {

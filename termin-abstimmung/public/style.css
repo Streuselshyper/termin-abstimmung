@@ -934,6 +934,11 @@ select:focus {
   grid-column: span 12;
 }
 
+.results-panel,
+.results-calendar-panel {
+  grid-column: span 12;
+}
+
 .poll-summary-panel {
   position: relative;
   /* Admin-Dropdown muss vor dem Antwort-Drawer und anderen Panels liegen. */
@@ -1666,21 +1671,17 @@ body.poll-drawer-open {
   border-radius: var(--radius-md);
 }
 
-.table-wrap.is-hidden,
-.results-view-controls.is-hidden,
-.results-calendar-shell.is-hidden {
+.results-calendar-panel.is-hidden {
   display: none;
 }
 
-.results-view-controls,
-.results-calendar-shell,
+.results-calendar-panel,
 .results-calendar-summary-copy,
 .results-calendar-month-list {
   display: grid;
   gap: 1rem;
 }
 
-.results-view-switch,
 .results-calendar-toolbar,
 .results-calendar-nav,
 .results-calendar-summary,
@@ -1694,7 +1695,6 @@ body.poll-drawer-open {
   gap: 0.75rem;
 }
 
-.results-view-switch,
 .results-calendar-summary {
   align-items: flex-start;
   justify-content: space-between;
@@ -1746,6 +1746,10 @@ body.poll-drawer-open {
 .results-calendar-toolbar {
   margin-left: auto;
   justify-content: flex-end;
+}
+
+.results-calendar-panel {
+  align-content: start;
 }
 
 .results-calendar-nav {
@@ -2451,7 +2455,6 @@ body.poll-drawer-open {
     min-width: 11rem;
   }
 
-  .results-view-switch,
   .results-calendar-toolbar,
   .results-calendar-summary {
     flex-direction: column;
