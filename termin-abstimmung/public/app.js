@@ -2192,7 +2192,7 @@ function initializeDraftFromPoll(poll) {
 
 function initializeResultsCalendarState(poll, responses, results) {
   const anchorDate =
-    collectResultsCalendarEvents(responses)[0]?.date ||
+    collectResultsCalendarEvents(poll, responses)[0]?.date ||
     getTopMatrixDates(results?.summary || [])[0]?.date ||
     (Array.isArray(poll?.dates) ? [...poll.dates].sort()[0] : "") ||
     toIsoDate(new Date());
@@ -3102,35 +3102,45 @@ function getParticipantCalendarColor(name) {
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
 
-function collectResultsCalendarEvents(responses) {
-  const events = [];
+function getResultsCalendarScheduleEntries(poll) {
+  const timeSlotsByDate = getPollTimeSlotsByDate(poll);
+  const dates =
+    Array.isArray(poll?.dates) && poll.dates.length > 0 ? [...poll.dates].sort() : Object.keys(timeSlotsByDate).sort();
 
-  for (const response of responses || []) {
-    const participantName = response?.name?.trim() || "Unbekannt";
-    const color = getParticipantCalendarColor(participantName);
-    const dateEntries = getSuggestedDateEntries(response?.suggestedDateEntries || response?.suggestedDates);
-
-    for (const entry of dateEntries) {
-      const timeValues = Array.isArray(entry.times) && entry.times.length > 0 ? entry.times : [""];
-      for (const value of timeValues) {
-        const slot = parseResultsCalendarTimeSlot(value);
-        events.push({
-          id: `${response.id || participantName}-${entry.date}-${slot.label}-${events.length}`,
-          date: entry.date,
-          name: participantName,
-          color,
-          isAllDay: slot.isAllDay,
-          start: slot.start,
-          end: slot.end,
-          startMinutes: slot.startMinutes,
-          endMinutes: slot.endMinutes,
-          label: slot.label,
-          title: `${participantName} · ${formatDateLong(entry.date)} · ${slot.label}`,
-        });
-      }
+  return dates.flatMap((date) => {
+    const slots = timeSlotsByDate[date] || [];
+    if (slots.length === 0) {
+      return [{ date, slot: "" }];
     }
+    return slots.map((slot) => ({ date, slot }));
+  });
+}
+
+function buildResultsCalendarEvent({ id, date, name, color, slotValue = "", status = "" }) {
+  const slot = parseResultsCalendarTimeSlot(slotValue);
+  const statusLabel = statusLabels[status] || "";
+  const label = status === "maybe" && statusLabel ? `${slot.label} · ${statusLabel}` : slot.label;
+  const titleParts = [name, formatDateLong(date), slot.label];
+  if (statusLabel) {
+    titleParts.push(statusLabel);
   }
 
+  return {
+    id,
+    date,
+    name,
+    color,
+    isAllDay: slot.isAllDay,
+    start: slot.start,
+    end: slot.end,
+    startMinutes: slot.startMinutes,
+    endMinutes: slot.endMinutes,
+    label,
+    title: titleParts.join(" · "),
+  };
+}
+
+function sortResultsCalendarEvents(events) {
   return events.sort((left, right) => {
     if (left.date !== right.date) {
       return left.date.localeCompare(right.date);
@@ -3146,6 +3156,65 @@ function collectResultsCalendarEvents(responses) {
     }
     return left.name.localeCompare(right.name);
   });
+}
+
+function collectResultsCalendarEvents(poll, responses) {
+  const events = [];
+
+  if (!pollUsesParticipantSuggestions(poll?.mode)) {
+    const scheduleEntries = getResultsCalendarScheduleEntries(poll);
+
+    for (const response of responses || []) {
+      const participantName = response?.name?.trim() || "Unbekannt";
+      const color = getParticipantCalendarColor(participantName);
+
+      for (const entry of scheduleEntries) {
+        const status = entry.slot
+          ? response.slotAvailabilities?.[entry.date]?.[entry.slot] || "no"
+          : response.availabilities?.[entry.date] || "no";
+
+        if (status === "no") {
+          continue;
+        }
+
+        events.push(
+          buildResultsCalendarEvent({
+            id: `${response.id || participantName}-${entry.date}-${entry.slot || "all-day"}-${status}-${events.length}`,
+            date: entry.date,
+            name: participantName,
+            color,
+            slotValue: entry.slot,
+            status,
+          })
+        );
+      }
+    }
+
+    return sortResultsCalendarEvents(events);
+  }
+
+  for (const response of responses || []) {
+    const participantName = response?.name?.trim() || "Unbekannt";
+    const color = getParticipantCalendarColor(participantName);
+    const dateEntries = getSuggestedDateEntries(response?.suggestedDateEntries || response?.suggestedDates);
+
+    for (const entry of dateEntries) {
+      const timeValues = Array.isArray(entry.times) && entry.times.length > 0 ? entry.times : [""];
+      for (const value of timeValues) {
+        events.push(
+          buildResultsCalendarEvent({
+            id: `${response.id || participantName}-${entry.date}-${value || "all-day"}-${events.length}`,
+            date: entry.date,
+            name: participantName,
+            color,
+            slotValue: value,
+          })
+        );
+      }
+    }
+  }
+
+  return sortResultsCalendarEvents(events);
 }
 
 function parseResultsCalendarTimeSlot(value) {
@@ -3491,7 +3560,9 @@ function renderResultsCalendarTimeline(days, eventsByDate, options = {}) {
                   ${
                     timedEvents.length > 0
                       ? timedEvents.map((event) => renderResultsCalendarTimedItem(event)).join("")
-                      : '<span class="results-calendar-time-empty">Keine Zeitslots</span>'
+                      : `<span class="results-calendar-time-empty">${
+                          allDayEvents.length > 0 ? "Nur ganztägige Eintraege" : "Keine Zeitfenster"
+                        }</span>`
                   }
                 </div>
               </section>
@@ -3717,7 +3788,7 @@ function renderResultsCalendar(calendarEvents) {
         <p class="description">${
           calendarEvents.length > 0
             ? "Farben markieren die Teilnehmenden. Blaettere oder wechsle die Ansicht fuer mehr Kontext."
-            : "Sobald Antworten mit Zeitfenstern eingehen, erscheint hier die Kalender-Ansicht."
+            : "Sobald Antworten zu Tagen oder Zeitfenstern eingehen, erscheint hier die Kalender-Ansicht."
         }</p>
       </div>
       ${renderResultsCalendarLegend(legendParticipants)}
@@ -3726,13 +3797,13 @@ function renderResultsCalendar(calendarEvents) {
       calendarEvents.length === 0
         ? renderEmptyStateMarkup(
             "fa-regular fa-calendar-plus",
-            "Noch keine Zeitslots vorhanden",
-            "Die Kalenderansicht fuellt sich automatisch, sobald Teilnehmende freie Zeitfenster eintragen."
+            "Noch keine Kalendereintraege vorhanden",
+            "Die Kalenderansicht fuellt sich automatisch, sobald Antworten zu Tagen oder Zeitfenstern eingehen."
           )
         : visibleEvents.length === 0
           ? renderEmptyStateMarkup(
               "fa-regular fa-calendar",
-              "Keine Zeitslots in diesem Zeitraum",
+              "Keine Kalendereintraege in diesem Zeitraum",
               "Wechsle die Ansicht oder springe in einen anderen Zeitraum."
             )
           : calendarMarkup
@@ -3764,7 +3835,7 @@ function renderResultsTable() {
   const editableResponse = getEditableResponse();
   const showEditIcon = Boolean(editableResponse) && hasEditableResponse();
   const hasTimeSlots = pollHasTimeSlots(poll);
-  const calendarEvents = collectResultsCalendarEvents(responses);
+  const calendarEvents = collectResultsCalendarEvents(poll, responses);
 
   if (!table) {
     return;
