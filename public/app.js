@@ -1001,6 +1001,39 @@ function formatBlockRangeLong(startDate, endDate) {
   return `${formatDateLong(startDate)} bis ${formatDateLong(endDate)}`;
 }
 
+function formatBlockLengthLabel(length) {
+  return Number.isInteger(length) && length > 0 ? `${length} ${length === 1 ? "Tag" : "Tage"}` : "";
+}
+
+function formatBlockWeekdaySpan(startDate, endDate) {
+  if (!startDate || !endDate) {
+    return "";
+  }
+
+  const startWeekday = formatWeeklyWeekday(getIsoDateWeekdayValue(startDate));
+  const endWeekday = formatWeeklyWeekday(getIsoDateWeekdayValue(endDate));
+  if (!startWeekday || !endWeekday) {
+    return "";
+  }
+
+  return startWeekday === endWeekday ? startWeekday : `${startWeekday}-${endWeekday}`;
+}
+
+function formatBlockPeriodMeta(startDate, endDate, length = getInclusiveDateSpan(startDate, endDate)) {
+  const parts = [];
+  const lengthLabel = formatBlockLengthLabel(length);
+  const weekdaySpan = formatBlockWeekdaySpan(startDate, endDate);
+
+  if (lengthLabel) {
+    parts.push(lengthLabel);
+  }
+  if (weekdaySpan) {
+    parts.push(weekdaySpan);
+  }
+
+  return parts.join(" · ");
+}
+
 function formatCreateBlockWeekdaySummary(weekdays) {
   const normalized = normalizePollWeekdays(weekdays);
   if (normalized.length === 0) {
@@ -3426,17 +3459,20 @@ function renderBlockFixedAvailabilityForm(grid) {
   const startDates = getPollBlockStartDates(poll);
 
   if (startDates.length === 0) {
-    grid.innerHTML = '<p class="description">Keine gueltigen Block-Starts vorhanden.</p>';
+    grid.innerHTML = '<p class="description">Keine gueltigen Block-Zeitraeume vorhanden.</p>';
     return;
   }
 
   startDates.forEach((startDate) => {
     const endDate = getBlockEndDateValue(startDate, blockLength);
     const card = document.createElement("div");
-    card.className = "availability-card availability-slot-card";
+    card.className = "availability-card availability-slot-card block-period-card";
     card.innerHTML = `
-      <strong>${escapeHtml(formatBlockRangeShort(startDate, endDate))}</strong>
-      <p class="description">Start: ${escapeHtml(formatDateLong(startDate))}</p>
+      <div class="block-period-card-copy">
+        <strong>${escapeHtml(formatBlockRangeShort(startDate, endDate))}</strong>
+        <span class="block-period-meta">${escapeHtml(formatBlockPeriodMeta(startDate, endDate, blockLength))}</span>
+        <p class="description">Kompletter Zeitraum: ${escapeHtml(formatBlockRangeLong(startDate, endDate))}</p>
+      </div>
     `;
 
     const row = document.createElement("div");
@@ -3471,13 +3507,18 @@ function renderBlockFreeAvailabilityForm(grid) {
   const startDate = isIsoDateValue(state.responseDraft.start) ? state.responseDraft.start : "";
   const endDate = isIsoDateValue(state.responseDraft.end) ? state.responseDraft.end : "";
   const allowedStarts = getPollBlockStartDates(poll);
+  const matchingStarts = startDate && endDate
+    ? allowedStarts.filter((blockStartDate) => dateRangeContainsBlock(startDate, endDate, blockStartDate, blockLength))
+    : [];
   const canFit = canDateRangeFitBlock(startDate, endDate, blockLength);
   const isWithinWindow = (!startDate || startDate >= blockConfig.startDate) && (!endDate || endDate <= blockConfig.endDate);
-  const hasMatchingBlock =
-    startDate && endDate
-      ? allowedStarts.some((blockStartDate) => dateRangeContainsBlock(startDate, endDate, blockStartDate, blockLength))
-      : false;
+  const hasMatchingBlock = matchingStarts.length > 0;
   const weekdaySummary = formatCreateBlockWeekdaySummary(blockConfig.weekdays);
+  const selectedPeriodLabel = startDate && endDate ? formatBlockRangeShort(startDate, endDate) : "Noch kein Zeitraum gewaehlt";
+  const selectedPeriodMeta =
+    startDate && endDate
+      ? `${formatBlockPeriodMeta(startDate, endDate)}${hasMatchingBlock ? ` · ${matchingStarts.length} gueltige Block-Zeitraeume` : ""}`
+      : `Waehle einen Zeitraum, der mindestens ${formatBlockLengthLabel(blockLength)} am Stueck abdeckt.`;
   const helperText =
     startDate && endDate
       ? startDate > endDate
@@ -3494,20 +3535,24 @@ function renderBlockFreeAvailabilityForm(grid) {
     startDate && endDate && (startDate > endDate || !isWithinWindow || !canFit || !hasMatchingBlock) ? " feedback error" : "";
 
   grid.innerHTML = `
-    <div class="selected-dates-box block-range-form">
+    <div class="selected-dates-box block-range-form block-period-card block-period-editor">
       <div class="selected-header">
-        <span>Dein verfuegbarer Zeitraum</span>
+        <span>Dein verfuegbarer Block-Zeitraum</span>
         <span class="pill">${escapeHtml(`${blockLength} Tage am Stueck`)}</span>
+      </div>
+      <div class="block-period-card-copy">
+        <strong>${escapeHtml(selectedPeriodLabel)}</strong>
+        <span class="block-period-meta">${escapeHtml(selectedPeriodMeta)}</span>
       </div>
       <p class="description">Erlaubter Zeitraum: ${escapeHtml(formatBlockRangeLong(blockConfig.startDate, blockConfig.endDate))}</p>
       <p class="description">Erlaubte Wochentage: ${escapeHtml(weekdaySummary)}</p>
       <div class="block-range-inputs">
         <label>
-          <span>Von</span>
+          <span>Zeitraum beginnt</span>
           <input id="block-free-start" type="date" min="${escapeHtml(blockConfig.startDate)}" max="${escapeHtml(blockConfig.endDate)}" value="${escapeHtml(startDate)}" />
         </label>
         <label>
-          <span>Bis</span>
+          <span>Zeitraum endet</span>
           <input id="block-free-end" type="date" min="${escapeHtml(blockConfig.startDate)}" max="${escapeHtml(blockConfig.endDate)}" value="${escapeHtml(endDate)}" />
         </label>
       </div>
@@ -5052,9 +5097,9 @@ function renderBlockFixedResultsTable(poll, responses, results, editableResponse
         .map(
           (entry) => `
             <th class="${winnerDates.has(entry.date) ? "winner-column" : ""}">
-              <div class="results-matrix-header">
-                <strong>${escapeHtml(formatDateShort(entry.date))}</strong>
-                <span class="results-matrix-subline">${escapeHtml(formatDateShort(entry.endDate))}</span>
+              <div class="results-matrix-header block-period-card is-compact">
+                <strong>${escapeHtml(formatBlockRangeShort(entry.date, entry.endDate))}</strong>
+                <span class="results-matrix-subline">${escapeHtml(formatBlockPeriodMeta(entry.date, entry.endDate, entry.length || getInclusiveDateSpan(entry.date, entry.endDate)))}</span>
               </div>
             </th>
           `
@@ -5113,9 +5158,8 @@ function renderBlockFreeResultsTable(poll, responses, results, editableResponse,
   head.innerHTML = `
     <tr>
       <th class="name-column">Name</th>
-      <th>Von</th>
-      <th>Bis</th>
-      <th>Moegliche Starts</th>
+      <th>Verfuegbarer Zeitraum</th>
+      <th>Gueltige Block-Zeitraeume</th>
     </tr>
   `;
 
@@ -5123,7 +5167,7 @@ function renderBlockFreeResultsTable(poll, responses, results, editableResponse,
     foot.innerHTML = "";
     body.innerHTML = `
       <tr>
-        <td colspan="4" class="description">Noch keine Antworten eingetragen.</td>
+        <td colspan="3" class="description">Noch keine Antworten eingetragen.</td>
       </tr>
     `;
     return;
@@ -5132,14 +5176,26 @@ function renderBlockFreeResultsTable(poll, responses, results, editableResponse,
   body.innerHTML = responses
     .map((response) => {
       const range = getResponseBlockRange(response);
-      const possibleStarts = getPollBlockStartDates(poll).filter((startDate) => dateRangeContainsBlock(range.start, range.end, startDate, blockLength)).length;
+      const possibleStarts = getPollBlockStartDates(poll).filter((startDate) => dateRangeContainsBlock(range.start, range.end, startDate, blockLength));
+      const rangeLabel = range.start && range.end ? formatBlockRangeShort(range.start, range.end) : "";
+      const rangeMeta = range.start && range.end ? formatBlockPeriodMeta(range.start, range.end) : "";
 
       return `
         <tr>
           <td class="name-column">${renderMatrixNameCell(response.name, response, editableResponse, showEditIcon)}</td>
-          <td>${range.start ? escapeHtml(formatDateShort(range.start)) : "<span class=\"matrix-empty\">-</span>"}</td>
-          <td>${range.end ? escapeHtml(formatDateShort(range.end)) : "<span class=\"matrix-empty\">-</span>"}</td>
-          <td>${escapeHtml(possibleStarts > 0 ? `${possibleStarts}` : "0")}</td>
+          <td>
+            ${
+              rangeLabel
+                ? `
+                  <div class="results-matrix-header block-period-card is-compact">
+                    <strong>${escapeHtml(rangeLabel)}</strong>
+                    <span class="results-matrix-subline">${escapeHtml(rangeMeta)}</span>
+                  </div>
+                `
+                : '<span class="matrix-empty">-</span>'
+            }
+          </td>
+          <td>${escapeHtml(possibleStarts.length > 0 ? `${possibleStarts.length}` : "0")}</td>
         </tr>
       `;
     })
@@ -5148,7 +5204,7 @@ function renderBlockFreeResultsTable(poll, responses, results, editableResponse,
   foot.innerHTML = `
     <tr>
       <td class="name-column score-footer">Gewinner</td>
-      <td colspan="3" class="score-footer ${winner ? "winner-column" : ""}">
+      <td colspan="2" class="score-footer ${winner ? "winner-column" : ""}">
         ${
           winner
             ? `
