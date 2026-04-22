@@ -1711,6 +1711,46 @@ body.poll-drawer-open {
   border-radius: var(--radius-md);
 }
 
+.block-period-card {
+  display: grid;
+  gap: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%),
+    var(--surface-soft);
+}
+
+.block-period-card.is-compact {
+  gap: 0.35rem;
+  padding: 0.75rem 0.8rem;
+  min-width: 9.75rem;
+}
+
+.block-period-card-copy {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.block-period-card-copy strong {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.block-period-card-copy .description {
+  margin: 0;
+}
+
+.block-period-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.block-period-editor {
+  gap: 0.95rem;
+}
+
 .status-row {
   gap: 0.5rem;
 }
