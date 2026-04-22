@@ -831,7 +831,7 @@ function createModeUsesBlockConfig(mode = state.createMode) {
 }
 
 function createModeUsesBlockWindow(mode = state.createMode) {
-  return mode === "block_fixed";
+  return mode === "block_fixed" || mode === "block_free";
 }
 
 function createModeRequiresTimeSlots(mode = state.createMode) {
@@ -1096,7 +1096,7 @@ function updateCreateModeLayout() {
     } else if (isBlockFixed) {
       pageDescription.textContent = "Lege Block-Laenge, Zeitraum und optional erlaubte Wochentage fest. Teilnehmende stimmen danach pro moeglichem Starttag fuer den kompletten Block ab.";
     } else if (isBlockFree) {
-      pageDescription.textContent = "Lege nur die gewuenschte Block-Laenge fest. Teilnehmende geben ihren verfuegbaren Zeitraum an, die Auswertung findet automatisch den besten zusammenhaengenden Block.";
+      pageDescription.textContent = "Lege Block-Laenge, Zeitraum und optional erlaubte Wochentage fest. Teilnehmende geben ihren verfuegbaren Zeitraum an, die Auswertung findet automatisch den besten zusammenhaengenden Block.";
     } else if (isFreeSlots) {
       pageDescription.textContent =
         "Lege Titel und Beschreibung fest. Teilnehmende schlagen danach selbst Tage mit passenden Zeitfenstern wie 14:00-16:00 vor.";
@@ -1129,8 +1129,8 @@ function updateCreateModeLayout() {
   freeFields?.classList.toggle("is-hidden", !isFreeChoice);
   weeklyFields?.classList.toggle("is-hidden", !isWeekly);
   blockFields?.classList.toggle("is-hidden", !isBlockMode);
-  blockWindow?.classList.toggle("is-hidden", !isBlockFixed);
-  blockWeekdays?.classList.toggle("is-hidden", !isBlockFixed);
+  blockWindow?.classList.toggle("is-hidden", !isBlockMode);
+  blockWeekdays?.classList.toggle("is-hidden", !isBlockMode);
   timeSlotControls?.classList.toggle("is-hidden", isFreeChoice || isWeekly || isFixed || isBlockMode);
 
   if (blockTitle) {
@@ -1140,7 +1140,7 @@ function updateCreateModeLayout() {
   if (blockDescription) {
     blockDescription.textContent = isBlockFixed
       ? "Das System erzeugt automatisch alle gueltigen Starttage fuer den gesamten Block. Ohne Wochentags-Auswahl sind alle Tage erlaubt."
-      : "Teilnehmende hinterlegen ihren verfuegbaren Zeitraum. Die Auswertung sucht innerhalb dieser Zeitraeume den besten zusammenhaengenden Block.";
+      : "Lege Block-Laenge, Zeitraum und optional erlaubte Wochentage fest. Teilnehmende hinterlegen ihren verfuegbaren Zeitraum innerhalb dieser Grenzen. Die Auswertung sucht den besten zusammenhaengenden Block.";
   }
 
   if (freeModeTitle) {
@@ -1532,7 +1532,7 @@ function renderCreateBlockPreview() {
 
   const starts = listBlockStartDatesFromConfig(state.createBlockConfig);
   if (!state.createBlockConfig.startDate || !state.createBlockConfig.endDate) {
-    preview.innerHTML = '<p class="description">Waehle zuerst einen Zeitraum fuer die moeglichen Block-Starts.</p>';
+    preview.innerHTML = '<p class="description">Waehle zuerst einen gueltigen Zeitraum fuer den Block.</p>';
     return;
   }
   if (state.createBlockConfig.startDate > state.createBlockConfig.endDate) {
@@ -1592,7 +1592,7 @@ function normalizeCreateBlockConfigForSubmit() {
   const weekdays = normalizePollWeekdays(state.createBlockConfig.weekdays);
 
   if (!startDate || !endDate) {
-    return { ok: false, message: "Bitte waehle fuer Block-Starttage einen gueltigen Zeitraum." };
+    return { ok: false, message: "Bitte waehle fuer Block-Umfragen einen gueltigen Zeitraum." };
   }
   if (startDate > endDate) {
     return { ok: false, message: "Das Startdatum des Blocks muss vor dem Enddatum liegen." };
@@ -3131,6 +3131,15 @@ function fillPollSummary() {
   }
   if (pollUsesBlockMode(poll) && blockConfig.length) {
     meta.innerHTML += `<span class="pill"><i class="fa-solid fa-arrow-right-long"></i> ${escapeHtml(`${blockConfig.length} Tage am Stueck`)}</span>`;
+  }
+  if (poll.mode === "block_free" || poll.mode === "block_fixed") {
+    if (blockConfig.startDate && blockConfig.endDate) {
+      meta.innerHTML += `<span class="pill"><i class="fa-regular fa-calendar-check"></i> ${escapeHtml(`${formatDateShort(blockConfig.startDate)}-${formatDateShort(blockConfig.endDate)}`)}</span>`;
+    }
+    if (blockConfig.weekdays?.length > 0) {
+      const weekdayLabels = blockConfig.weekdays.map(w => weeklyWeekdayLabels[w] || "?").join(", ");
+      meta.innerHTML += `<span class="pill"><i class="fa-solid fa-calendar-week"></i> ${escapeHtml(weekdayLabels)}</span>`;
+    }
   }
 
   summaryEmpty.classList.add("is-hidden");
