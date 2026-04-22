@@ -1460,26 +1460,42 @@ function bindCreateBlockFields() {
   const lengthInput = document.querySelector("#create-block-length");
   const startInput = document.querySelector("#create-block-start");
   const endInput = document.querySelector("#create-block-end");
+  const updateBlockDate = (input, key) => {
+    const nextValue = typeof input?.value === "string" ? input.value.trim() : "";
+    if (!nextValue) {
+      state.createBlockConfig[key] = "";
+      renderCreateBlockPreview();
+      return;
+    }
+
+    if (!isIsoDateValue(nextValue)) {
+      renderCreateBlockPreview();
+      return;
+    }
+
+    const parsed = parseIsoDateValue(nextValue);
+    if (!parsed || toIsoDate(parsed) !== nextValue) {
+      renderCreateBlockPreview();
+      return;
+    }
+
+    state.createBlockConfig[key] = nextValue;
+    renderCreateBlockPreview();
+  };
 
   lengthInput?.addEventListener("input", () => {
     state.createBlockConfig.length = Number.parseInt(lengthInput.value || "", 10) || 0;
     renderCreateBlockPreview();
   });
 
-  startInput?.addEventListener("change", () => {
-    const newDate = new Date(startInput.value);
-    if (!Number.isNaN(newDate.getTime())) {
-      state.createBlockConfig.startDate = toIsoDate(newDate);
-    }
-    renderCreateBlockPreview();
-  });
+  ["input", "change"].forEach((eventName) => {
+    startInput?.addEventListener(eventName, () => {
+      updateBlockDate(startInput, "startDate");
+    });
 
-  endInput?.addEventListener("change", () => {
-    const newDate = new Date(endInput.value);
-    if (!Number.isNaN(newDate.getTime())) {
-      state.createBlockConfig.endDate = toIsoDate(newDate);
-    }
-    renderCreateBlockPreview();
+    endInput?.addEventListener(eventName, () => {
+      updateBlockDate(endInput, "endDate");
+    });
   });
 
   fillCreateBlockFields();
