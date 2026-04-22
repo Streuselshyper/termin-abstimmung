@@ -804,10 +804,12 @@ function normalizeCreateMode(mode) {
 }
 
 function getDefaultCreateBlockConfig() {
+  const today = new Date();
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
   return {
     length: 5,
-    startDate: "",
-    endDate: "",
+    startDate: toIsoDate(today),
+    endDate: toIsoDate(nextMonth),
     weekdays: [],
   };
 }
