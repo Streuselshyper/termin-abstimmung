@@ -945,15 +945,15 @@ function listBlockStartDatesFromConfig(blockConfig) {
 }
 
 function getPollBlockStartDates(poll = state.pollData?.poll) {
-  if (!pollUsesBlockFixed(poll)) {
-    return [];
-  }
-
-  if (Array.isArray(poll?.dates) && poll.dates.length > 0) {
+  if (pollUsesBlockFixed(poll) && Array.isArray(poll?.dates) && poll.dates.length > 0) {
     return [...poll.dates].sort();
   }
 
-  return listBlockStartDatesFromConfig(normalizePollBlockConfig(poll));
+  if (pollUsesBlockMode(poll)) {
+    return listBlockStartDatesFromConfig(normalizePollBlockConfig(poll));
+  }
+
+  return [];
 }
 
 function getResponseBlockRange(response) {
@@ -971,6 +971,17 @@ function canDateRangeFitBlock(startDate, endDate, length) {
       && length > 0
       && startDate <= endDate
       && getInclusiveDateSpan(startDate, endDate) >= length
+  );
+}
+
+function dateRangeContainsBlock(startDate, endDate, blockStartDate, length) {
+  const blockEndDate = getBlockEndDateValue(blockStartDate, length);
+  return Boolean(
+    blockEndDate
+      && canDateRangeFitBlock(startDate, endDate, length)
+      && isIsoDateValue(blockStartDate)
+      && blockStartDate >= startDate
+      && blockEndDate <= endDate
   );
 }
 
@@ -3454,18 +3465,33 @@ function renderBlockFixedAvailabilityForm(grid) {
 }
 
 function renderBlockFreeAvailabilityForm(grid) {
-  const blockLength = normalizePollBlockConfig(state.pollData.poll).length;
+  const poll = state.pollData.poll;
+  const blockConfig = normalizePollBlockConfig(poll);
+  const blockLength = blockConfig.length;
   const startDate = isIsoDateValue(state.responseDraft.start) ? state.responseDraft.start : "";
   const endDate = isIsoDateValue(state.responseDraft.end) ? state.responseDraft.end : "";
+  const allowedStarts = getPollBlockStartDates(poll);
   const canFit = canDateRangeFitBlock(startDate, endDate, blockLength);
+  const isWithinWindow = (!startDate || startDate >= blockConfig.startDate) && (!endDate || endDate <= blockConfig.endDate);
+  const hasMatchingBlock =
+    startDate && endDate
+      ? allowedStarts.some((blockStartDate) => dateRangeContainsBlock(startDate, endDate, blockStartDate, blockLength))
+      : false;
+  const weekdaySummary = formatCreateBlockWeekdaySummary(blockConfig.weekdays);
   const helperText =
     startDate && endDate
       ? startDate > endDate
         ? "Das Enddatum muss nach dem Startdatum liegen."
+        : !isWithinWindow
+        ? `Dein Zeitraum muss innerhalb von ${formatBlockRangeLong(blockConfig.startDate, blockConfig.endDate)} liegen.`
         : canFit
-        ? `Dein Zeitraum deckt mindestens einen Block ueber ${blockLength} Tage ab.`
+          ? hasMatchingBlock
+            ? `Dein Zeitraum deckt mindestens einen gueltigen Block ueber ${blockLength} Tage ab.`
+            : "Innerhalb deines Zeitraums liegt mit dem erlaubten Zeitraum und den gewaehlten Wochentagen kein gueltiger Block."
         : `Der Zeitraum ist zu kurz. Fuer diesen Modus brauchst du mindestens ${blockLength} zusammenhaengende Tage.`
       : `Gib den Zeitraum an, in dem du mindestens ${blockLength} Tage am Stueck kannst.`;
+  const helperStateClass =
+    startDate && endDate && (startDate > endDate || !isWithinWindow || !canFit || !hasMatchingBlock) ? " feedback error" : "";
 
   grid.innerHTML = `
     <div class="selected-dates-box block-range-form">
@@ -3473,17 +3499,19 @@ function renderBlockFreeAvailabilityForm(grid) {
         <span>Dein verfuegbarer Zeitraum</span>
         <span class="pill">${escapeHtml(`${blockLength} Tage am Stueck`)}</span>
       </div>
+      <p class="description">Erlaubter Zeitraum: ${escapeHtml(formatBlockRangeLong(blockConfig.startDate, blockConfig.endDate))}</p>
+      <p class="description">Erlaubte Wochentage: ${escapeHtml(weekdaySummary)}</p>
       <div class="block-range-inputs">
         <label>
           <span>Von</span>
-          <input id="block-free-start" type="date" value="${escapeHtml(startDate)}" />
+          <input id="block-free-start" type="date" min="${escapeHtml(blockConfig.startDate)}" max="${escapeHtml(blockConfig.endDate)}" value="${escapeHtml(startDate)}" />
         </label>
         <label>
           <span>Bis</span>
-          <input id="block-free-end" type="date" value="${escapeHtml(endDate)}" />
+          <input id="block-free-end" type="date" min="${escapeHtml(blockConfig.startDate)}" max="${escapeHtml(blockConfig.endDate)}" value="${escapeHtml(endDate)}" />
         </label>
       </div>
-      <p class="description${startDate && endDate && !canFit ? " feedback error" : ""}">${escapeHtml(helperText)}</p>
+      <p class="description${helperStateClass}">${escapeHtml(helperText)}</p>
     </div>
   `;
 
@@ -5104,9 +5132,7 @@ function renderBlockFreeResultsTable(poll, responses, results, editableResponse,
   body.innerHTML = responses
     .map((response) => {
       const range = getResponseBlockRange(response);
-      const possibleStarts = canDateRangeFitBlock(range.start, range.end, blockLength)
-        ? getInclusiveDateSpan(range.start, range.end) - blockLength + 1
-        : 0;
+      const possibleStarts = getPollBlockStartDates(poll).filter((startDate) => dateRangeContainsBlock(range.start, range.end, startDate, blockLength)).length;
 
       return `
         <tr>
@@ -5698,9 +5724,22 @@ async function handleResponseSubmit(event) {
   } else if (pollUsesWeeklySlots(state.pollData.poll)) {
     payload.weeklyAvailabilities = { ...state.responseDraft };
   } else if (pollUsesBlockFree(state.pollData.poll)) {
-    const blockLength = normalizePollBlockConfig(state.pollData.poll).length;
+    const blockConfig = normalizePollBlockConfig(state.pollData.poll);
+    const blockLength = blockConfig.length;
     if (!canDateRangeFitBlock(state.responseDraft.start, state.responseDraft.end, blockLength)) {
       setFeedback(feedback, `Bitte waehle einen Zeitraum mit mindestens ${blockLength} aufeinanderfolgenden Tagen.`, "error");
+      return;
+    }
+    if (state.responseDraft.start < blockConfig.startDate || state.responseDraft.end > blockConfig.endDate) {
+      setFeedback(
+        feedback,
+        `Bitte waehle einen Zeitraum innerhalb von ${formatBlockRangeLong(blockConfig.startDate, blockConfig.endDate)}.`,
+        "error"
+      );
+      return;
+    }
+    if (!getPollBlockStartDates(state.pollData.poll).some((startDate) => dateRangeContainsBlock(state.responseDraft.start, state.responseDraft.end, startDate, blockLength))) {
+      setFeedback(feedback, "Innerhalb deines Zeitraums liegt mit den gewaehlten Regeln kein gueltiger Block.", "error");
       return;
     }
     payload.availabilities = {

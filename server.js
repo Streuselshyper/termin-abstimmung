@@ -341,9 +341,9 @@ function normalizeBlockLength(value) {
 function normalizeBlockConfig(config, mode = "") {
   const source = config && typeof config === "object" && !Array.isArray(config) ? config : {};
   const length = normalizeBlockLength(source.length);
-  const isFixedBlock = mode === "block_fixed";
-  const startDate = isFixedBlock ? normalizeText(source.startDate, 10) : "";
-  const endDate = isFixedBlock ? normalizeText(source.endDate, 10) : "";
+  const usesWindow = mode === "block_fixed" || mode === "block_free";
+  const startDate = usesWindow ? normalizeText(source.startDate, 10) : "";
+  const endDate = usesWindow ? normalizeText(source.endDate, 10) : "";
 
   return {
     length,
@@ -365,8 +365,8 @@ function getBlockEndDate(startDate, length) {
   return addDaysToIsoDate(startDate, length - 1);
 }
 
-function listFixedBlockStartDates(blockConfig) {
-  const normalized = normalizeBlockConfig(blockConfig, "block_fixed");
+function listAllowedBlockStartDates(blockConfig, mode = "block_fixed") {
+  const normalized = normalizeBlockConfig(blockConfig, mode);
   if (!normalized.length || !isIsoDate(normalized.startDate) || !isIsoDate(normalized.endDate) || normalized.startDate > normalized.endDate) {
     return [];
   }
@@ -402,6 +402,10 @@ function listFixedBlockStartDates(blockConfig) {
   return starts.slice(0, 366);
 }
 
+function listFixedBlockStartDates(blockConfig) {
+  return listAllowedBlockStartDates(blockConfig, "block_fixed");
+}
+
 function normalizeBlockRange(value) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const start = normalizeText(source.start, 10);
@@ -422,6 +426,29 @@ function canRangeFitBlock(range, length) {
       && range.start <= range.end
       && getInclusiveDaySpan(range.start, range.end) >= length
   );
+}
+
+function rangeContainsBlock(range, startDate, length) {
+  const blockEndDate = getBlockEndDate(startDate, length);
+  return Boolean(
+    blockEndDate
+      && canRangeFitBlock(range, length)
+      && startDate >= range.start
+      && blockEndDate <= range.end
+  );
+}
+
+function getPollBlockStartDates(poll) {
+  const blockConfig = getPollBlockConfig(poll);
+  if (poll?.mode === "block_fixed" && Array.isArray(poll?.dates) && poll.dates.length > 0) {
+    return [...poll.dates].sort();
+  }
+
+  if (poll?.mode === "block_fixed" || poll?.mode === "block_free") {
+    return listAllowedBlockStartDates(blockConfig, poll.mode);
+  }
+
+  return [];
 }
 
 function coerceSuggestedDateEntries(entries) {
@@ -687,7 +714,7 @@ function validatePollInput(body) {
   if ((isBlockFixed || isBlockFree) && !blockConfig.length) {
     return { ok: false, message: "Bitte hinterlege eine gueltige Block-Laenge zwischen 2 und 31 Tagen." };
   }
-  if (isBlockFixed) {
+  if (isBlockFixed || isBlockFree) {
     if (!isIsoDate(blockConfig.startDate) || !isIsoDate(blockConfig.endDate)) {
       return { ok: false, message: "Bitte hinterlege fuer Block-Umfragen einen gueltigen Zeitraum." };
     }
@@ -697,7 +724,7 @@ function validatePollInput(body) {
     if (blockConfig.startDate > blockConfig.endDate) {
       return { ok: false, message: "Das Startdatum des Block-Zeitraums muss vor dem Enddatum liegen." };
     }
-    if (dates.length === 0) {
+    if (getPollBlockStartDates({ mode, dates, blockConfig }).length === 0) {
       return { ok: false, message: "Im gewaehlten Zeitraum existiert kein gueltiger Block-Start." };
     }
   }
@@ -813,7 +840,8 @@ function validateWeeklyResponses(poll, availabilities) {
 
 function validateBlockRangeResponse(poll, value) {
   const range = normalizeBlockRange(value);
-  const { length } = getPollBlockConfig(poll);
+  const blockConfig = getPollBlockConfig(poll);
+  const allowedStarts = getPollBlockStartDates(poll);
 
   if (!range.start || !range.end) {
     return { ok: false, message: "Bitte hinterlege einen gueltigen Start- und Endtag." };
@@ -824,8 +852,20 @@ function validateBlockRangeResponse(poll, value) {
   if (range.end < range.start) {
     return { ok: false, message: "Das Enddatum muss nach dem Startdatum liegen." };
   }
-  if (!canRangeFitBlock(range, length)) {
-    return { ok: false, message: `Dein Zeitraum muss mindestens ${length} aufeinanderfolgende Tage abdecken.` };
+  if (range.start < blockConfig.startDate || range.end > blockConfig.endDate) {
+    return {
+      ok: false,
+      message: `Dein Zeitraum muss innerhalb von ${blockConfig.startDate} bis ${blockConfig.endDate} liegen.`,
+    };
+  }
+  if (!canRangeFitBlock(range, blockConfig.length)) {
+    return { ok: false, message: `Dein Zeitraum muss mindestens ${blockConfig.length} aufeinanderfolgende Tage abdecken.` };
+  }
+  if (!allowedStarts.some((startDate) => rangeContainsBlock(range, startDate, blockConfig.length))) {
+    return {
+      ok: false,
+      message: "Innerhalb deines Zeitraums liegt mit dem erlaubten Zeitraum und den gewaehlten Wochentagen kein gueltiger Block.",
+    };
   }
 
   return { ok: true, value: range };
@@ -1302,7 +1342,7 @@ function calculateBestDateSlots(poll, responses) {
 
 function calculateBestBlocks(poll, responses) {
   const blockConfig = getPollBlockConfig(poll);
-  const startDates = Array.isArray(poll?.dates) ? [...poll.dates].sort() : listFixedBlockStartDates(blockConfig);
+  const startDates = getPollBlockStartDates(poll);
   const summary = startDates.map((date) => {
     let yes = 0;
     let maybe = 0;
@@ -1355,27 +1395,7 @@ function calculateBestBlocks(poll, responses) {
 
 function calculateBestFreeBlocks(poll, responses) {
   const blockConfig = getPollBlockConfig(poll);
-  const candidateStarts = new Set();
-
-  for (const response of responses) {
-    const range = normalizeBlockRange(response.availabilities || response.blockRange);
-    if (!canRangeFitBlock(range, blockConfig.length)) {
-      continue;
-    }
-
-    let currentDate = range.start;
-    while (currentDate) {
-      const blockEndDate = getBlockEndDate(currentDate, blockConfig.length);
-      if (!blockEndDate || blockEndDate > range.end) {
-        break;
-      }
-
-      candidateStarts.add(currentDate);
-      currentDate = addDaysToIsoDate(currentDate, 1);
-    }
-  }
-
-  const summary = Array.from(candidateStarts)
+  const summary = getPollBlockStartDates(poll)
     .sort()
     .map((date) => {
       let yes = 0;
@@ -1385,7 +1405,7 @@ function calculateBestFreeBlocks(poll, responses) {
 
       for (const response of responses) {
         const range = normalizeBlockRange(response.availabilities || response.blockRange);
-        const isAvailable = canRangeFitBlock(range, blockConfig.length) && date >= range.start && blockEndDate <= range.end;
+        const isAvailable = rangeContainsBlock(range, date, blockConfig.length);
         if (isAvailable) {
           yes += 1;
           score += getScoreForStatus("yes", Boolean(response.hasVeto));
@@ -2326,7 +2346,7 @@ function escapeIcsText(value) {
 
 function listPollExportDates(poll, results = null) {
   if (poll?.mode === "block_fixed") {
-    return Array.isArray(poll?.dates) ? [...poll.dates].sort() : listFixedBlockStartDates(getPollBlockConfig(poll));
+    return getPollBlockStartDates(poll);
   }
 
   if (poll?.mode === "block_free") {
