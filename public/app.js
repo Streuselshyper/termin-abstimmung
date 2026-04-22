@@ -1467,12 +1467,18 @@ function bindCreateBlockFields() {
   });
 
   startInput?.addEventListener("change", () => {
-    state.createBlockConfig.startDate = startInput.value;
+    const newDate = new Date(startInput.value);
+    if (!Number.isNaN(newDate.getTime())) {
+      state.createBlockConfig.startDate = toIsoDate(newDate);
+    }
     renderCreateBlockPreview();
   });
 
   endInput?.addEventListener("change", () => {
-    state.createBlockConfig.endDate = endInput.value;
+    const newDate = new Date(endInput.value);
+    if (!Number.isNaN(newDate.getTime())) {
+      state.createBlockConfig.endDate = toIsoDate(newDate);
+    }
     renderCreateBlockPreview();
   });
 
