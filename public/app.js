@@ -3019,13 +3019,18 @@ function renderWeeklyAvailabilityForm(grid) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "status-chip";
+        button.dataset.status = status;
+        button.dataset.weeklyKey = key;
+        button.dataset.weeklyStatus = status;
         button.textContent = statusLabels[status];
         if (state.responseDraft[key] === status) {
           button.classList.add("active");
         }
         button.addEventListener("click", () => {
           state.responseDraft[key] = status;
-          renderAvailabilityForm();
+          row.querySelectorAll(".status-chip").forEach((btn) => {
+            btn.classList.toggle("active", state.responseDraft[btn.dataset.weeklyKey] === btn.dataset.weeklyStatus);
+          });
         });
         row.appendChild(button);
       });

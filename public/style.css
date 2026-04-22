@@ -1626,18 +1626,21 @@ body.poll-drawer-open {
 }
 
 .status-chip[data-status="yes"].active,
+.status-chip[data-weekly-status="yes"].active,
 .legend-item.yes,
 .result-badge.yes {
   background: var(--success-soft);
 }
 
 .status-chip[data-status="maybe"].active,
+.status-chip[data-weekly-status="maybe"].active,
 .legend-item.maybe,
 .result-badge.maybe {
   background: var(--warning-soft);
 }
 
 .status-chip[data-status="no"].active,
+.status-chip[data-weekly-status="no"].active,
 .legend-item.no,
 .result-badge.no {
   background: var(--error-soft);
