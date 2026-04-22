@@ -2487,7 +2487,7 @@ function initializeDraftFromPoll(poll) {
 
 function initializeResultsCalendarState(poll, responses, results) {
   if (pollUsesWeeklySlots(poll)) {
-    state.resultsCalendarView = "week";
+    state.resultsCalendarView = "month";
     state.resultsCalendarDate = new Date();
     return;
   }
@@ -2498,7 +2498,7 @@ function initializeResultsCalendarState(poll, responses, results) {
     (Array.isArray(poll?.dates) ? [...poll.dates].sort()[0] : "") ||
     toIsoDate(new Date());
 
-  state.resultsCalendarView = "week";
+  state.resultsCalendarView = "month";
   state.resultsCalendarDate = new Date(`${anchorDate}T00:00:00`);
 }
 
@@ -4220,7 +4220,7 @@ function renderResultsCalendar(calendarEvents) {
   }
 
   if (state.resultsCalendarView === "month" || state.resultsCalendarView === "week") {
-    calendarPanel.querySelectorAll(".results-calendar-month-day, .results-calendar-day").forEach((day) => {
+    calendarPanel.querySelectorAll(".results-calendar-month-day, .results-calendar-column").forEach((day) => {
       day.addEventListener("click", () => {
         const dayNumber = day.querySelector("strong")?.textContent || day.querySelector(".results-calendar-year-number")?.textContent;
         if (dayNumber) {
