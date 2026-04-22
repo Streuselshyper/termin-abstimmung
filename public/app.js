@@ -36,7 +36,7 @@ const state = {
   responseDraft: {},
   pollDrawerOpen: false,
   createMode: "fixed",
-  resultsCalendarView: "week",
+  resultsCalendarView: "month",
   resultsCalendarDate: new Date(),
 };
 
@@ -4203,6 +4203,36 @@ function renderResultsCalendar(calendarEvents) {
       renderResultsTable();
     });
   });
+
+  // Navigation: Jahr → Monat → Tag
+  if (state.resultsCalendarView === "year") {
+    calendarPanel.querySelectorAll(".results-calendar-year-month").forEach((section) => {
+      section.addEventListener("click", () => {
+        const monthText = section.querySelector("strong")?.textContent || "";
+        const monthDate = parseMonthYear(monthText);
+        if (monthDate) {
+          state.resultsCalendarDate = monthDate;
+          state.resultsCalendarView = "month";
+          renderResultsTable();
+        }
+      });
+    });
+  }
+
+  if (state.resultsCalendarView === "month" || state.resultsCalendarView === "week") {
+    calendarPanel.querySelectorAll(".results-calendar-month-day, .results-calendar-day").forEach((day) => {
+      day.addEventListener("click", () => {
+        const dayNumber = day.querySelector("strong")?.textContent || day.querySelector(".results-calendar-year-number")?.textContent;
+        if (dayNumber) {
+          const year = state.resultsCalendarDate.getFullYear();
+          const month = state.resultsCalendarDate.getMonth();
+          state.resultsCalendarDate = new Date(year, month, Number(dayNumber));
+          state.resultsCalendarView = "day";
+          renderResultsTable();
+        }
+      });
+    });
+  }
 }
 
 function renderResultsTable() {
@@ -5299,6 +5329,20 @@ function formatMonthYear(date) {
     month: "long",
     year: "numeric",
   }).format(date);
+}
+
+function parseMonthYear(text) {
+  const months = {
+    Januar: 0, Februar: 1, Maerz: 2, April: 3, Mai: 4, Juni: 5,
+    Juli: 6, August: 7, September: 8, Oktober: 9, November: 10, Dezember: 11
+  };
+  const match = text.match(/^(\w+)\s+(\d{4})$/);
+  if (!match) return null;
+  const monthName = match[1];
+  const year = Number(match[2]);
+  const month = months[monthName];
+  if (month === undefined || Number.isNaN(year)) return null;
+  return new Date(year, month, 1);
 }
 
 function formatDateLong(date) {
