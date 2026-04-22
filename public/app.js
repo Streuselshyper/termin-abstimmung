@@ -12,7 +12,7 @@ const statusLabels = {
   maybe: "Vielleicht",
   no: "Nein",
 };
-const CREATE_POLL_MODES = new Set(["fixed", "timeslots", "free", "weekly"]);
+const CREATE_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free", "weekly"]);
 
 const state = {
   auth: {
@@ -797,7 +797,7 @@ function createModeUsesCalendar(mode = state.createMode) {
 }
 
 function createModeUsesParticipantSuggestions(mode = state.createMode) {
-  return mode === "free";
+  return mode === "free" || mode === "timeslots_free";
 }
 
 function createModeUsesWeeklySlots(mode = state.createMode) {
@@ -813,15 +813,15 @@ function createModeUsesRangeSlots(mode = state.createMode) {
 }
 
 function pollUsesParticipantSuggestions(mode = state.pollData?.poll?.mode) {
-  return mode === "free";
+  return mode === "free" || mode === "timeslots_free";
 }
 
 function pollUsesWeeklySlots(poll = state.pollData?.poll) {
   return poll?.mode === "weekly";
 }
 
-function suggestionModeUsesRangeSlots() {
-  return false;
+function suggestionModeUsesRangeSlots(mode = state.pollData?.poll?.mode) {
+  return mode === "timeslots_free";
 }
 
 function getWeeklySlotsFromPoll(poll = state.pollData?.poll) {
@@ -861,6 +861,7 @@ function updateCreateModeLayout() {
   const isWeekly = createModeUsesWeeklySlots();
   const isFixed = state.createMode === "fixed";
   const isTimeslots = state.createMode === "timeslots";
+  const isFreeSlots = state.createMode === "timeslots_free";
   const pageDescription = document.querySelector("#create-page-description");
   const formTitle = document.querySelector("#create-form-title");
   const fixedFields = document.querySelector("#create-fixed-fields");
@@ -884,6 +885,9 @@ function updateCreateModeLayout() {
       pageDescription.textContent = "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab.";
     } else if (isTimeslots) {
       pageDescription.textContent = "Lege Titel, Beschreibung, Daten und feste Zeitfenster fest. Teilnehmende stimmen danach pro Zeitslot mit Ja, Vielleicht oder Nein ab.";
+    } else if (isFreeSlots) {
+      pageDescription.textContent =
+        "Lege Titel und Beschreibung fest. Teilnehmende schlagen danach selbst Tage mit passenden Zeitfenstern wie 14:00-16:00 vor.";
     } else if (isWeekly) {
       pageDescription.textContent = "Lege wiederkehrende Wochen-Slots wie Mittwoch 09:45-11:15 fest. Teilnehmende stimmen pro Wochentag und Uhrzeit ab, ganz ohne Kalenderdaten.";
     } else {
@@ -896,6 +900,8 @@ function updateCreateModeLayout() {
       formTitle.textContent = "Feste Termine konfigurieren";
     } else if (isTimeslots) {
       formTitle.textContent = "Zeitslots konfigurieren";
+    } else if (isFreeSlots) {
+      formTitle.textContent = "Zeitslots Freie Wahl konfigurieren";
     } else if (isWeekly) {
       formTitle.textContent = "Wochen-Slots konfigurieren";
     } else {
@@ -909,11 +915,13 @@ function updateCreateModeLayout() {
   timeSlotControls?.classList.toggle("is-hidden", isFreeChoice || isWeekly);
 
   if (freeModeTitle) {
-    freeModeTitle.textContent = "Freie Wahl";
+    freeModeTitle.textContent = isFreeSlots ? "Zeitslots Freie Wahl" : "Freie Wahl";
   }
 
   if (freeModeDescription) {
-    freeModeDescription.textContent = "In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst beliebige Tage im Kalender markieren.";
+    freeModeDescription.textContent = isFreeSlots
+      ? "In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst Tage markieren und dazu passende Zeitfenster pro Datum eintragen."
+      : "In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst beliebige Tage im Kalender markieren.";
   }
 
   if (timeSlotTitle) {
@@ -2110,6 +2118,9 @@ function getDashboardPollTypeMeta(mode) {
   if (mode === "timeslots") {
     return { label: "Zeitslots", icon: "fa-regular fa-clock" };
   }
+  if (mode === "timeslots_free") {
+    return { label: "Zeitslots Freie Wahl", icon: "fa-regular fa-calendar-plus" };
+  }
   if (mode === "weekly") {
     return { label: "Weekly", icon: "fa-regular fa-clock" };
   }
@@ -2581,6 +2592,8 @@ function fillPollSummary() {
     ? "Verfuegbarkeit anpassen"
     : hasTimeSlots
       ? "Deine Zeitfenster"
+      : poll.mode === "timeslots_free"
+        ? "Deine Zeitfenster"
       : poll.mode === "weekly"
         ? "Deine Wochen-Slots"
       : poll.mode === "fixed"

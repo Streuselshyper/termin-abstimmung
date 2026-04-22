@@ -15,7 +15,7 @@ const APP_BASE_URL = normalizeConfiguredBaseUrl(process.env.APP_BASE_URL || "");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
-const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free", "weekly"]);
+const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free", "weekly"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
 const VETO_SCORE_MAP = { yes: 3, maybe: 2, no: 0 };
 const rateLimitBuckets = new Map();
@@ -2712,7 +2712,7 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
       availabilities = availabilityCheck.value;
     } else {
       const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates, {
-        requireRanges: false,
+        requireRanges: data.poll.mode === "timeslots_free",
       });
       if (!suggestedDatesCheck.ok) {
         return res.status(400).json({ error: suggestedDatesCheck.message });
