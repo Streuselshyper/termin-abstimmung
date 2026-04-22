@@ -15,9 +15,10 @@ const APP_BASE_URL = normalizeConfiguredBaseUrl(process.env.APP_BASE_URL || "");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
-const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free", "weekly"]);
+const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free", "weekly", "block_fixed", "block_free"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
 const VETO_SCORE_MAP = { yes: 3, maybe: 2, no: 0 };
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const rateLimitBuckets = new Map();
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -59,6 +60,7 @@ db.exec(`
     mode TEXT NOT NULL DEFAULT 'fixed',
     allow_time_slots INTEGER NOT NULL DEFAULT 0,
     weekly_config TEXT NOT NULL DEFAULT '{}',
+    block_config TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -115,6 +117,7 @@ ensureColumn("polls", "has_time_slots", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("polls", "time_slots", "TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("polls", "allow_time_slots", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("polls", "weekly_config", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("polls", "block_config", "TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("polls", "created_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("polls", "updated_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("polls", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
@@ -264,6 +267,161 @@ function normalizeDates(dates) {
   }
 
   return Array.from(uniqueDates).sort().slice(0, 90);
+}
+
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(typeof value === "string" ? value.trim() : "");
+}
+
+function parseIsoDate(value) {
+  if (!isIsoDate(value)) {
+    return null;
+  }
+
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toIsoDate(value) {
+  return [
+    value.getUTCFullYear(),
+    String(value.getUTCMonth() + 1).padStart(2, "0"),
+    String(value.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function addDaysToIsoDate(value, delta) {
+  const parsed = parseIsoDate(value);
+  if (!parsed) {
+    return "";
+  }
+
+  parsed.setUTCDate(parsed.getUTCDate() + delta);
+  return toIsoDate(parsed);
+}
+
+function getIsoDateWeekday(value) {
+  return parseIsoDate(value)?.getUTCDay() ?? -1;
+}
+
+function getInclusiveDaySpan(start, end) {
+  const startDate = parseIsoDate(start);
+  const endDate = parseIsoDate(end);
+  if (!startDate || !endDate || endDate < startDate) {
+    return 0;
+  }
+
+  const milliseconds = endDate.getTime() - startDate.getTime();
+  return Math.floor(milliseconds / (24 * 60 * 60 * 1000)) + 1;
+}
+
+function normalizeWeekdaySelection(entries) {
+  const weekdays = Array.isArray(entries) ? entries : [];
+  const selected = new Set();
+
+  for (const entry of weekdays) {
+    const weekday = Number(entry);
+    if (Number.isInteger(weekday) && weekday >= 0 && weekday <= 6) {
+      selected.add(weekday);
+    }
+  }
+
+  return WEEKDAY_ORDER.filter((weekday) => selected.has(weekday));
+}
+
+function normalizeBlockLength(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isInteger(parsed) || parsed < 2 || parsed > 31) {
+    return 0;
+  }
+
+  return parsed;
+}
+
+function normalizeBlockConfig(config, mode = "") {
+  const source = config && typeof config === "object" && !Array.isArray(config) ? config : {};
+  const length = normalizeBlockLength(source.length);
+  const isFixedBlock = mode === "block_fixed";
+  const startDate = isFixedBlock ? normalizeText(source.startDate, 10) : "";
+  const endDate = isFixedBlock ? normalizeText(source.endDate, 10) : "";
+
+  return {
+    length,
+    startDate,
+    endDate,
+    weekdays: normalizeWeekdaySelection(source.weekdays),
+  };
+}
+
+function getPollBlockConfig(poll) {
+  return normalizeBlockConfig(poll?.blockConfig || poll?.block_config || {}, poll?.mode);
+}
+
+function getBlockEndDate(startDate, length) {
+  if (!isIsoDate(startDate) || !Number.isInteger(length) || length < 1) {
+    return "";
+  }
+
+  return addDaysToIsoDate(startDate, length - 1);
+}
+
+function listFixedBlockStartDates(blockConfig) {
+  const normalized = normalizeBlockConfig(blockConfig, "block_fixed");
+  if (!normalized.length || !isIsoDate(normalized.startDate) || !isIsoDate(normalized.endDate) || normalized.startDate > normalized.endDate) {
+    return [];
+  }
+
+  const allowedWeekdays = normalized.weekdays.length > 0 ? new Set(normalized.weekdays) : null;
+  const starts = [];
+  let currentDate = normalized.startDate;
+
+  while (currentDate && currentDate <= normalized.endDate) {
+    const blockEndDate = getBlockEndDate(currentDate, normalized.length);
+    if (!blockEndDate || blockEndDate > normalized.endDate) {
+      break;
+    }
+
+    let isValidBlock = true;
+    if (allowedWeekdays) {
+      for (let offset = 0; offset < normalized.length; offset += 1) {
+        const day = addDaysToIsoDate(currentDate, offset);
+        if (!allowedWeekdays.has(getIsoDateWeekday(day))) {
+          isValidBlock = false;
+          break;
+        }
+      }
+    }
+
+    if (isValidBlock) {
+      starts.push(currentDate);
+    }
+
+    currentDate = addDaysToIsoDate(currentDate, 1);
+  }
+
+  return starts.slice(0, 366);
+}
+
+function normalizeBlockRange(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const start = normalizeText(source.start, 10);
+  const end = normalizeText(source.end, 10);
+
+  return {
+    start: isIsoDate(start) ? start : "",
+    end: isIsoDate(end) ? end : "",
+  };
+}
+
+function canRangeFitBlock(range, length) {
+  return Boolean(
+    Number.isInteger(length)
+      && length > 0
+      && isIsoDate(range?.start)
+      && isIsoDate(range?.end)
+      && range.start <= range.end
+      && getInclusiveDaySpan(range.start, range.end) >= length
+  );
 }
 
 function coerceSuggestedDateEntries(entries) {
@@ -498,11 +656,21 @@ function validatePollInput(body) {
   const description = normalizeText(body?.description, 1200);
   const mode = normalizeMode(body?.mode);
   const isWeekly = mode === "weekly";
-  const dates = mode === "fixed" || mode === "timeslots" ? normalizeDates(body?.dates) : [];
+  const isBlockFixed = mode === "block_fixed";
+  const isBlockFree = mode === "block_free";
+  const blockConfig = isBlockFixed || isBlockFree ? normalizeBlockConfig(body?.blockConfig, mode) : { length: 0, startDate: "", endDate: "", weekdays: [] };
+  const dates =
+    mode === "fixed" || mode === "timeslots"
+      ? normalizeDates(body?.dates)
+      : isBlockFixed
+        ? listFixedBlockStartDates(blockConfig)
+        : [];
   const requestedTimeSlots = normalizeTimeSlotsByDate(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const invalidTimeSlot = findInvalidTimeSlotEntry(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const allowTimeSlots =
     !isWeekly &&
+    !isBlockFixed &&
+    !isBlockFree &&
     (mode === "timeslots" ||
       (mode === "fixed" && (normalizeBoolean(body?.allowTimeSlots, false) || hasTimeSlotEntries(requestedTimeSlots))));
   const timeSlots = allowTimeSlots ? requestedTimeSlots : {};
@@ -515,6 +683,23 @@ function validatePollInput(body) {
   }
   if (description.length < 3) {
     return { ok: false, message: "Die Beschreibung muss mindestens 3 Zeichen lang sein." };
+  }
+  if ((isBlockFixed || isBlockFree) && !blockConfig.length) {
+    return { ok: false, message: "Bitte hinterlege eine gueltige Block-Laenge zwischen 2 und 31 Tagen." };
+  }
+  if (isBlockFixed) {
+    if (!isIsoDate(blockConfig.startDate) || !isIsoDate(blockConfig.endDate)) {
+      return { ok: false, message: "Bitte hinterlege fuer Block-Umfragen einen gueltigen Zeitraum." };
+    }
+    if (!parseIsoDate(blockConfig.startDate) || !parseIsoDate(blockConfig.endDate)) {
+      return { ok: false, message: "Der Block-Zeitraum enthaelt ein ungueltiges Datum." };
+    }
+    if (blockConfig.startDate > blockConfig.endDate) {
+      return { ok: false, message: "Das Startdatum des Block-Zeitraums muss vor dem Enddatum liegen." };
+    }
+    if (dates.length === 0) {
+      return { ok: false, message: "Im gewaehlten Zeitraum existiert kein gueltiger Block-Start." };
+    }
   }
   if (isWeekly && weeklyConfig.slots.length === 0) {
     return { ok: false, message: "Bitte hinterlege mindestens einen Wochen-Slot." };
@@ -551,6 +736,7 @@ function validatePollInput(body) {
       allowTimeSlots,
       timeSlots,
       weeklyConfig,
+      blockConfig,
       inviteMessage,
       inviteEmails,
       notificationEmailEnabled: normalizeBoolean(body?.notificationEmailEnabled, true),
@@ -623,6 +809,26 @@ function validateWeeklyResponses(poll, availabilities) {
   }
 
   return { ok: true, value: normalized };
+}
+
+function validateBlockRangeResponse(poll, value) {
+  const range = normalizeBlockRange(value);
+  const { length } = getPollBlockConfig(poll);
+
+  if (!range.start || !range.end) {
+    return { ok: false, message: "Bitte hinterlege einen gueltigen Start- und Endtag." };
+  }
+  if (!parseIsoDate(range.start) || !parseIsoDate(range.end)) {
+    return { ok: false, message: "Mindestens ein Block-Datum ist ungueltig." };
+  }
+  if (range.end < range.start) {
+    return { ok: false, message: "Das Enddatum muss nach dem Startdatum liegen." };
+  }
+  if (!canRangeFitBlock(range, length)) {
+    return { ok: false, message: `Dein Zeitraum muss mindestens ${length} aufeinanderfolgende Tage abdecken.` };
+  }
+
+  return { ok: true, value: range };
 }
 
 function isValidTimeValue(value) {
@@ -961,6 +1167,7 @@ function mapPollRow(row, req) {
     mode: normalizeMode(row.mode),
     allowTimeSlots: Boolean(row.allow_time_slots),
     weeklyConfig: parseJsonObject(row.weekly_config),
+    blockConfig: parseJsonObject(row.block_config),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     userId: row.user_id ?? null,
@@ -974,6 +1181,7 @@ function mapPollRow(row, req) {
 }
 
 function mapResponseRow(row) {
+  const availabilities = parseJsonObject(row.availabilities);
   const suggestedDates = parseJsonArray(row.suggested_dates);
   const legacySuggestedDates = parseJsonArray(row.free_text_availabilities);
   const suggestedDateEntries = normalizeSuggestedDateEntries(
@@ -985,7 +1193,8 @@ function mapResponseRow(row) {
     pollId: row.poll_id,
     userId: row.user_id ?? null,
     name: displayName,
-    availabilities: JSON.parse(row.availabilities),
+    availabilities,
+    blockRange: normalizeBlockRange(availabilities),
     slotAvailabilities: parseJsonObject(row.slot_availabilities),
     weeklyAvailabilities: parseJsonObject(row.slot_availabilities),
     suggestedDates: suggestedDateEntries.map((entry) => entry.date),
@@ -1091,6 +1300,129 @@ function calculateBestDateSlots(poll, responses) {
   };
 }
 
+function calculateBestBlocks(poll, responses) {
+  const blockConfig = getPollBlockConfig(poll);
+  const startDates = Array.isArray(poll?.dates) ? [...poll.dates].sort() : listFixedBlockStartDates(blockConfig);
+  const summary = startDates.map((date) => {
+    let yes = 0;
+    let maybe = 0;
+    let no = 0;
+    let score = 0;
+
+    for (const response of responses) {
+      const status = response.availabilities?.[date] || "no";
+      if (status === "yes") {
+        yes += 1;
+      } else if (status === "maybe") {
+        maybe += 1;
+      } else {
+        no += 1;
+      }
+      score += getScoreForStatus(status, Boolean(response.hasVeto));
+    }
+
+    return {
+      date,
+      endDate: getBlockEndDate(date, blockConfig.length),
+      length: blockConfig.length,
+      yes,
+      maybe,
+      no,
+      score,
+      participants: responses.length,
+    };
+  });
+
+  const sorted = [...summary].sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    if (right.yes !== left.yes) {
+      return right.yes - left.yes;
+    }
+    if (right.maybe !== left.maybe) {
+      return right.maybe - left.maybe;
+    }
+    return left.date.localeCompare(right.date);
+  });
+
+  const bestScore = sorted[0]?.score ?? 0;
+  return {
+    summary,
+    bestDates: sorted.filter((entry) => entry.score === bestScore && sorted.length > 0),
+  };
+}
+
+function calculateBestFreeBlocks(poll, responses) {
+  const blockConfig = getPollBlockConfig(poll);
+  const candidateStarts = new Set();
+
+  for (const response of responses) {
+    const range = normalizeBlockRange(response.availabilities || response.blockRange);
+    if (!canRangeFitBlock(range, blockConfig.length)) {
+      continue;
+    }
+
+    let currentDate = range.start;
+    while (currentDate) {
+      const blockEndDate = getBlockEndDate(currentDate, blockConfig.length);
+      if (!blockEndDate || blockEndDate > range.end) {
+        break;
+      }
+
+      candidateStarts.add(currentDate);
+      currentDate = addDaysToIsoDate(currentDate, 1);
+    }
+  }
+
+  const summary = Array.from(candidateStarts)
+    .sort()
+    .map((date) => {
+      let yes = 0;
+      let no = 0;
+      let score = 0;
+      const blockEndDate = getBlockEndDate(date, blockConfig.length);
+
+      for (const response of responses) {
+        const range = normalizeBlockRange(response.availabilities || response.blockRange);
+        const isAvailable = canRangeFitBlock(range, blockConfig.length) && date >= range.start && blockEndDate <= range.end;
+        if (isAvailable) {
+          yes += 1;
+          score += getScoreForStatus("yes", Boolean(response.hasVeto));
+        } else {
+          no += 1;
+        }
+      }
+
+      return {
+        date,
+        endDate: blockEndDate,
+        length: blockConfig.length,
+        yes,
+        maybe: 0,
+        no,
+        score,
+        participants: responses.length,
+      };
+    });
+
+  const sorted = [...summary].sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    if (right.yes !== left.yes) {
+      return right.yes - left.yes;
+    }
+    return left.date.localeCompare(right.date);
+  });
+
+  const bestScore = sorted[0]?.score ?? 0;
+  return {
+    summary,
+    bestDates: sorted.filter((entry) => entry.score === bestScore && sorted.length > 0),
+  };
+}
+
 
 function getWeeklySortIndex(weekday) {
   const order = [1, 2, 3, 4, 5, 6, 0];
@@ -1167,6 +1499,14 @@ function calculateBestWeeklySlots(poll, responses) {
 }
 
 function calculatePollResults(poll, responses) {
+  if (poll.mode === "block_fixed") {
+    return calculateBestBlocks(poll, responses);
+  }
+
+  if (poll.mode === "block_free") {
+    return calculateBestFreeBlocks(poll, responses);
+  }
+
   if (pollUsesTimeSlots(poll)) {
     return calculateBestDateSlots(poll, responses);
   }
@@ -1185,6 +1525,10 @@ function calculatePollResults(poll, responses) {
 function formatBestDateEntry(entry) {
   if (!entry) {
     return "";
+  }
+
+  if (entry.endDate) {
+    return `${entry.date} - ${entry.endDate}`;
   }
 
   if (entry.weekday !== undefined) {
@@ -1980,12 +2324,33 @@ function escapeIcsText(value) {
     .replaceAll(";", "\\;");
 }
 
+function listPollExportDates(poll, results = null) {
+  if (poll?.mode === "block_fixed") {
+    return Array.isArray(poll?.dates) ? [...poll.dates].sort() : listFixedBlockStartDates(getPollBlockConfig(poll));
+  }
+
+  if (poll?.mode === "block_free") {
+    return Array.isArray(results?.summary) ? results.summary.map((entry) => entry.date) : [];
+  }
+
+  if (pollUsesTimeSlots(poll) || poll?.mode === "weekly") {
+    return [];
+  }
+
+  if (poll?.mode === "fixed") {
+    return Array.isArray(poll?.dates) ? [...poll.dates].sort() : [];
+  }
+
+  return Array.isArray(results?.summary) ? results.summary.map((entry) => entry.date) : [];
+}
+
 function buildIcsContent(req, poll, date) {
   const dtStamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
   const start = formatIcsDate(date);
-  const endDate = new Date(`${date}T00:00:00Z`);
-  endDate.setUTCDate(endDate.getUTCDate() + 1);
-  const end = formatIcsDate(endDate.toISOString().slice(0, 10));
+  const blockConfig = getPollBlockConfig(poll);
+  const blockLength = poll.mode === "block_fixed" || poll.mode === "block_free" ? blockConfig.length : 1;
+  const endDate = getBlockEndDate(date, Math.max(blockLength, 1));
+  const end = formatIcsDate(addDaysToIsoDate(endDate || date, 1));
 
   return [
     "BEGIN:VCALENDAR",
@@ -2362,8 +2727,8 @@ app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "p
     db.prepare(`
       INSERT INTO polls (
         id, title, description, dates, mode, created_at, updated_at, user_id,
-        invite_message, notification_email_enabled, allow_email_invites, has_time_slots, time_slots, allow_time_slots, weekly_config
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        invite_message, notification_email_enabled, allow_email_invites, has_time_slots, time_slots, allow_time_slots, weekly_config, block_config
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       pollId,
       input.title,
@@ -2379,7 +2744,8 @@ app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "p
       hasTimeSlots ? 1 : 0,
       JSON.stringify(input.timeSlots),
       input.allowTimeSlots ? 1 : 0,
-      JSON.stringify(input.weeklyConfig)
+      JSON.stringify(input.weeklyConfig),
+      JSON.stringify(input.blockConfig)
     );
 
     const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId), req);
@@ -2431,7 +2797,7 @@ app.put("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
     db.prepare(`
       UPDATE polls
       SET title = ?, description = ?, dates = ?, mode = ?, updated_at = ?, invite_message = ?,
-          notification_email_enabled = ?, allow_email_invites = ?, has_time_slots = ?, time_slots = ?, allow_time_slots = ?, weekly_config = ?
+          notification_email_enabled = ?, allow_email_invites = ?, has_time_slots = ?, time_slots = ?, allow_time_slots = ?, weekly_config = ?, block_config = ?
       WHERE id = ?
     `).run(
       input.title,
@@ -2446,6 +2812,7 @@ app.put("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
       JSON.stringify(input.timeSlots),
       input.allowTimeSlots ? 1 : 0,
       JSON.stringify(input.weeklyConfig),
+      JSON.stringify(input.blockConfig),
       req.params.pollId
     );
 
@@ -2478,9 +2845,9 @@ app.post("/api/polls/:pollId/duplicate", requireCsrf, requireAuth, (req, res) =>
       INSERT INTO polls (
         id, title, description, dates, mode, created_at, updated_at, user_id,
         invite_message, notification_email_enabled, allow_email_invites,
-        has_time_slots, time_slots, allow_time_slots, weekly_config
+        has_time_slots, time_slots, allow_time_slots, weekly_config, block_config
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newId,
       `${existing.title} (Kopie)`.slice(0, 120),
@@ -2496,7 +2863,8 @@ app.post("/api/polls/:pollId/duplicate", requireCsrf, requireAuth, (req, res) =>
       existing.has_time_slots || 0,
       existing.time_slots || "{}",
       existing.allow_time_slots || 0,
-      existing.weekly_config || "{}"
+      existing.weekly_config || "{}",
+      existing.block_config || "{}"
     );
 
     res.status(201).json({
@@ -2731,12 +3099,18 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
         return res.status(400).json({ error: weeklyResponsesCheck.message });
       }
       slotAvailabilities = weeklyResponsesCheck.value;
-    } else if (data.poll.mode === "fixed") {
+    } else if (data.poll.mode === "fixed" || data.poll.mode === "block_fixed") {
       const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
       if (!availabilityCheck.ok) {
         return res.status(400).json({ error: availabilityCheck.message });
       }
       availabilities = availabilityCheck.value;
+    } else if (data.poll.mode === "block_free") {
+      const blockRangeCheck = validateBlockRangeResponse(data.poll, req.body?.availabilities);
+      if (!blockRangeCheck.ok) {
+        return res.status(400).json({ error: blockRangeCheck.message });
+      }
+      availabilities = blockRangeCheck.value;
     } else {
       const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates, {
         requireRanges: data.poll.mode === "timeslots_free",
@@ -2849,11 +3223,11 @@ app.get("/api/polls/:pollId/ics", (req, res) => {
       return res.status(404).json({ error: "Poll nicht gefunden." });
     }
 
+    const exportDates = listPollExportDates(data.poll, data.results);
     const requestedDate = normalizeText(req.query?.date || "", 10);
-    const bestDate = requestedDate
-      || data.results.bestDates[0]?.date
-      || data.poll.dates[0]
-      || null;
+    const bestDate = requestedDate && exportDates.includes(requestedDate)
+      ? requestedDate
+      : exportDates[0] || null;
 
     if (!bestDate || !/^\d{4}-\d{2}-\d{2}$/.test(bestDate)) {
       return res.status(400).json({ error: "Fuer diese Umfrage ist kein exportierbares Datum verfuegbar." });

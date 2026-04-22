@@ -871,6 +871,116 @@ select:focus {
   font-weight: 700;
 }
 
+.block-editor,
+.block-preview-list,
+.block-results-summary,
+.block-ranking-list,
+.block-month-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.block-results-summary,
+.block-month-list {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.block-range-inputs {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.block-preview-card,
+.block-range-form,
+.block-ranking-item,
+.block-month-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-muted) 88%, transparent);
+}
+
+.block-preview-card,
+.block-range-form,
+.block-month-panel {
+  padding: 0.95rem 1rem;
+}
+
+.block-ranking-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.block-ranking-item.is-winner {
+  border-color: rgba(16, 185, 129, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.22);
+}
+
+.block-month-head,
+.block-month-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.block-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.8rem;
+}
+
+.block-month-weekday {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.block-month-day {
+  min-height: 5.25rem;
+  padding: 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 0.95rem;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  display: grid;
+  align-content: space-between;
+  gap: 0.3rem;
+}
+
+.block-month-day.is-muted {
+  opacity: 0.42;
+}
+
+.block-month-day.is-active.low {
+  background: linear-gradient(180deg, var(--heat-low), color-mix(in srgb, var(--surface-muted) 88%, transparent));
+}
+
+.block-month-day.is-active.mid {
+  background: linear-gradient(180deg, var(--heat-mid), color-mix(in srgb, var(--surface-muted) 88%, transparent));
+}
+
+.block-month-day.is-active.high {
+  background: linear-gradient(180deg, var(--heat-high), color-mix(in srgb, var(--surface-muted) 88%, transparent));
+}
+
+.block-month-day.is-winner {
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.2);
+}
+
+.block-month-day-copy,
+.block-month-day-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.block-month-day-meta {
+  font-weight: 700;
+}
+
 .dashboard-grid {
   grid-template-columns: 1.15fr 0.95fr;
 }
@@ -1667,6 +1777,10 @@ body.poll-drawer-open {
   display: none;
 }
 
+.block-results-panel.is-hidden {
+  display: none;
+}
+
 .results-calendar-panel,
 .results-calendar-summary-copy,
 .results-calendar-month-list {
@@ -2353,7 +2467,9 @@ body.poll-drawer-open {
   .poll-list,
   .owner-actions,
   .availability-grid,
-  .heatmap-grid {
+  .heatmap-grid,
+  .block-range-inputs,
+  .block-month-list {
     grid-template-columns: 1fr;
   }
 
