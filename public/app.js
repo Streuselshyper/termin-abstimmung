@@ -5,12 +5,14 @@ const dynamicViewElement = document.querySelector("#dynamic-view");
 const toastElement = document.querySelector("#toast");
 const staticViewIds = ["landing-view", "login-view", "register-view", "forgot-password-view", "dynamic-view"];
 const weekdayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const weeklyWeekdayOrder = [1, 2, 3, 4, 5, 6, 0];
+const weeklyWeekdayLabels = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const statusLabels = {
   yes: "Ja",
   maybe: "Vielleicht",
   no: "Nein",
 };
-const CREATE_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free"]);
+const CREATE_POLL_MODES = new Set(["fixed", "timeslots", "free", "weekly"]);
 
 const state = {
   auth: {
@@ -24,6 +26,7 @@ const state = {
   selectedDates: new Set(),
   createTimeSlotsEnabled: false,
   createTimeSlots: {},
+  createWeeklySlots: [],
   currentMonth: startOfMonth(new Date()),
   participantSelectedDates: new Set(),
   participantSuggestedTimes: {},
@@ -618,6 +621,7 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
   state.selectedDates = new Set();
   state.createTimeSlotsEnabled = false;
   state.createTimeSlots = {};
+  state.createWeeklySlots = [];
   state.currentMonth = startOfMonth(new Date());
 
   let existingPoll = null;
@@ -636,6 +640,11 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
       existingPoll.timeSlots || existingPoll.time_slots || {},
       state.createMode
     );
+    state.createWeeklySlots = getWeeklySlotsFromPoll(existingPoll).map((entry) => ({
+      weekdays: [entry.weekday],
+      start: entry.time.split("-")[0] || "",
+      end: entry.time.split("-")[1] || "",
+    }));
     state.currentMonth = startOfMonth(getFirstSelectedCreateDate(existingPoll.dates));
   }
 
@@ -666,6 +675,7 @@ function fillCreateForm(existingPoll) {
   });
 
   ensureCreateTimeSlotControls();
+  ensureCreateWeeklyControls();
   updateCreateModeLayout();
 }
 
@@ -695,6 +705,9 @@ function bindCreateForm(existingPoll) {
   });
 
   document.querySelector("#create-form").addEventListener("submit", (event) => handleCreateSubmit(event, existingPoll?.id || ""));
+  if (createModeUsesWeeklySlots()) {
+    renderCreateWeeklySlots();
+  }
 }
 
 function renderCreateCalendar() {
@@ -784,7 +797,11 @@ function createModeUsesCalendar(mode = state.createMode) {
 }
 
 function createModeUsesParticipantSuggestions(mode = state.createMode) {
-  return mode === "free" || mode === "timeslots_free";
+  return mode === "free";
+}
+
+function createModeUsesWeeklySlots(mode = state.createMode) {
+  return mode === "weekly";
 }
 
 function createModeRequiresTimeSlots(mode = state.createMode) {
@@ -796,22 +813,59 @@ function createModeUsesRangeSlots(mode = state.createMode) {
 }
 
 function pollUsesParticipantSuggestions(mode = state.pollData?.poll?.mode) {
-  return mode === "free" || mode === "timeslots_free";
+  return mode === "free";
 }
 
-function suggestionModeUsesRangeSlots(mode = state.pollData?.poll?.mode) {
-  return mode === "timeslots_free";
+function pollUsesWeeklySlots(poll = state.pollData?.poll) {
+  return poll?.mode === "weekly";
+}
+
+function suggestionModeUsesRangeSlots() {
+  return false;
+}
+
+function getWeeklySlotsFromPoll(poll = state.pollData?.poll) {
+  const rawSlots = Array.isArray(poll?.weeklyConfig?.slots) ? poll.weeklyConfig.slots : [];
+  const normalized = rawSlots
+    .map((entry) => ({
+      weekday: Number(entry?.weekday),
+      time: normalizePollSlotValue(entry?.time),
+    }))
+    .filter((entry) => Number.isInteger(entry.weekday) && entry.weekday >= 0 && entry.weekday <= 6 && entry.time)
+    .sort((left, right) => {
+      const leftOrder = weeklyWeekdayOrder.indexOf(left.weekday);
+      const rightOrder = weeklyWeekdayOrder.indexOf(right.weekday);
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      return left.time.localeCompare(right.time);
+    });
+
+  return normalized;
+}
+
+function buildWeeklySlotKey(weekday, time) {
+  return `${weekday}_${time}`;
+}
+
+function formatWeeklyWeekday(weekday) {
+  return weeklyWeekdayLabels[weekday] || "?";
+}
+
+function formatWeeklySlotLabel(slot) {
+  return `${formatWeeklyWeekday(slot.weekday)} ${slot.time}`;
 }
 
 function updateCreateModeLayout() {
   const isFreeChoice = createModeUsesParticipantSuggestions();
+  const isWeekly = createModeUsesWeeklySlots();
   const isFixed = state.createMode === "fixed";
   const isTimeslots = state.createMode === "timeslots";
-  const isFreeSlots = state.createMode === "timeslots_free";
   const pageDescription = document.querySelector("#create-page-description");
   const formTitle = document.querySelector("#create-form-title");
   const fixedFields = document.querySelector("#create-fixed-fields");
   const freeFields = document.querySelector("#create-free-fields");
+  const weeklyFields = document.querySelector("#create-weekly-fields");
   const freeModeTitle = document.querySelector("#create-free-mode-title");
   const freeModeDescription = document.querySelector("#create-free-mode-description");
   const timeSlotControls = document.querySelector("#create-time-slots-controls");
@@ -819,7 +873,7 @@ function updateCreateModeLayout() {
   const timeSlotDescription = document.querySelector("#create-time-slots-description");
   const timeSlotToggleShell = document.querySelector("#create-time-slots-toggle-shell");
 
-  if (isFreeChoice) {
+  if (isFreeChoice || isWeekly) {
     state.createTimeSlotsEnabled = false;
   } else if (isTimeslots) {
     state.createTimeSlotsEnabled = true;
@@ -827,17 +881,13 @@ function updateCreateModeLayout() {
 
   if (pageDescription) {
     if (isFixed) {
-      pageDescription.textContent =
-        "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab.";
+      pageDescription.textContent = "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab.";
     } else if (isTimeslots) {
-      pageDescription.textContent =
-        "Lege Titel, Beschreibung, Daten und feste Zeitfenster fest. Teilnehmende stimmen danach pro Zeitslot mit Ja, Vielleicht oder Nein ab.";
-    } else if (isFreeSlots) {
-      pageDescription.textContent =
-        "Lege Titel und Beschreibung fest. Teilnehmende schlagen danach selbst Tage mit passenden Zeitfenstern wie 14:00-16:00 vor.";
+      pageDescription.textContent = "Lege Titel, Beschreibung, Daten und feste Zeitfenster fest. Teilnehmende stimmen danach pro Zeitslot mit Ja, Vielleicht oder Nein ab.";
+    } else if (isWeekly) {
+      pageDescription.textContent = "Lege wiederkehrende Wochen-Slots wie Mittwoch 09:45-11:15 fest. Teilnehmende stimmen pro Wochentag und Uhrzeit ab, ganz ohne Kalenderdaten.";
     } else {
-      pageDescription.textContent =
-        "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
+      pageDescription.textContent = "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
     }
   }
 
@@ -846,25 +896,24 @@ function updateCreateModeLayout() {
       formTitle.textContent = "Feste Termine konfigurieren";
     } else if (isTimeslots) {
       formTitle.textContent = "Zeitslots konfigurieren";
-    } else if (isFreeSlots) {
-      formTitle.textContent = "Zeitslots Freie Wahl konfigurieren";
+    } else if (isWeekly) {
+      formTitle.textContent = "Wochen-Slots konfigurieren";
     } else {
       formTitle.textContent = "Freie Wahl konfigurieren";
     }
   }
 
-  fixedFields?.classList.toggle("is-hidden", isFreeChoice);
+  fixedFields?.classList.toggle("is-hidden", isFreeChoice || isWeekly);
   freeFields?.classList.toggle("is-hidden", !isFreeChoice);
-  timeSlotControls?.classList.toggle("is-hidden", isFreeChoice);
+  weeklyFields?.classList.toggle("is-hidden", !isWeekly);
+  timeSlotControls?.classList.toggle("is-hidden", isFreeChoice || isWeekly);
 
   if (freeModeTitle) {
-    freeModeTitle.textContent = isFreeSlots ? "Zeitslots Freie Wahl" : "Freie Wahl";
+    freeModeTitle.textContent = "Freie Wahl";
   }
 
   if (freeModeDescription) {
-    freeModeDescription.textContent = isFreeSlots
-      ? "In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst Tage markieren und dazu passende Zeitfenster pro Datum eintragen."
-      : "In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst beliebige Tage im Kalender markieren.";
+    freeModeDescription.textContent = "In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst beliebige Tage im Kalender markieren.";
   }
 
   if (timeSlotTitle) {
@@ -883,6 +932,10 @@ function updateCreateModeLayout() {
     syncCreateTimeSlotsWithSelectedDates();
     renderCreateCalendar();
     renderCreateSelectedDates();
+  }
+
+  if (isWeekly) {
+    renderCreateWeeklySlots();
   }
 
   renderCreateTimeSlots();
@@ -912,6 +965,196 @@ function ensureCreateTimeSlotControls() {
   `;
 
   host.appendChild(controls);
+}
+
+function ensureCreateWeeklyControls() {
+  const host = document.querySelector("#create-weekly-editor");
+  if (!host) {
+    return;
+  }
+
+  renderCreateWeeklySlots();
+}
+
+function renderCreateWeeklySlots() {
+  const host = document.querySelector("#create-weekly-editor");
+  if (!host) {
+    return;
+  }
+
+  const rows = Array.isArray(state.createWeeklySlots) ? state.createWeeklySlots : [];
+  host.innerHTML = `
+    <div class="selected-header">
+      <span>Wochen-Slots</span>
+      <button id="create-weekly-add" class="ghost-button compact-button" type="button">
+        <i class="fa-solid fa-plus"></i>
+        Slot
+      </button>
+    </div>
+    <div class="weekly-slot-list"></div>
+  `;
+
+  const list = host.querySelector(".weekly-slot-list");
+  if (rows.length === 0) {
+    list.innerHTML = '<p class="description">Noch keine Wochen-Slots hinterlegt.</p>';
+  } else {
+    rows.forEach((entry, index) => {
+      const row = document.createElement("div");
+      row.className = "weekly-slot-row";
+      const activeDays = new Set(Array.isArray(entry.weekdays) ? entry.weekdays : []);
+      row.innerHTML = `
+        <div class="weekly-weekday-group">
+          ${weeklyWeekdayOrder
+            .map((weekday) => `
+              <button
+                class="weekly-weekday-button${activeDays.has(weekday) ? " is-active" : ""}"
+                type="button"
+                data-weekly-weekday="${weekday}"
+                data-index="${index}"
+              >
+                ${escapeHtml(formatWeeklyWeekday(weekday))}
+              </button>
+            `)
+            .join("")}
+        </div>
+        <div class="weekly-time-range-fields">
+          <input
+            class="time-slot-input weekly-time-input"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="5"
+            placeholder="09:45"
+            value="${escapeHtml(entry.start || "")}"
+            data-index="${index}"
+            data-part="start"
+          />
+          <span class="time-slot-range-separator">bis</span>
+          <input
+            class="time-slot-input weekly-time-input"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="5"
+            placeholder="11:15"
+            value="${escapeHtml(entry.end || "")}"
+            data-index="${index}"
+            data-part="end"
+          />
+        </div>
+        <button class="text-button danger-text-button" type="button" data-weekly-remove="${index}">Entfernen</button>
+      `;
+      list.appendChild(row);
+    });
+  }
+
+  host.querySelector("#create-weekly-add")?.addEventListener("click", () => {
+    state.createWeeklySlots.push({ weekdays: [1], start: "", end: "" });
+    renderCreateWeeklySlots();
+  });
+
+  host.querySelectorAll("[data-weekly-weekday]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.index);
+      const weekday = Number(button.dataset.weeklyWeekday);
+      const row = state.createWeeklySlots[index];
+      if (!row || !Number.isInteger(weekday)) {
+        return;
+      }
+
+      const current = new Set(Array.isArray(row.weekdays) ? row.weekdays : []);
+      if (current.has(weekday)) {
+        current.delete(weekday);
+      } else {
+        current.add(weekday);
+      }
+      row.weekdays = weeklyWeekdayOrder.filter((value) => current.has(value));
+      renderCreateWeeklySlots();
+    });
+  });
+
+  host.querySelectorAll(".weekly-time-input").forEach((input) => {
+    input.addEventListener("input", () => {
+      const index = Number(input.dataset.index);
+      const part = input.dataset.part === "end" ? "end" : "start";
+      const row = state.createWeeklySlots[index];
+      if (!row) {
+        return;
+      }
+      const filteredValue = filterTimeSlotInput(input.value);
+      if (filteredValue !== input.value) {
+        input.value = filteredValue;
+      }
+      row[part] = filteredValue;
+    });
+
+    input.addEventListener("blur", () => {
+      const index = Number(input.dataset.index);
+      const part = input.dataset.part === "end" ? "end" : "start";
+      const row = state.createWeeklySlots[index];
+      if (!row) {
+        return;
+      }
+      const normalizedValue = normalizeTimeSlotValue(input.value);
+      if (normalizedValue) {
+        row[part] = normalizedValue;
+        input.value = normalizedValue;
+      }
+    });
+  });
+
+  host.querySelectorAll("[data-weekly-remove]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.weeklyRemove);
+      state.createWeeklySlots.splice(index, 1);
+      renderCreateWeeklySlots();
+    });
+  });
+}
+
+function normalizeCreateWeeklySlotsForSubmit() {
+  const normalized = [];
+
+  for (const entry of state.createWeeklySlots || []) {
+    const weekdays = Array.from(new Set((entry.weekdays || []).map((value) => Number(value)).filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)));
+    const start = normalizeTimeSlotValue(entry.start || "");
+    const end = normalizeTimeSlotValue(entry.end || "");
+    if (weekdays.length === 0 && !start && !end) {
+      continue;
+    }
+    if (weekdays.length === 0) {
+      return { ok: false, message: "Bitte waehle fuer jeden Wochen-Slot mindestens einen Wochentag." };
+    }
+    if (!start || !end || start >= end) {
+      return { ok: false, message: "Bitte nutze fuer Wochen-Slots gueltige Zeiten im Format HH:MM-HH:MM." };
+    }
+
+    weekdays.forEach((weekday) => {
+      normalized.push({ weekday, time: `${start}-${end}` });
+    });
+  }
+
+  const deduped = new Map();
+  normalized.forEach((entry) => {
+    deduped.set(buildWeeklySlotKey(entry.weekday, entry.time), entry);
+  });
+
+  const slots = Array.from(deduped.values()).sort((left, right) => {
+    const leftOrder = weeklyWeekdayOrder.indexOf(left.weekday);
+    const rightOrder = weeklyWeekdayOrder.indexOf(right.weekday);
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.time.localeCompare(right.time);
+  });
+
+  if (slots.length === 0) {
+    return { ok: false, message: "Bitte hinterlege mindestens einen Wochen-Slot." };
+  }
+
+  return { ok: true, value: { slots } };
 }
 
 function renderCreateTimeSlots() {
@@ -1113,11 +1356,17 @@ async function handleCreateSubmit(event, pollId) {
   const title = document.querySelector("#create-title").value.trim();
   const description = document.querySelector("#create-description").value.trim();
   syncCreateTimeSlotsFromEditor();
+  const isWeekly = createModeUsesWeeklySlots();
   const usesTimeSlots = createModeRequiresTimeSlots() || (state.createMode === "fixed" && state.createTimeSlotsEnabled);
   const timeSlotValidation = usesTimeSlots ? normalizeCreateTimeSlotsForSubmit() : { ok: true, value: {} };
+  const weeklyValidation = isWeekly ? normalizeCreateWeeklySlotsForSubmit() : { ok: true, value: { slots: [] } };
 
   if (!timeSlotValidation.ok) {
     setFeedback(feedback, timeSlotValidation.message, "error");
+    return;
+  }
+  if (!weeklyValidation.ok) {
+    setFeedback(feedback, weeklyValidation.message, "error");
     return;
   }
 
@@ -1128,6 +1377,7 @@ async function handleCreateSubmit(event, pollId) {
     dates: createModeUsesCalendar() ? Array.from(state.selectedDates).sort() : [],
     allowTimeSlots: state.createMode === "timeslots" ? true : state.createMode === "fixed" ? state.createTimeSlotsEnabled : false,
     timeSlots: usesTimeSlots ? timeSlotValidation.value : {},
+    weeklyConfig: weeklyValidation.value,
   };
 
   try {
@@ -1860,8 +2110,8 @@ function getDashboardPollTypeMeta(mode) {
   if (mode === "timeslots") {
     return { label: "Zeitslots", icon: "fa-regular fa-clock" };
   }
-  if (mode === "timeslots_free") {
-    return { label: "Zeitslots Freie Wahl", icon: "fa-regular fa-calendar-plus" };
+  if (mode === "weekly") {
+    return { label: "Weekly", icon: "fa-regular fa-clock" };
   }
 
   return { label: "Freie Wahl", icon: "fa-regular fa-pen-to-square" };
@@ -2149,6 +2399,19 @@ function initializeDraftFromPoll(poll) {
   state.participantCalendarExpanded = !window.matchMedia("(max-width: 720px)").matches;
   const hasTimeSlots = pollHasTimeSlots(poll);
 
+  if (pollUsesWeeklySlots(poll)) {
+    const defaultDraft = {};
+    getWeeklySlotsFromPoll(poll).forEach((slot) => {
+      const key = buildWeeklySlotKey(slot.weekday, slot.time);
+      defaultDraft[key] = editableResponse?.weeklyAvailabilities?.[key] || "maybe";
+    });
+    state.responseDraft = defaultDraft;
+    state.participantSelectedDates = new Set();
+    state.participantSuggestedTimes = {};
+    state.participantCurrentMonth = startOfMonth(new Date());
+    return;
+  }
+
   if (pollUsesParticipantSuggestions(poll.mode) && !hasTimeSlots) {
     const suggestedEntries = getSuggestedDateEntries(
       editableResponse?.suggestedDateEntries || editableResponse?.suggestedDates
@@ -2311,17 +2574,15 @@ function fillPollSummary() {
   document.querySelector("#poll-description-view").classList.toggle("is-hidden", !poll.description);
   favoriteSummary.textContent =
     responses.length > 0 && favorite
-      ? `🏆 Favorit: ${formatDateShort(favorite.date)}${formatFavoriteSlotLabel(poll, favorite.slot)} mit ${formatVoteCountLabel(
-          favorite.votes
-        )}`
+      ? `🏆 Favorit: ${escapeFavoriteLabel(poll, favorite)} mit ${formatVoteCountLabel(favorite.votes)}`
       : "";
   favoriteSummary.classList.toggle("is-hidden", !(responses.length > 0 && favorite));
   document.querySelector("#participant-form-title").textContent = hasEditableResponse()
     ? "Verfuegbarkeit anpassen"
     : hasTimeSlots
       ? "Deine Zeitfenster"
-      : poll.mode === "timeslots_free"
-        ? "Deine Zeitfenster"
+      : poll.mode === "weekly"
+        ? "Deine Wochen-Slots"
       : poll.mode === "fixed"
         ? "Deine Verfuegbarkeit"
       : "Teilnehmen";
@@ -2334,9 +2595,9 @@ function fillPollSummary() {
     `<span class="pill"><i class="${escapeHtml(modeMeta.icon)}"></i> ${escapeHtml(modeMeta.label)}</span>`,
     `<span class="pill"><i class="fa-regular fa-calendar"></i> ${escapeHtml(
       hasTimeSlots
-        ? poll.mode === "timeslots"
-          ? `${countPollScheduleEntries(poll)} Zeitslots`
-          : `${countPollScheduleEntries(poll)} Terminoptionen`
+        ? `${countPollScheduleEntries(poll)} Zeitslots`
+        : poll.mode === "weekly"
+          ? `${getWeeklySlotsFromPoll(poll).length} Wochen-Slots`
         : poll.mode === "fixed"
           ? `${poll.dates.length} Termine`
         : `${results.summary.length || 0} genannte Tage`
@@ -2379,6 +2640,14 @@ function fillPollSummary() {
   }
 }
 
+function escapeFavoriteLabel(poll, favorite) {
+  if (pollUsesWeeklySlots(poll)) {
+    return `${favorite.date}${formatFavoriteSlotLabel(poll, favorite.slot)}`;
+  }
+
+  return `${formatDateShort(favorite.date)}${formatFavoriteSlotLabel(poll, favorite.slot)}`;
+}
+
 function formatResponseCountLabel(count) {
   return count === 1 ? "1 Antwort" : `${count} Antworten`;
 }
@@ -2392,7 +2661,7 @@ function formatFavoriteSlotLabel(poll, slot) {
     return "";
   }
 
-  return poll?.mode === "timeslots" ? ` (${slot})` : ` um ${slot}`;
+  return poll?.mode === "weekly" || poll?.mode === "timeslots" ? ` (${slot})` : ` um ${slot}`;
 }
 
 function renderPollOwnerActions() {
@@ -2553,6 +2822,12 @@ function renderAvailabilityForm() {
     return;
   }
 
+  if (pollUsesWeeklySlots(state.pollData.poll)) {
+    legend.classList.remove("is-hidden");
+    renderWeeklyAvailabilityForm(grid);
+    return;
+  }
+
   if (pollUsesParticipantSuggestions(state.pollData.poll.mode)) {
     legend.classList.add("is-hidden");
     renderFreeChoiceForm(grid);
@@ -2667,6 +2942,58 @@ function renderFixedSlotAvailabilityForm(grid) {
 
     grid.appendChild(dateCard);
   }
+}
+
+function renderWeeklyAvailabilityForm(grid) {
+  const slots = getWeeklySlotsFromPoll(state.pollData.poll);
+  if (slots.length === 0) {
+    grid.innerHTML = '<p class="description">Keine Wochen-Slots vorhanden.</p>';
+    return;
+  }
+
+  const table = document.createElement("div");
+  table.className = "weekly-response-grid";
+  weeklyWeekdayOrder.forEach((weekday) => {
+    const weekdaySlots = slots.filter((slot) => slot.weekday === weekday);
+    if (weekdaySlots.length === 0) {
+      return;
+    }
+
+    const dayColumn = document.createElement("div");
+    dayColumn.className = "availability-card availability-slot-card";
+    dayColumn.innerHTML = `<strong>${escapeHtml(formatWeeklyWeekday(weekday))}</strong>`;
+
+    weekdaySlots.forEach((slot) => {
+      const key = buildWeeklySlotKey(slot.weekday, slot.time);
+      const group = document.createElement("div");
+      group.className = "availability-slot-group";
+      group.innerHTML = `<div class="availability-slot-label">${escapeHtml(slot.time)}</div>`;
+      const row = document.createElement("div");
+      row.className = "status-row";
+
+      ["yes", "maybe", "no"].forEach((status) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "status-chip";
+        button.textContent = statusLabels[status];
+        if (state.responseDraft[key] === status) {
+          button.classList.add("active");
+        }
+        button.addEventListener("click", () => {
+          state.responseDraft[key] = status;
+          renderAvailabilityForm();
+        });
+        row.appendChild(button);
+      });
+
+      group.appendChild(row);
+      dayColumn.appendChild(group);
+    });
+
+    table.appendChild(dayColumn);
+  });
+
+  grid.appendChild(table);
 }
 
 function renderParticipantIdentity() {
@@ -3031,7 +3358,7 @@ function renderParticipantSelectedDates() {
 }
 
 function supportsResultsCalendar(poll) {
-  return CREATE_POLL_MODES.has(poll?.mode);
+  return CREATE_POLL_MODES.has(poll?.mode) && poll?.mode !== "weekly";
 }
 
 function ensureResultsCalendarPanel() {
@@ -3869,6 +4196,12 @@ function renderResultsMatrixTable(poll, responses, results, editableResponse, sh
     return;
   }
 
+  if (pollUsesWeeklySlots(poll)) {
+    renderWeeklyResultsTable(poll, responses, editableResponse, showEditIcon);
+    bindMatrixEditButtons();
+    return;
+  }
+
   if (pollUsesParticipantSuggestions(poll.mode)) {
     foot.innerHTML = "";
     const matrixDates = getTopMatrixDates(results.summary);
@@ -4056,6 +4389,112 @@ function renderResultsMatrixTable(poll, responses, results, editableResponse, sh
   `;
 
   bindMatrixEditButtons();
+}
+
+function getWeeklySlotStats(poll, responses) {
+  const entries = getWeeklySlotsFromPoll(poll).map((slot) => ({
+    ...slot,
+    key: buildWeeklySlotKey(slot.weekday, slot.time),
+    score: 0,
+    yes: 0,
+    maybe: 0,
+    no: 0,
+  }));
+
+  for (const response of responses || []) {
+    for (const entry of entries) {
+      const status = response.weeklyAvailabilities?.[entry.key] || "no";
+      if (status === "yes") {
+        entry.yes += 1;
+        entry.score += getScoreForStatus(status, response.hasVeto);
+      } else if (status === "maybe") {
+        entry.maybe += 1;
+        entry.score += getScoreForStatus(status, response.hasVeto);
+      } else {
+        entry.no += 1;
+      }
+    }
+  }
+
+  const winnerEntry = entries.reduce((bestEntry, entry) => {
+    if (!bestEntry || entry.score > bestEntry.score) {
+      return entry;
+    }
+    if (bestEntry && entry.score === bestEntry.score && entry.yes > bestEntry.yes) {
+      return entry;
+    }
+    return bestEntry;
+  }, null);
+
+  return {
+    entries,
+    winnerKey: winnerEntry?.key || "",
+    winnerEntry,
+  };
+}
+
+function renderWeeklyResultsTable(poll, responses, editableResponse, showEditIcon) {
+  const head = document.querySelector("#results-head");
+  const body = document.querySelector("#results-body");
+  const foot = document.querySelector("#results-foot");
+  const weeklyStats = getWeeklySlotStats(poll, responses);
+
+  head.innerHTML = `
+    <tr>
+      <th class="name-column">Name</th>
+      ${weeklyStats.entries
+        .map(
+          (entry) => `
+            <th class="${entry.key === weeklyStats.winnerKey ? "winner-column" : ""}">
+              <div class="results-matrix-header">
+                <strong>${escapeHtml(formatWeeklyWeekday(entry.weekday))}</strong>
+                <span class="results-matrix-subline">${escapeHtml(entry.time)}</span>
+              </div>
+            </th>
+          `
+        )
+        .join("")}
+    </tr>
+  `;
+
+  if (responses.length === 0) {
+    foot.innerHTML = "";
+    body.innerHTML = `
+      <tr>
+        <td colspan="${weeklyStats.entries.length + 1}" class="description">Noch keine Antworten eingetragen.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  body.innerHTML = responses
+    .map((response) => {
+      const cells = weeklyStats.entries
+        .map((entry) => {
+          const status = response.weeklyAvailabilities?.[entry.key] || "no";
+          return `<td class="matrix-cell weekly-heat-${status}"><span class="result-badge ${status}">${statusLabels[status]}</span></td>`;
+        })
+        .join("");
+
+      return `<tr><td class="name-column">${renderMatrixNameCell(response.name, response, editableResponse, showEditIcon)}</td>${cells}</tr>`;
+    })
+    .join("");
+
+  foot.innerHTML = `
+    <tr>
+      <td class="name-column score-footer">Ranking</td>
+      ${weeklyStats.entries
+        .map(
+          (entry) => `
+            <td class="score-footer ${entry.key === weeklyStats.winnerKey ? "winner-column" : ""}">
+              <strong>${entry.score}</strong>
+              <div class="results-matrix-subline">${entry.yes} Ja · ${entry.maybe} Vielleicht</div>
+            </td>
+          `
+        )
+        .join("")}
+    </tr>
+  `;
 }
 
 function renderFixedSlotResultsTable(poll, responses, editableResponse, showEditIcon) {
@@ -4256,6 +4695,8 @@ async function handleResponseSubmit(event) {
       state.pollData.poll,
       state.responseDraft
     );
+  } else if (pollUsesWeeklySlots(state.pollData.poll)) {
+    payload.weeklyAvailabilities = { ...state.responseDraft };
   } else if (isFixed) {
     payload.availabilities = state.responseDraft;
   } else {
@@ -4337,8 +4778,8 @@ function getPollExportDates(poll) {
     return [];
   }
 
-  if (pollHasTimeSlots(poll)) {
-    return [...(poll.dates || [])].sort();
+  if (pollHasTimeSlots(poll) || poll.mode === "weekly") {
+    return [];
   }
 
   if (poll.mode === "fixed") {
@@ -4513,6 +4954,13 @@ function getPollFavorite(poll, responses, results) {
       : null;
   }
 
+  if (pollUsesWeeklySlots(poll)) {
+    const { winnerEntry } = getWeeklySlotStats(poll, responses);
+    return winnerEntry
+      ? { date: formatWeeklyWeekday(winnerEntry.weekday), slot: winnerEntry.time, votes: winnerEntry.yes, score: winnerEntry.score }
+      : null;
+  }
+
   if (poll.mode === "fixed") {
     const { winnerEntry } = getFixedDateStats(poll.dates, responses);
     return winnerEntry ? { date: winnerEntry.date, votes: winnerEntry.yes, score: winnerEntry.score } : null;
@@ -4551,6 +4999,10 @@ function countPollTimeSlots(timeSlots) {
 }
 
 function countPollScheduleEntries(poll) {
+  if (pollUsesWeeklySlots(poll)) {
+    return getWeeklySlotsFromPoll(poll).length;
+  }
+
   if (!pollHasTimeSlots(poll)) {
     return Array.isArray(poll?.dates) ? poll.dates.length : 0;
   }

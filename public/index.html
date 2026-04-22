@@ -257,6 +257,67 @@
         text-align: center;
       }
 
+      .weekly-editor,
+      .weekly-slot-list,
+      .weekly-response-grid {
+        display: grid;
+        gap: 0.9rem;
+      }
+
+      .weekly-slot-row {
+        display: grid;
+        gap: 0.75rem;
+        padding: 0.9rem;
+        border: 1px solid var(--border-soft);
+        border-radius: 0.85rem;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .weekly-weekday-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+      }
+
+      .weekly-weekday-button {
+        border: 1px solid var(--border-soft);
+        border-radius: 999px;
+        background: transparent;
+        color: inherit;
+        padding: 0.35rem 0.7rem;
+      }
+
+      .weekly-weekday-button.is-active {
+        background: rgba(15, 118, 110, 0.18);
+        border-color: rgba(15, 118, 110, 0.42);
+        color: var(--accent-strong);
+      }
+
+      .weekly-time-range-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        gap: 0.6rem;
+        align-items: center;
+      }
+
+      .weekly-heat-yes {
+        background: rgba(16, 185, 129, 0.14);
+      }
+
+      .weekly-heat-maybe {
+        background: rgba(245, 158, 11, 0.14);
+      }
+
+      .weekly-heat-no {
+        background: rgba(239, 68, 68, 0.08);
+      }
+
+      @media (max-width: 720px) {
+        .weekly-time-range-fields {
+          grid-template-columns: 1fr;
+        }
+      }
+
       .owner-actions {
         margin-top: 1.4rem;
       }
@@ -783,11 +844,11 @@
                 <p class="description">Teilnehmende schlagen selbst passende Tage im Kalender vor.</p>
               </div>
             </a>
-            <a class="create-mode-card" href="/create?mode=timeslots_free">
-              <div class="create-mode-icon"><i class="fa-regular fa-calendar-plus"></i></div>
+            <a class="create-mode-card" href="/create?mode=weekly">
+              <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
               <div class="create-mode-copy">
-                <h3>Zeitslots Freie Wahl</h3>
-                <p class="description">Teilnehmende schlagen selbst Tage mit passenden Zeitfenstern wie 14:00-16:00 vor.</p>
+                <h3>Weekly</h3>
+                <p class="description">Du definierst Wochentage plus Uhrzeiten wie Mittwoch 09:45-11:15. Ohne konkrete Kalenderdaten.</p>
               </div>
             </a>
           </div>
@@ -929,11 +990,11 @@
                 <p class="description">Teilnehmende markieren selbst beliebige passende Tage im Kalender.</p>
               </div>
             </a>
-            <a class="create-mode-card" href="/create?mode=timeslots_free">
-              <div class="create-mode-icon"><i class="fa-regular fa-calendar-plus"></i></div>
+            <a class="create-mode-card" href="/create?mode=weekly">
+              <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
               <div class="create-mode-copy">
-                <h3>Zeitslots Freie Wahl</h3>
-                <p class="description">Teilnehmende markieren Tage und tragen dazu eigene Zeitfenster pro Datum ein.</p>
+                <h3>Weekly</h3>
+                <p class="description">Du legst Wochentage plus Zeitfenster fest. Abgestimmt wird nur auf das Wochenmuster, ohne Datumsangaben.</p>
               </div>
             </a>
           </div>
@@ -999,6 +1060,14 @@
                 In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst beliebige Tage im
                 Kalender markieren.
               </p>
+            </div>
+
+            <div id="create-weekly-fields" class="selected-dates-box is-hidden">
+              <div class="selected-header">
+                <span>Weekly</span>
+              </div>
+              <p class="description">Lege nur Wochentage und Zeitfenster fest. Es werden keine konkreten Datumsangaben erzeugt.</p>
+              <div id="create-weekly-editor" class="weekly-editor"></div>
             </div>
 
             <div id="create-time-slot-settings"></div>

@@ -15,7 +15,7 @@ const APP_BASE_URL = normalizeConfiguredBaseUrl(process.env.APP_BASE_URL || "");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
-const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free"]);
+const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free", "weekly"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
 const VETO_SCORE_MAP = { yes: 3, maybe: 2, no: 0 };
 const rateLimitBuckets = new Map();
@@ -58,6 +58,7 @@ db.exec(`
     time_slots TEXT NOT NULL DEFAULT '{}',
     mode TEXT NOT NULL DEFAULT 'fixed',
     allow_time_slots INTEGER NOT NULL DEFAULT 0,
+    weekly_config TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -113,6 +114,7 @@ ensureColumn("polls", "mode", "TEXT NOT NULL DEFAULT 'fixed'");
 ensureColumn("polls", "has_time_slots", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("polls", "time_slots", "TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("polls", "allow_time_slots", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("polls", "weekly_config", "TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("polls", "created_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("polls", "updated_at", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("polls", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
@@ -463,18 +465,48 @@ function validatePassword(password) {
   return { ok: true, value: password.slice(0, 200) };
 }
 
+function normalizeWeeklySlotKey(weekday, time) {
+  return `${weekday}_${time}`;
+}
+
+function normalizeWeeklyConfig(config) {
+  const rawSlots = Array.isArray(config?.slots) ? config.slots : [];
+  const unique = new Map();
+
+  for (const entry of rawSlots) {
+    const weekday = Number(entry?.weekday);
+    const time = normalizeScheduleSlotValue(entry?.time, { allowRanges: true });
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !time) {
+      continue;
+    }
+
+    unique.set(normalizeWeeklySlotKey(weekday, time), { weekday, time });
+  }
+
+  return {
+    slots: Array.from(unique.values()).sort((left, right) => {
+      if (left.weekday !== right.weekday) {
+        return left.weekday - right.weekday;
+      }
+      return left.time.localeCompare(right.time);
+    }),
+  };
+}
+
 function validatePollInput(body) {
-  console.log("DEBUG validatePollInput - body:", JSON.stringify(body, null, 2));
   const title = normalizeText(body?.title, 120);
   const description = normalizeText(body?.description, 1200);
   const mode = normalizeMode(body?.mode);
+  const isWeekly = mode === "weekly";
   const dates = mode === "fixed" || mode === "timeslots" ? normalizeDates(body?.dates) : [];
   const requestedTimeSlots = normalizeTimeSlotsByDate(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const invalidTimeSlot = findInvalidTimeSlotEntry(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const allowTimeSlots =
-    mode === "timeslots" ||
-    (mode === "fixed" && (normalizeBoolean(body?.allowTimeSlots, false) || hasTimeSlotEntries(requestedTimeSlots)));
+    !isWeekly &&
+    (mode === "timeslots" ||
+      (mode === "fixed" && (normalizeBoolean(body?.allowTimeSlots, false) || hasTimeSlotEntries(requestedTimeSlots))));
   const timeSlots = allowTimeSlots ? requestedTimeSlots : {};
+  const weeklyConfig = isWeekly ? normalizeWeeklyConfig(body?.weeklyConfig) : { slots: [] };
   const inviteMessage = normalizeText(body?.inviteMessage, 500);
   const inviteEmails = normalizeInviteEmails(body?.inviteEmails);
 
@@ -483,6 +515,9 @@ function validatePollInput(body) {
   }
   if (description.length < 3) {
     return { ok: false, message: "Die Beschreibung muss mindestens 3 Zeichen lang sein." };
+  }
+  if (isWeekly && weeklyConfig.slots.length === 0) {
+    return { ok: false, message: "Bitte hinterlege mindestens einen Wochen-Slot." };
   }
   if ((mode === "fixed" || mode === "timeslots" || allowTimeSlots) && dates.length === 0) {
     return { ok: false, message: "Bitte waehle mindestens ein Datum aus." };
@@ -506,11 +541,6 @@ function validatePollInput(body) {
     }
   }
 
-  console.log("DEBUG - dates:", dates);
-  console.log("DEBUG - requestedTimeSlots:", requestedTimeSlots);
-  console.log("DEBUG - allowTimeSlots:", allowTimeSlots);
-  console.log("DEBUG - final timeSlots:", timeSlots);
-
   return {
     ok: true,
     value: {
@@ -520,6 +550,7 @@ function validatePollInput(body) {
       dates,
       allowTimeSlots,
       timeSlots,
+      weeklyConfig,
       inviteMessage,
       inviteEmails,
       notificationEmailEnabled: normalizeBoolean(body?.notificationEmailEnabled, true),
@@ -566,6 +597,29 @@ function validateSlotAvailabilities(timeSlots, availabilities) {
       }
       normalized[date][slot] = status;
     }
+  }
+
+  return { ok: true, value: normalized };
+}
+
+
+function getPollWeeklySlots(poll) {
+  return normalizeWeeklyConfig(poll?.weeklyConfig || poll?.weekly_config || {}).slots;
+}
+
+function validateWeeklyResponses(poll, availabilities) {
+  if (!availabilities || typeof availabilities !== "object" || Array.isArray(availabilities)) {
+    return { ok: false, message: "Ungueltige Wochen-Slot-Antworten." };
+  }
+
+  const normalized = {};
+  for (const entry of getPollWeeklySlots(poll)) {
+    const key = normalizeWeeklySlotKey(entry.weekday, entry.time);
+    const status = availabilities[key];
+    if (!VALID_STATUSES.has(status)) {
+      return { ok: false, message: `Fuer Wochen-Slot ${entry.weekday} ${entry.time} fehlt ein gueltiger Status.` };
+    }
+    normalized[key] = status;
   }
 
   return { ok: true, value: normalized };
@@ -906,6 +960,7 @@ function mapPollRow(row, req) {
     timeSlots: parseJsonObject(row.time_slots),
     mode: normalizeMode(row.mode),
     allowTimeSlots: Boolean(row.allow_time_slots),
+    weeklyConfig: parseJsonObject(row.weekly_config),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     userId: row.user_id ?? null,
@@ -932,6 +987,7 @@ function mapResponseRow(row) {
     name: displayName,
     availabilities: JSON.parse(row.availabilities),
     slotAvailabilities: parseJsonObject(row.slot_availabilities),
+    weeklyAvailabilities: parseJsonObject(row.slot_availabilities),
     suggestedDates: suggestedDateEntries.map((entry) => entry.date),
     suggestedDateEntries,
     hasVeto: Boolean(row.has_veto),
@@ -1035,9 +1091,65 @@ function calculateBestDateSlots(poll, responses) {
   };
 }
 
+
+function calculateBestWeeklySlots(poll, responses) {
+  const summary = getPollWeeklySlots(poll).map((entry) => {
+    let yes = 0;
+    let maybe = 0;
+    let no = 0;
+    let score = 0;
+    const key = normalizeWeeklySlotKey(entry.weekday, entry.time);
+
+    for (const response of responses) {
+      const status = response.weeklyAvailabilities?.[key] || "no";
+      if (status === "yes") {
+        yes += 1;
+      } else if (status === "maybe") {
+        maybe += 1;
+      } else {
+        no += 1;
+      }
+      score += getScoreForStatus(status, Boolean(response.hasVeto));
+    }
+
+    return {
+      ...entry,
+      key,
+      yes,
+      maybe,
+      no,
+      score,
+      participants: responses.length,
+    };
+  });
+
+  const sorted = [...summary].sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    if (right.yes !== left.yes) {
+      return right.yes - left.yes;
+    }
+    if (left.weekday !== right.weekday) {
+      return left.weekday - right.weekday;
+    }
+    return left.time.localeCompare(right.time);
+  });
+
+  const bestScore = sorted[0]?.score ?? 0;
+  return {
+    summary,
+    bestDates: sorted.filter((entry) => entry.score === bestScore && sorted.length > 0),
+  };
+}
+
 function calculatePollResults(poll, responses) {
   if (pollUsesTimeSlots(poll)) {
     return calculateBestDateSlots(poll, responses);
+  }
+
+  if (poll.mode === "weekly") {
+    return calculateBestWeeklySlots(poll, responses);
   }
 
   if (poll.mode === "fixed") {
@@ -1050,6 +1162,10 @@ function calculatePollResults(poll, responses) {
 function formatBestDateEntry(entry) {
   if (!entry) {
     return "";
+  }
+
+  if (entry.weekday !== undefined) {
+    return `${entry.weekday} ${entry.time}`;
   }
 
   return entry.slot ? `${entry.date} ${entry.slot}` : entry.date;
@@ -2219,8 +2335,8 @@ app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "p
     db.prepare(`
       INSERT INTO polls (
         id, title, description, dates, mode, created_at, updated_at, user_id,
-        invite_message, notification_email_enabled, allow_email_invites, has_time_slots, time_slots, allow_time_slots
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        invite_message, notification_email_enabled, allow_email_invites, has_time_slots, time_slots, allow_time_slots, weekly_config
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       pollId,
       input.title,
@@ -2235,7 +2351,8 @@ app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "p
       input.allowEmailInvites ? 1 : 0,
       hasTimeSlots ? 1 : 0,
       JSON.stringify(input.timeSlots),
-      input.allowTimeSlots ? 1 : 0
+      input.allowTimeSlots ? 1 : 0,
+      JSON.stringify(input.weeklyConfig)
     );
 
     const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId), req);
@@ -2287,7 +2404,7 @@ app.put("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
     db.prepare(`
       UPDATE polls
       SET title = ?, description = ?, dates = ?, mode = ?, updated_at = ?, invite_message = ?,
-          notification_email_enabled = ?, allow_email_invites = ?, has_time_slots = ?, time_slots = ?, allow_time_slots = ?
+          notification_email_enabled = ?, allow_email_invites = ?, has_time_slots = ?, time_slots = ?, allow_time_slots = ?, weekly_config = ?
       WHERE id = ?
     `).run(
       input.title,
@@ -2301,6 +2418,7 @@ app.put("/api/polls/:pollId", requireCsrf, requireAuth, (req, res) => {
       hasTimeSlots ? 1 : 0,
       JSON.stringify(input.timeSlots),
       input.allowTimeSlots ? 1 : 0,
+      JSON.stringify(input.weeklyConfig),
       req.params.pollId
     );
 
@@ -2333,9 +2451,9 @@ app.post("/api/polls/:pollId/duplicate", requireCsrf, requireAuth, (req, res) =>
       INSERT INTO polls (
         id, title, description, dates, mode, created_at, updated_at, user_id,
         invite_message, notification_email_enabled, allow_email_invites,
-        has_time_slots, time_slots, allow_time_slots
+        has_time_slots, time_slots, allow_time_slots, weekly_config
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newId,
       `${existing.title} (Kopie)`.slice(0, 120),
@@ -2350,7 +2468,8 @@ app.post("/api/polls/:pollId/duplicate", requireCsrf, requireAuth, (req, res) =>
       existing.allow_email_invites,
       existing.has_time_slots || 0,
       existing.time_slots || "{}",
-      existing.allow_time_slots || 0
+      existing.allow_time_slots || 0,
+      existing.weekly_config || "{}"
     );
 
     res.status(201).json({
@@ -2579,6 +2698,12 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
       }
       availabilities = slotResponsesCheck.value.availabilities;
       slotAvailabilities = slotResponsesCheck.value.slotAvailabilities;
+    } else if (data.poll.mode === "weekly") {
+      const weeklyResponsesCheck = validateWeeklyResponses(data.poll, req.body?.weeklyAvailabilities);
+      if (!weeklyResponsesCheck.ok) {
+        return res.status(400).json({ error: weeklyResponsesCheck.message });
+      }
+      slotAvailabilities = weeklyResponsesCheck.value;
     } else if (data.poll.mode === "fixed") {
       const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
       if (!availabilityCheck.ok) {
@@ -2586,13 +2711,8 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
       }
       availabilities = availabilityCheck.value;
     } else {
-      console.log("[responses] free-choice suggestedDates payload", {
-        pollId: data.poll.id,
-        userId: req.session.userId,
-        suggestedDates: req.body?.suggestedDates,
-      });
       const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates, {
-        requireRanges: data.poll.mode === "timeslots_free",
+        requireRanges: false,
       });
       if (!suggestedDatesCheck.ok) {
         return res.status(400).json({ error: suggestedDatesCheck.message });
