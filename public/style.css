@@ -1513,19 +1513,8 @@ body.poll-drawer-open {
   color: var(--muted);
   background: var(--surface-muted);
   border-color: var(--border);
-  display: inline-flex;
-  align-items: center;
   font-weight: 600;
-  width: 1.75rem;
-  justify-content: center;
-  padding: 0;
-  flex: 0 0 auto;
-}
-
-.poll-type-pill i {
-  color: var(--accent);
-  line-height: 1;
-  vertical-align: middle;
+  padding: 0.18rem 0.5rem;
 }
 
 .poll-list-actions {

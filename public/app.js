@@ -2089,10 +2089,11 @@ function handleDashboardRowOpen(event, href) {
 }
 
 function renderDashboardPollCard(poll, options = {}) {
-  const dateField = options.dateField || "latestResponseAt";
+  const dateField = options.dateField || "createdAt";
   const activityDate = poll[dateField] || poll.updatedAt || poll.createdAt;
   const activityDay = typeof activityDate === "string" ? activityDate.slice(0, 10) : "";
   const status = getDashboardPollStatus(poll, options);
+  const typeMeta = getDashboardPollTypeMeta(poll.mode);
 
   return `
     <article class="poll-list-row" data-poll-link="${poll.shareUrl}" tabindex="0">
@@ -2104,6 +2105,7 @@ function renderDashboardPollCard(poll, options = {}) {
           ${escapeHtml(activityDay ? formatDateShort(activityDay) : "-")}
         </span>
         <span class="dashboard-status-badge dashboard-status-${status.tone}">${escapeHtml(status.label)}</span>
+        <span class="poll-type-pill">${escapeHtml(typeMeta.label)}</span>
       </div>
     </article>
   `;

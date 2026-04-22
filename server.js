@@ -1440,7 +1440,7 @@ function buildDashboardPayload(req, userId, options = {}) {
       LEFT JOIN responses ON responses.poll_id = polls.id
       WHERE polls.user_id = ?
       GROUP BY polls.id
-      ORDER BY COALESCE(polls.last_response_at, polls.updated_at, polls.created_at) DESC
+      ORDER BY polls.created_at DESC
       ${paginationSql}
     `)
     .all(...queryParameters);
