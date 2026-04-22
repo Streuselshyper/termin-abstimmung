@@ -956,6 +956,37 @@ function getPollBlockStartDates(poll = state.pollData?.poll) {
   return [];
 }
 
+function listDatesCoveredByBlockStarts(startDates, length) {
+  const dates = new Set();
+  if (!Number.isInteger(length) || length < 1) {
+    return [];
+  }
+
+  startDates.forEach((startDate) => {
+    for (let offset = 0; offset < length; offset += 1) {
+      const date = addDaysToIsoDateValue(startDate, offset);
+      if (date) {
+        dates.add(date);
+      }
+    }
+  });
+
+  return Array.from(dates).sort();
+}
+
+function getPollBlockSelectableDates(poll = state.pollData?.poll) {
+  if (!pollUsesBlockMode(poll)) {
+    return [];
+  }
+
+  const blockLength = normalizePollBlockConfig(poll).length;
+  return listDatesCoveredByBlockStarts(getPollBlockStartDates(poll), blockLength);
+}
+
+function isValidResponseStatus(status) {
+  return status === "yes" || status === "maybe" || status === "no";
+}
+
 function getResponseBlockRange(response) {
   const source = response?.blockRange || response?.availabilities || {};
   const start = isIsoDateValue(source.start) ? source.start : "";
@@ -983,6 +1014,107 @@ function dateRangeContainsBlock(startDate, endDate, blockStartDate, length) {
       && blockStartDate >= startDate
       && blockEndDate <= endDate
   );
+}
+
+function buildBlockFixedDailyDraft(poll, response) {
+  const selectableDates = getPollBlockSelectableDates(poll);
+  const draft = Object.fromEntries(selectableDates.map((date) => [date, "maybe"]));
+  const availabilities = response?.availabilities || {};
+  const blockLength = normalizePollBlockConfig(poll).length;
+
+  getPollBlockStartDates(poll).forEach((startDate) => {
+    const status = availabilities[startDate];
+    if (status !== "yes" && status !== "maybe") {
+      return;
+    }
+
+    for (let offset = 0; offset < blockLength; offset += 1) {
+      const date = addDaysToIsoDateValue(startDate, offset);
+      if (!date || !(date in draft)) {
+        continue;
+      }
+
+      if (status === "yes" || draft[date] !== "yes") {
+        draft[date] = status;
+      }
+    }
+  });
+
+  return draft;
+}
+
+function buildBlockFreeDailyDraft(poll, response) {
+  const selectableDates = new Set(getPollBlockSelectableDates(poll));
+  const range = getResponseBlockRange(response);
+  const draft = {};
+
+  if (!range.start || !range.end || range.end < range.start) {
+    return draft;
+  }
+
+  let currentDate = range.start;
+  while (currentDate && currentDate <= range.end) {
+    if (selectableDates.has(currentDate)) {
+      draft[currentDate] = "yes";
+    }
+    currentDate = addDaysToIsoDateValue(currentDate, 1);
+  }
+
+  return draft;
+}
+
+function getSelectedBlockFreeDates(draft = state.responseDraft, poll = state.pollData?.poll) {
+  const selectableDates = new Set(getPollBlockSelectableDates(poll));
+  return Object.entries(draft || {})
+    .filter(([date, status]) => selectableDates.has(date) && status === "yes")
+    .map(([date]) => date)
+    .sort();
+}
+
+function buildBlockFixedAvailabilityPayload(poll, draft = state.responseDraft) {
+  const blockLength = normalizePollBlockConfig(poll).length;
+  const payload = {};
+
+  getPollBlockStartDates(poll).forEach((startDate) => {
+    let status = "yes";
+
+    for (let offset = 0; offset < blockLength; offset += 1) {
+      const date = addDaysToIsoDateValue(startDate, offset);
+      const dayStatus = isValidResponseStatus(draft?.[date]) ? draft[date] : "maybe";
+      if (dayStatus === "no") {
+        status = "no";
+        break;
+      }
+      if (dayStatus === "maybe") {
+        status = "maybe";
+      }
+    }
+
+    payload[startDate] = status;
+  });
+
+  return payload;
+}
+
+function buildBlockFreeRangePayload(poll, draft = state.responseDraft) {
+  const selectedDates = getSelectedBlockFreeDates(draft, poll);
+  if (selectedDates.length === 0) {
+    return { ok: false, message: "Bitte markiere im Kalender einen zusammenhaengenden Zeitraum." };
+  }
+
+  const start = selectedDates[0];
+  const end = selectedDates[selectedDates.length - 1];
+  let currentDate = start;
+  const selectedDateSet = new Set(selectedDates);
+
+  while (currentDate && currentDate <= end) {
+    if (!selectedDateSet.has(currentDate)) {
+      return { ok: false, message: "Bitte markiere fuer Block-Zeitraeume nur zusammenhaengende Tage ohne Luecken." };
+    }
+    currentDate = addDaysToIsoDateValue(currentDate, 1);
+  }
+
+  return { ok: true, value: { start, end } };
 }
 
 function formatBlockRangeShort(startDate, endDate) {
@@ -2918,11 +3050,7 @@ function initializeDraftFromPoll(poll) {
   const hasTimeSlots = pollHasTimeSlots(poll);
 
   if (pollUsesBlockFixed(poll)) {
-    const defaultDraft = {};
-    getPollBlockStartDates(poll).forEach((startDate) => {
-      defaultDraft[startDate] = editableResponse?.availabilities?.[startDate] || "maybe";
-    });
-    state.responseDraft = defaultDraft;
+    state.responseDraft = buildBlockFixedDailyDraft(poll, editableResponse);
     state.participantSelectedDates = new Set();
     state.participantSuggestedTimes = {};
     state.participantCurrentMonth = startOfMonth(new Date());
@@ -2930,15 +3058,13 @@ function initializeDraftFromPoll(poll) {
   }
 
   if (pollUsesBlockFree(poll)) {
-    const blockRange = getResponseBlockRange(editableResponse);
-    state.responseDraft = {
-      start: blockRange.start || "",
-      end: blockRange.end || "",
-    };
-    state.participantSelectedDates = new Set();
+    state.responseDraft = buildBlockFreeDailyDraft(poll, editableResponse);
+    const selectedDates = getSelectedBlockFreeDates(state.responseDraft, poll);
+    const firstRelevantDate = selectedDates[0] || getPollBlockSelectableDates(poll)[0] || toIsoDate(new Date());
+    state.participantSelectedDates = new Set(selectedDates);
     state.participantSuggestedTimes = {};
     state.participantCurrentMonth = startOfMonth(
-      blockRange.start ? new Date(`${blockRange.start}T00:00:00`) : new Date()
+      new Date(`${firstRelevantDate}T00:00:00`)
     );
     return;
   }
@@ -3455,25 +3581,17 @@ function renderAvailabilityForm() {
 
 function renderBlockFixedAvailabilityForm(grid) {
   const poll = state.pollData.poll;
-  const blockLength = normalizePollBlockConfig(poll).length;
-  const startDates = getPollBlockStartDates(poll);
+  const selectableDates = getPollBlockSelectableDates(poll);
 
-  if (startDates.length === 0) {
-    grid.innerHTML = '<p class="description">Keine gueltigen Block-Zeitraeume vorhanden.</p>';
+  if (selectableDates.length === 0) {
+    grid.innerHTML = '<p class="description">Keine gueltigen Block-Tage vorhanden.</p>';
     return;
   }
 
-  startDates.forEach((startDate) => {
-    const endDate = getBlockEndDateValue(startDate, blockLength);
+  selectableDates.forEach((date) => {
     const card = document.createElement("div");
-    card.className = "availability-card availability-slot-card block-period-card";
-    card.innerHTML = `
-      <div class="block-period-card-copy">
-        <strong>${escapeHtml(formatBlockRangeShort(startDate, endDate))}</strong>
-        <span class="block-period-meta">${escapeHtml(formatBlockPeriodMeta(startDate, endDate, blockLength))}</span>
-        <p class="description">Kompletter Zeitraum: ${escapeHtml(formatBlockRangeLong(startDate, endDate))}</p>
-      </div>
-    `;
+    card.className = "availability-card";
+    card.innerHTML = `<strong>${formatDateLong(date)}</strong>`;
 
     const row = document.createElement("div");
     row.className = "status-row";
@@ -3482,14 +3600,14 @@ function renderBlockFixedAvailabilityForm(grid) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "status-chip";
-      button.dataset.date = startDate;
+      button.dataset.date = date;
       button.dataset.status = status;
       button.textContent = statusLabels[status];
-      if (state.responseDraft[startDate] === status) {
+      if (state.responseDraft[date] === status) {
         button.classList.add("active");
       }
       button.addEventListener("click", () => {
-        state.responseDraft[startDate] = status;
+        state.responseDraft[date] = status;
         renderAvailabilityForm();
       });
       row.appendChild(button);
@@ -3504,72 +3622,169 @@ function renderBlockFreeAvailabilityForm(grid) {
   const poll = state.pollData.poll;
   const blockConfig = normalizePollBlockConfig(poll);
   const blockLength = blockConfig.length;
-  const startDate = isIsoDateValue(state.responseDraft.start) ? state.responseDraft.start : "";
-  const endDate = isIsoDateValue(state.responseDraft.end) ? state.responseDraft.end : "";
-  const allowedStarts = getPollBlockStartDates(poll);
-  const matchingStarts = startDate && endDate
-    ? allowedStarts.filter((blockStartDate) => dateRangeContainsBlock(startDate, endDate, blockStartDate, blockLength))
-    : [];
-  const canFit = canDateRangeFitBlock(startDate, endDate, blockLength);
-  const isWithinWindow = (!startDate || startDate >= blockConfig.startDate) && (!endDate || endDate <= blockConfig.endDate);
-  const hasMatchingBlock = matchingStarts.length > 0;
+  const selectableDates = new Set(getPollBlockSelectableDates(poll));
+  const selectedDates = getSelectedBlockFreeDates(state.responseDraft, poll);
   const weekdaySummary = formatCreateBlockWeekdaySummary(blockConfig.weekdays);
-  const selectedPeriodLabel = startDate && endDate ? formatBlockRangeShort(startDate, endDate) : "Noch kein Zeitraum gewaehlt";
-  const selectedPeriodMeta =
-    startDate && endDate
-      ? `${formatBlockPeriodMeta(startDate, endDate)}${hasMatchingBlock ? ` · ${matchingStarts.length} gueltige Block-Zeitraeume` : ""}`
-      : `Waehle einen Zeitraum, der mindestens ${formatBlockLengthLabel(blockLength)} am Stueck abdeckt.`;
-  const helperText =
-    startDate && endDate
-      ? startDate > endDate
-        ? "Das Enddatum muss nach dem Startdatum liegen."
-        : !isWithinWindow
-        ? `Dein Zeitraum muss innerhalb von ${formatBlockRangeLong(blockConfig.startDate, blockConfig.endDate)} liegen.`
-        : canFit
-          ? hasMatchingBlock
-            ? `Dein Zeitraum deckt mindestens einen gueltigen Block ueber ${blockLength} Tage ab.`
-            : "Innerhalb deines Zeitraums liegt mit dem erlaubten Zeitraum und den gewaehlten Wochentagen kein gueltiger Block."
-        : `Der Zeitraum ist zu kurz. Fuer diesen Modus brauchst du mindestens ${blockLength} zusammenhaengende Tage.`
-      : `Gib den Zeitraum an, in dem du mindestens ${blockLength} Tage am Stueck kannst.`;
-  const helperStateClass =
-    startDate && endDate && (startDate > endDate || !isWithinWindow || !canFit || !hasMatchingBlock) ? " feedback error" : "";
+  state.participantSelectedDates = new Set(selectedDates);
 
-  grid.innerHTML = `
-    <div class="selected-dates-box block-range-form block-period-card block-period-editor">
+  const intro = document.createElement("div");
+  intro.className = "free-mode-intro";
+  intro.innerHTML = `
+    <div>
+      <strong>Markiere alle Tage, die deinen moeglichen Block-Zeitraum bilden</strong>
+      <p class="description">Waehle im Kalender einen zusammenhaengenden Zeitraum. Im Hintergrund sucht das System daraus weiterhin den besten Block ueber ${escapeHtml(formatBlockLengthLabel(blockLength))}.</p>
+      <p class="description">Erlaubter Zeitraum: ${escapeHtml(formatBlockRangeLong(blockConfig.startDate, blockConfig.endDate))} · Erlaubte Wochentage: ${escapeHtml(weekdaySummary)}</p>
+    </div>
+    <button id="participant-toggle-calendar" class="ghost-button compact-button participant-mobile-toggle" type="button">
+      ${state.participantCalendarExpanded ? "Kalender ausblenden" : "Teilnehmen"}
+    </button>
+  `;
+
+  const calendarSection = document.createElement("div");
+  calendarSection.className = `calendar-section${state.participantCalendarExpanded ? "" : " is-collapsed"}`;
+  calendarSection.innerHTML = `
+    <div class="calendar-header">
+      <div>
+        <h3>Kalender</h3>
+        <p id="participant-calendar-label" class="calendar-meta"></p>
+      </div>
+      <div class="calendar-actions">
+        <button id="participant-prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <button id="participant-next-month" class="ghost-button compact-button" type="button" aria-label="Naechster Monat">
+          <i class="fa-solid fa-chevron-right"></i>
+        </button>
+      </div>
+    </div>
+    <div id="participant-calendar-grid" class="calendar-grid" aria-live="polite"></div>
+    <div class="selected-dates-box">
       <div class="selected-header">
-        <span>Dein verfuegbarer Block-Zeitraum</span>
-        <span class="pill">${escapeHtml(`${blockLength} Tage am Stueck`)}</span>
+        <span>Dein gewaehlter Zeitraum</span>
+        <button id="participant-clear-dates" class="text-button" type="button">Leeren</button>
       </div>
-      <div class="block-period-card-copy">
-        <strong>${escapeHtml(selectedPeriodLabel)}</strong>
-        <span class="block-period-meta">${escapeHtml(selectedPeriodMeta)}</span>
-      </div>
-      <p class="description">Erlaubter Zeitraum: ${escapeHtml(formatBlockRangeLong(blockConfig.startDate, blockConfig.endDate))}</p>
-      <p class="description">Erlaubte Wochentage: ${escapeHtml(weekdaySummary)}</p>
-      <div class="block-range-inputs">
-        <label>
-          <span>Zeitraum beginnt</span>
-          <input id="block-free-start" type="date" min="${escapeHtml(blockConfig.startDate)}" max="${escapeHtml(blockConfig.endDate)}" value="${escapeHtml(startDate)}" />
-        </label>
-        <label>
-          <span>Zeitraum endet</span>
-          <input id="block-free-end" type="date" min="${escapeHtml(blockConfig.startDate)}" max="${escapeHtml(blockConfig.endDate)}" value="${escapeHtml(endDate)}" />
-        </label>
-      </div>
-      <p class="description${helperStateClass}">${escapeHtml(helperText)}</p>
+      <div id="participant-selected-dates" class="selected-dates"></div>
     </div>
   `;
 
-  const syncRange = () => {
-    state.responseDraft = {
-      start: document.querySelector("#block-free-start")?.value || "",
-      end: document.querySelector("#block-free-end")?.value || "",
-    };
-    renderAvailabilityForm();
-  };
+  grid.appendChild(intro);
+  grid.appendChild(calendarSection);
 
-  document.querySelector("#block-free-start")?.addEventListener("change", syncRange);
-  document.querySelector("#block-free-end")?.addEventListener("change", syncRange);
+  document.querySelector("#participant-toggle-calendar")?.addEventListener("click", () => {
+    state.participantCalendarExpanded = !state.participantCalendarExpanded;
+    renderAvailabilityForm();
+  });
+
+  document.querySelector("#participant-prev-month")?.addEventListener("click", () => {
+    state.participantCurrentMonth = addMonths(state.participantCurrentMonth, -1);
+    renderAvailabilityForm();
+  });
+
+  document.querySelector("#participant-next-month")?.addEventListener("click", () => {
+    state.participantCurrentMonth = addMonths(state.participantCurrentMonth, 1);
+    renderAvailabilityForm();
+  });
+
+  document.querySelector("#participant-clear-dates")?.addEventListener("click", () => {
+    state.responseDraft = {};
+    state.participantSelectedDates.clear();
+    renderAvailabilityForm();
+  });
+
+  const calendarGrid = document.querySelector("#participant-calendar-grid");
+  const calendarLabel = document.querySelector("#participant-calendar-label");
+  if (calendarGrid && calendarLabel) {
+    const year = state.participantCurrentMonth.getFullYear();
+    const month = state.participantCurrentMonth.getMonth();
+    calendarLabel.textContent = formatMonthYear(state.participantCurrentMonth);
+    calendarGrid.innerHTML = "";
+
+    for (const weekday of weekdayLabels) {
+      const cell = document.createElement("div");
+      cell.className = "calendar-weekday";
+      cell.textContent = weekday;
+      calendarGrid.appendChild(cell);
+    }
+
+    const days = buildCalendarDays(year, month);
+    for (const day of days) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "calendar-day";
+      const isSelectable = selectableDates.has(day.isoDate);
+      if (!day.inCurrentMonth || !isSelectable) {
+        button.classList.add("muted");
+      }
+      if (!isSelectable) {
+        button.disabled = true;
+      }
+      if (state.participantSelectedDates.has(day.isoDate)) {
+        button.classList.add("selected");
+      }
+
+      button.innerHTML = `<span>${day.date.getDate()}</span>`;
+      button.addEventListener("click", () => {
+        if (!isSelectable) {
+          return;
+        }
+
+        if (state.participantSelectedDates.has(day.isoDate)) {
+          state.participantSelectedDates.delete(day.isoDate);
+          delete state.responseDraft[day.isoDate];
+        } else {
+          state.participantSelectedDates.add(day.isoDate);
+          state.responseDraft[day.isoDate] = "yes";
+        }
+        renderAvailabilityForm();
+      });
+
+      calendarGrid.appendChild(button);
+    }
+  }
+
+  const container = document.querySelector("#participant-selected-dates");
+  if (!container) {
+    return;
+  }
+
+  if (selectedDates.length === 0) {
+    container.innerHTML = renderEmptyStateMarkup(
+      "fa-regular fa-hand-point-up",
+      "Noch keine Tage markiert",
+      "Markiere im Kalender einen zusammenhaengenden Zeitraum fuer deinen moeglichen Block."
+    );
+    return;
+  }
+
+  container.innerHTML = "";
+  selectedDates.forEach((date) => {
+    const card = document.createElement("div");
+    card.className = "time-slot-date-card";
+    card.innerHTML = `
+      <div class="time-slot-date-head">
+        <strong>${escapeHtml(formatDateLong(date))}</strong>
+        <div class="calendar-actions">
+          <button class="text-button" type="button" data-action="remove-date" data-date="${date}">
+            Entfernen
+          </button>
+        </div>
+      </div>
+      <p class="description"><strong>Im gewaehlten Zeitraum enthalten</strong></p>
+    `;
+    container.appendChild(card);
+  });
+
+  container.querySelectorAll('[data-action="remove-date"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const { date } = button.dataset;
+      if (!date) {
+        return;
+      }
+      state.participantSelectedDates.delete(date);
+      delete state.responseDraft[date];
+      renderAvailabilityForm();
+    });
+  });
 }
 
 function renderFixedSlotAvailabilityForm(grid) {
@@ -5780,13 +5995,20 @@ async function handleResponseSubmit(event) {
   } else if (pollUsesWeeklySlots(state.pollData.poll)) {
     payload.weeklyAvailabilities = { ...state.responseDraft };
   } else if (pollUsesBlockFree(state.pollData.poll)) {
-    const blockConfig = normalizePollBlockConfig(state.pollData.poll);
+    const poll = state.pollData.poll;
+    const blockConfig = normalizePollBlockConfig(poll);
     const blockLength = blockConfig.length;
-    if (!canDateRangeFitBlock(state.responseDraft.start, state.responseDraft.end, blockLength)) {
-      setFeedback(feedback, `Bitte waehle einen Zeitraum mit mindestens ${blockLength} aufeinanderfolgenden Tagen.`, "error");
+    const rangePayload = buildBlockFreeRangePayload(poll, state.responseDraft);
+    if (!rangePayload.ok) {
+      setFeedback(feedback, rangePayload.message, "error");
       return;
     }
-    if (state.responseDraft.start < blockConfig.startDate || state.responseDraft.end > blockConfig.endDate) {
+    const { start, end } = rangePayload.value;
+    if (!canDateRangeFitBlock(start, end, blockLength)) {
+      setFeedback(feedback, `Bitte markiere einen Zeitraum mit mindestens ${blockLength} aufeinanderfolgenden Tagen.`, "error");
+      return;
+    }
+    if (start < blockConfig.startDate || end > blockConfig.endDate) {
       setFeedback(
         feedback,
         `Bitte waehle einen Zeitraum innerhalb von ${formatBlockRangeLong(blockConfig.startDate, blockConfig.endDate)}.`,
@@ -5794,16 +6016,18 @@ async function handleResponseSubmit(event) {
       );
       return;
     }
-    if (!getPollBlockStartDates(state.pollData.poll).some((startDate) => dateRangeContainsBlock(state.responseDraft.start, state.responseDraft.end, startDate, blockLength))) {
+    if (!getPollBlockStartDates(poll).some((startDate) => dateRangeContainsBlock(start, end, startDate, blockLength))) {
       setFeedback(feedback, "Innerhalb deines Zeitraums liegt mit den gewaehlten Regeln kein gueltiger Block.", "error");
       return;
     }
     payload.availabilities = {
-      start: state.responseDraft.start || "",
-      end: state.responseDraft.end || "",
+      start,
+      end,
     };
   } else if (isFixed) {
-    payload.availabilities = state.responseDraft;
+    payload.availabilities = pollUsesBlockFixed(state.pollData.poll)
+      ? buildBlockFixedAvailabilityPayload(state.pollData.poll, state.responseDraft)
+      : state.responseDraft;
   } else {
     syncParticipantSuggestedTimesFromEditor();
     payload.suggestedDates = normalizeParticipantSuggestionsForSubmit();
