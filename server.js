@@ -1092,6 +1092,32 @@ function calculateBestDateSlots(poll, responses) {
 }
 
 
+function getWeeklySortIndex(weekday) {
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const index = order.indexOf(weekday);
+  return index === -1 ? order.length : index;
+}
+
+function comparePollResultEntries(left, right) {
+  const leftDate = typeof left?.date === "string" ? left.date : "";
+  const rightDate = typeof right?.date === "string" ? right.date : "";
+  if (leftDate || rightDate) {
+    return leftDate.localeCompare(rightDate);
+  }
+
+  const leftWeekday = Number.isInteger(left?.weekday) ? left.weekday : null;
+  const rightWeekday = Number.isInteger(right?.weekday) ? right.weekday : null;
+  if (leftWeekday !== null || rightWeekday !== null) {
+    const weekdayDiff = getWeeklySortIndex(leftWeekday) - getWeeklySortIndex(rightWeekday);
+    if (weekdayDiff !== 0) {
+      return weekdayDiff;
+    }
+    return String(left?.time || "").localeCompare(String(right?.time || ""));
+  }
+
+  return 0;
+}
+
 function calculateBestWeeklySlots(poll, responses) {
   const summary = getPollWeeklySlots(poll).map((entry) => {
     let yes = 0;
@@ -1130,10 +1156,7 @@ function calculateBestWeeklySlots(poll, responses) {
     if (right.yes !== left.yes) {
       return right.yes - left.yes;
     }
-    if (left.weekday !== right.weekday) {
-      return left.weekday - right.weekday;
-    }
-    return left.time.localeCompare(right.time);
+    return comparePollResultEntries(left, right);
   });
 
   const bestScore = sorted[0]?.score ?? 0;
@@ -1281,6 +1304,10 @@ function calculateSuggestedDatesRanking(responses) {
         : normalizeSuggestedDateEntries(response?.suggestedDates);
 
     for (const entry of suggestedEntries) {
+      if (typeof entry?.date !== "string" || !entry.date) {
+        continue;
+      }
+
       const current = counts.get(entry.date) || {
         date: entry.date,
         count: 0,
@@ -1308,7 +1335,7 @@ function calculateSuggestedDatesRanking(responses) {
       participants: entry.participants,
       timeSlots: Array.from(entry.timeSlots.values()).sort((left, right) => left.time.localeCompare(right.time)),
     }))
-    .sort((left, right) => left.date.localeCompare(right.date));
+    .sort(comparePollResultEntries);
   const bestCount = summary.reduce((maxCount, entry) => Math.max(maxCount, entry.count), 0);
   return {
     summary,

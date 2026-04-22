@@ -856,6 +856,31 @@ function formatWeeklySlotLabel(slot) {
   return `${formatWeeklyWeekday(slot.weekday)} ${slot.time}`;
 }
 
+function getWeeklySortIndex(weekday) {
+  const index = weeklyWeekdayOrder.indexOf(weekday);
+  return index === -1 ? weeklyWeekdayOrder.length : index;
+}
+
+function compareResultEntries(left, right) {
+  const leftDate = typeof left?.date === "string" ? left.date : "";
+  const rightDate = typeof right?.date === "string" ? right.date : "";
+  if (leftDate || rightDate) {
+    return leftDate.localeCompare(rightDate);
+  }
+
+  const leftWeekday = Number.isInteger(left?.weekday) ? left.weekday : null;
+  const rightWeekday = Number.isInteger(right?.weekday) ? right.weekday : null;
+  if (leftWeekday !== null || rightWeekday !== null) {
+    const weekdayDiff = getWeeklySortIndex(leftWeekday) - getWeeklySortIndex(rightWeekday);
+    if (weekdayDiff !== 0) {
+      return weekdayDiff;
+    }
+    return String(left?.time || "").localeCompare(String(right?.time || ""));
+  }
+
+  return 0;
+}
+
 function updateCreateModeLayout() {
   const isFreeChoice = createModeUsesParticipantSuggestions();
   const isWeekly = createModeUsesWeeklySlots();
@@ -2465,6 +2490,12 @@ function initializeDraftFromPoll(poll) {
 }
 
 function initializeResultsCalendarState(poll, responses, results) {
+  if (pollUsesWeeklySlots(poll)) {
+    state.resultsCalendarView = "week";
+    state.resultsCalendarDate = new Date();
+    return;
+  }
+
   const anchorDate =
     collectResultsCalendarEvents(poll, responses)[0]?.date ||
     getTopMatrixDates(results?.summary || [])[0]?.date ||
@@ -3482,8 +3513,10 @@ function buildResultsCalendarEvent({ id, date, name, color, slotValue = "", stat
 
 function sortResultsCalendarEvents(events) {
   return events.sort((left, right) => {
-    if (left.date !== right.date) {
-      return left.date.localeCompare(right.date);
+    const leftDate = typeof left?.date === "string" ? left.date : "";
+    const rightDate = typeof right?.date === "string" ? right.date : "";
+    if (leftDate !== rightDate) {
+      return leftDate.localeCompare(rightDate);
     }
     if (left.isAllDay !== right.isAllDay) {
       return left.isAllDay ? -1 : 1;
@@ -4817,7 +4850,7 @@ function getSelectedExportDate() {
 }
 
 function getTopMatrixDates(summary) {
-  return [...(summary || [])].sort((left, right) => left.date.localeCompare(right.date));
+  return [...(summary || [])].sort(compareResultEntries);
 }
 
 function getPollTimeSlotsByDate(poll) {
@@ -4981,7 +5014,7 @@ function getPollFavorite(poll, responses, results) {
 
   const favorite = (results?.bestDates || [])
     .slice()
-    .sort((left, right) => left.date.localeCompare(right.date))[0];
+    .sort(compareResultEntries)[0];
   return favorite ? { date: favorite.date, votes: favorite.count, score: favorite.count } : null;
 }
 
