@@ -631,11 +631,11 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
       throw new Error("Diese Umfrage kann nicht bearbeitet werden.");
     }
     existingPoll = data.poll;
-    state.createMode = normalizeCreateMode(existingPoll.mode);
+    const isLegacyFixedWithTimeSlots =
+      existingPoll.mode === "fixed" && Boolean(existingPoll.allowTimeSlots || existingPoll.has_time_slots);
+    state.createMode = normalizeCreateMode(isLegacyFixedWithTimeSlots ? "timeslots" : existingPoll.mode);
     state.selectedDates = new Set(existingPoll.dates || []);
-    state.createTimeSlotsEnabled =
-      state.createMode === "timeslots" ||
-      (state.createMode === "fixed" && Boolean(existingPoll.allowTimeSlots || existingPoll.has_time_slots));
+    state.createTimeSlotsEnabled = state.createMode === "timeslots";
     state.createTimeSlots = cloneCreateTimeSlots(
       existingPoll.timeSlots || existingPoll.time_slots || {},
       state.createMode
@@ -696,12 +696,6 @@ function bindCreateForm(existingPoll) {
     renderCreateCalendar();
     renderCreateSelectedDates();
     renderCreateTimeSlots();
-  });
-
-  document.querySelector("#create-time-slots-toggle")?.addEventListener("change", (event) => {
-    state.createTimeSlotsEnabled = Boolean(event.target.checked);
-    syncCreateTimeSlotsWithSelectedDates();
-    updateCreateModeLayout();
   });
 
   document.querySelector("#create-form").addEventListener("submit", (event) => handleCreateSubmit(event, existingPoll?.id || ""));
@@ -899,7 +893,7 @@ function updateCreateModeLayout() {
   const timeSlotDescription = document.querySelector("#create-time-slots-description");
   const timeSlotToggleShell = document.querySelector("#create-time-slots-toggle-shell");
 
-  if (isFreeChoice || isWeekly) {
+  if (isFreeChoice || isWeekly || isFixed) {
     state.createTimeSlotsEnabled = false;
   } else if (isTimeslots) {
     state.createTimeSlotsEnabled = true;
@@ -937,7 +931,7 @@ function updateCreateModeLayout() {
   fixedFields?.classList.toggle("is-hidden", isFreeChoice || isWeekly);
   freeFields?.classList.toggle("is-hidden", !isFreeChoice);
   weeklyFields?.classList.toggle("is-hidden", !isWeekly);
-  timeSlotControls?.classList.toggle("is-hidden", isFreeChoice || isWeekly);
+  timeSlotControls?.classList.toggle("is-hidden", isFreeChoice || isWeekly || isFixed);
 
   if (freeModeTitle) {
     freeModeTitle.textContent = isFreeSlots ? "Zeitslots Freie Wahl" : "Freie Wahl";
@@ -1390,7 +1384,7 @@ async function handleCreateSubmit(event, pollId) {
   const description = document.querySelector("#create-description").value.trim();
   syncCreateTimeSlotsFromEditor();
   const isWeekly = createModeUsesWeeklySlots();
-  const usesTimeSlots = createModeRequiresTimeSlots() || (state.createMode === "fixed" && state.createTimeSlotsEnabled);
+  const usesTimeSlots = createModeRequiresTimeSlots();
   const timeSlotValidation = usesTimeSlots ? normalizeCreateTimeSlotsForSubmit() : { ok: true, value: {} };
   const weeklyValidation = isWeekly ? normalizeCreateWeeklySlotsForSubmit() : { ok: true, value: { slots: [] } };
 
@@ -1408,7 +1402,7 @@ async function handleCreateSubmit(event, pollId) {
     description,
     mode: state.createMode,
     dates: createModeUsesCalendar() ? Array.from(state.selectedDates).sort() : [],
-    allowTimeSlots: state.createMode === "timeslots" ? true : state.createMode === "fixed" ? state.createTimeSlotsEnabled : false,
+    allowTimeSlots: state.createMode === "timeslots" ? true : false,
     timeSlots: usesTimeSlots ? timeSlotValidation.value : {},
     weeklyConfig: weeklyValidation.value,
   };
@@ -3085,7 +3079,7 @@ function renderFreeChoiceForm(grid) {
       <p class="description">${
         usesRangeSlots
           ? "Du kannst beliebige Tage im Kalender markieren und dazu passende Zeitfenster je Datum hinterlegen."
-          : "Du kannst beliebige Tage im Kalender markieren und optional passende Uhrzeiten je Datum vorschlagen."
+          : "Du kannst beliebige Tage im Kalender markieren."
       }</p>
     </div>
     <button id="participant-toggle-calendar" class="ghost-button compact-button participant-mobile-toggle" type="button">
@@ -3210,7 +3204,7 @@ function renderParticipantSelectedDates() {
       "Noch keine Tage ausgewaehlt",
       usesRangeSlots
         ? "Markiere ein paar Optionen im Kalender. Fuer jeden Vorschlag kannst du danach passende Zeitfenster eintragen."
-        : "Markiere ein paar Optionen im Kalender. Fuer jeden Vorschlag kannst du danach optional Uhrzeiten eintragen."
+        : "Markiere ein paar Optionen im Kalender."
     );
     return;
   }
@@ -3224,21 +3218,22 @@ function renderParticipantSelectedDates() {
       <div class="time-slot-date-head">
         <strong>${escapeHtml(formatDateLong(date))}</strong>
         <div class="calendar-actions">
+          ${usesRangeSlots ? `
           <button class="ghost-button compact-button" type="button" data-action="add-slot" data-date="${date}">
             <i class="fa-solid fa-plus"></i>
-            ${usesRangeSlots ? "Slot" : "Zeit"}
-          </button>
+            Slot
+          </button>` : ""}
           <button class="text-button" type="button" data-action="remove-date" data-date="${date}">
             Entfernen
           </button>
         </div>
       </div>
       ${
-        slots.length === 0
-          ? usesRangeSlots
-            ? '<p class="description"><strong>Ganzer Tag</strong></p><p class="description">Optional: Falls nur bestimmte Zeitfenster gehen, kannst du sie mit "+ Zeitslot" hinzufuegen.</p>'
-            : '<p class="description"><strong>Ganzer Tag</strong></p><p class="description">Optional: Falls nur bestimmte Zeiten gehen, kannst du sie mit "+ Zeit" hinzufuegen.</p>'
-          : ""
+        usesRangeSlots
+          ? (slots.length === 0
+            ? '<p class="description"><strong>Ganzer Tag</strong></p><p class="description">Optional: Falls nur bestimmte Zeitfenster gehen, kannst du sie mit "+ Slot" hinzufuegen.</p>'
+            : "")
+          : '<p class="description"><strong>Ganzer Tag</strong></p>'
       }
       <div class="time-slot-list"></div>
     `;
@@ -3312,19 +3307,21 @@ function renderParticipantSelectedDates() {
     container.appendChild(card);
   }
 
-  container.querySelectorAll('[data-action="add-slot"]').forEach((button) => {
-    button.addEventListener("click", () => {
-      const { date } = button.dataset;
-      if (!date) {
-        return;
-      }
-      if (!Array.isArray(state.participantSuggestedTimes[date])) {
-        state.participantSuggestedTimes[date] = [];
-      }
-      state.participantSuggestedTimes[date].push("");
-      renderAvailabilityForm();
+  if (usesRangeSlots) {
+    container.querySelectorAll('[data-action="add-slot"]').forEach((button) => {
+      button.addEventListener("click", () => {
+        const { date } = button.dataset;
+        if (!date) {
+          return;
+        }
+        if (!Array.isArray(state.participantSuggestedTimes[date])) {
+          state.participantSuggestedTimes[date] = [];
+        }
+        state.participantSuggestedTimes[date].push("");
+        renderAvailabilityForm();
+      });
     });
-  });
+  }
 
   container.querySelectorAll('[data-action="remove-date"]').forEach((button) => {
     button.addEventListener("click", () => {
