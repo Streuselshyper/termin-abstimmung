@@ -343,6 +343,16 @@ function normalizeBlockStartWeekday(value) {
   return Number.isInteger(parsed) && parsed >= 0 && parsed <= 6 ? parsed : null;
 }
 
+function normalizeBlockStartWeekdays(entries, fallbackValue = null) {
+  const selected = new Set(normalizeWeekdaySelection(entries));
+  const fallbackWeekday = normalizeBlockStartWeekday(fallbackValue);
+  if (fallbackWeekday !== null) {
+    selected.add(fallbackWeekday);
+  }
+
+  return WEEKDAY_ORDER.filter((weekday) => selected.has(weekday));
+}
+
 function normalizeBlockConfig(config, mode = "") {
   const source = config && typeof config === "object" && !Array.isArray(config) ? config : {};
   const length = normalizeBlockLength(source.length);
@@ -354,8 +364,7 @@ function normalizeBlockConfig(config, mode = "") {
     length,
     startDate,
     endDate,
-    startWeekday: normalizeBlockStartWeekday(source.startWeekday),
-    weekdays: normalizeWeekdaySelection(source.weekdays),
+    weekdays: normalizeBlockStartWeekdays(source.weekdays, source.startWeekday),
   };
 }
 
@@ -371,9 +380,10 @@ function getBlockEndDate(startDate, length) {
   return addDaysToIsoDate(startDate, length - 1);
 }
 
-function listContiguousBlocksFromDates(dates, length, startWeekday = null) {
+function listContiguousBlocksFromDates(dates, length, weekdays = []) {
   const normalizedDates = normalizeDates(dates);
-  const normalizedStartWeekday = normalizeBlockStartWeekday(startWeekday);
+  const allowedWeekdays = normalizeWeekdaySelection(weekdays);
+  const allowedWeekdaySet = allowedWeekdays.length > 0 ? new Set(allowedWeekdays) : null;
   if (!Number.isInteger(length) || length < 2 || normalizedDates.length < length) {
     return [];
   }
@@ -396,7 +406,7 @@ function listContiguousBlocksFromDates(dates, length, startWeekday = null) {
     if (!isContiguous) {
       continue;
     }
-    if (normalizedStartWeekday !== null && getIsoDateWeekday(blockDates[0]) !== normalizedStartWeekday) {
+    if (allowedWeekdaySet && !allowedWeekdaySet.has(getIsoDateWeekday(blockDates[0]))) {
       continue;
     }
 
@@ -427,18 +437,8 @@ function listAllowedBlockStartDates(blockConfig, mode = "block_fixed") {
       break;
     }
 
-    let isValidBlock = true;
-    if (allowedWeekdays) {
-      for (let offset = 0; offset < normalized.length; offset += 1) {
-        const day = addDaysToIsoDate(currentDate, offset);
-        if (!allowedWeekdays.has(getIsoDateWeekday(day))) {
-          isValidBlock = false;
-          break;
-        }
-      }
-    }
-
-    if (isValidBlock) {
+    const isAllowedStartDay = !allowedWeekdays || allowedWeekdays.has(getIsoDateWeekday(currentDate));
+    if (isAllowedStartDay) {
       starts.push(currentDate);
     }
 
@@ -487,7 +487,7 @@ function rangeContainsBlock(range, startDate, length) {
 function getPollBlockStartDates(poll) {
   const blockConfig = getPollBlockConfig(poll);
   if (poll?.mode === "block_fixed" || poll?.mode === "block_free") {
-    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length, blockConfig.startWeekday).map((entry) => entry.start);
+    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length, blockConfig.weekdays).map((entry) => entry.start);
   }
 
   return [];
@@ -496,7 +496,7 @@ function getPollBlockStartDates(poll) {
 function getPollBlockEntries(poll) {
   const blockConfig = getPollBlockConfig(poll);
   if (poll?.mode === "block_fixed" || poll?.mode === "block_free") {
-    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length, blockConfig.startWeekday);
+    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length, blockConfig.weekdays);
   }
 
   return [];
@@ -736,7 +736,7 @@ function validatePollInput(body) {
   const isWeekly = mode === "weekly";
   const isBlockFixed = mode === "block_fixed";
   const isBlockFree = mode === "block_free";
-  const blockConfig = isBlockFixed || isBlockFree ? normalizeBlockConfig(body?.blockConfig, mode) : { length: 0, startDate: "", endDate: "", startWeekday: null, weekdays: [] };
+  const blockConfig = isBlockFixed || isBlockFree ? normalizeBlockConfig(body?.blockConfig, mode) : { length: 0, startDate: "", endDate: "", weekdays: [] };
   const dates =
     mode === "fixed" || mode === "timeslots" || isBlockFixed || isBlockFree
       ? normalizeDates(body?.dates)

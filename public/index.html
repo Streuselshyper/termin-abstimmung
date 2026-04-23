@@ -285,12 +285,18 @@
         background: transparent;
         color: inherit;
         padding: 0.35rem 0.7rem;
+        transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
       }
 
       .weekly-weekday-button.is-active {
         background: rgba(15, 118, 110, 0.18);
         border-color: rgba(15, 118, 110, 0.42);
         color: var(--accent-strong);
+      }
+
+      .weekly-weekday-button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(15, 118, 110, 0.28);
       }
 
       .weekly-time-range-fields {
@@ -1123,20 +1129,6 @@
                   <input id="create-block-length" type="number" min="2" max="31" inputmode="numeric" placeholder="5" />
                 </label>
 
-                <label>
-                  <span>Starttag (optional)</span>
-                  <select id="create-block-start-weekday">
-                    <option value="">Beliebig</option>
-                    <option value="1">Mo</option>
-                    <option value="2">Di</option>
-                    <option value="3">Mi</option>
-                    <option value="4">Do</option>
-                    <option value="5">Fr</option>
-                    <option value="6">Sa</option>
-                    <option value="0">So</option>
-                  </select>
-                </label>
-
                 <div id="create-block-window" class="block-range-inputs">
                   <label>
                     <span>Startdatum des Zeitraums</span>
@@ -1150,11 +1142,11 @@
 
                 <div id="create-block-weekdays" class="block-weekday-editor">
                   <div class="selected-header">
-                    <span>Erlaubte Wochentage</span>
+                    <span>Erlaubte Starttage</span>
                     <span id="create-block-weekday-summary" class="description"></span>
                   </div>
                   <div id="create-block-weekday-buttons" class="weekly-weekday-group"></div>
-                  <p class="description">Wenn du nichts auswaehlst, gelten alle Wochentage als erlaubt.</p>
+                  <p class="description">Keine Auswahl bedeutet: Alle Starttage sind erlaubt.</p>
                 </div>
 
                 <div id="create-block-preview" class="block-preview-list"></div>
