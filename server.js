@@ -365,6 +365,42 @@ function getBlockEndDate(startDate, length) {
   return addDaysToIsoDate(startDate, length - 1);
 }
 
+function listContiguousBlocksFromDates(dates, length) {
+  const normalizedDates = normalizeDates(dates);
+  if (!Number.isInteger(length) || length < 2 || normalizedDates.length < length) {
+    return [];
+  }
+
+  const blocks = [];
+  for (let index = 0; index <= normalizedDates.length - length; index += 1) {
+    const blockDates = [normalizedDates[index]];
+    let isContiguous = true;
+
+    for (let offset = 1; offset < length; offset += 1) {
+      const expectedDate = addDaysToIsoDate(blockDates[offset - 1], 1);
+      const nextDate = normalizedDates[index + offset];
+      if (!expectedDate || nextDate !== expectedDate) {
+        isContiguous = false;
+        break;
+      }
+      blockDates.push(nextDate);
+    }
+
+    if (!isContiguous) {
+      continue;
+    }
+
+    blocks.push({
+      start: blockDates[0],
+      end: blockDates[blockDates.length - 1],
+      length,
+      dates: blockDates,
+    });
+  }
+
+  return blocks.slice(0, 366);
+}
+
 function listAllowedBlockStartDates(blockConfig, mode = "block_fixed") {
   const normalized = normalizeBlockConfig(blockConfig, mode);
   if (!normalized.length || !isIsoDate(normalized.startDate) || !isIsoDate(normalized.endDate) || normalized.startDate > normalized.endDate) {
@@ -440,12 +476,17 @@ function rangeContainsBlock(range, startDate, length) {
 
 function getPollBlockStartDates(poll) {
   const blockConfig = getPollBlockConfig(poll);
-  if (poll?.mode === "block_fixed" && Array.isArray(poll?.dates) && poll.dates.length > 0) {
-    return [...poll.dates].sort();
+  if (poll?.mode === "block_fixed" || poll?.mode === "block_free") {
+    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length).map((entry) => entry.start);
   }
 
+  return [];
+}
+
+function getPollBlockEntries(poll) {
+  const blockConfig = getPollBlockConfig(poll);
   if (poll?.mode === "block_fixed" || poll?.mode === "block_free") {
-    return listAllowedBlockStartDates(blockConfig, poll.mode);
+    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length);
   }
 
   return [];
@@ -687,11 +728,9 @@ function validatePollInput(body) {
   const isBlockFree = mode === "block_free";
   const blockConfig = isBlockFixed || isBlockFree ? normalizeBlockConfig(body?.blockConfig, mode) : { length: 0, startDate: "", endDate: "", weekdays: [] };
   const dates =
-    mode === "fixed" || mode === "timeslots"
+    mode === "fixed" || mode === "timeslots" || isBlockFixed || isBlockFree
       ? normalizeDates(body?.dates)
-      : isBlockFixed
-        ? listFixedBlockStartDates(blockConfig)
-        : [];
+      : [];
   const requestedTimeSlots = normalizeTimeSlotsByDate(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const invalidTimeSlot = findInvalidTimeSlotEntry(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const allowTimeSlots =
@@ -714,28 +753,20 @@ function validatePollInput(body) {
   if ((isBlockFixed || isBlockFree) && !blockConfig.length) {
     return { ok: false, message: "Bitte hinterlege eine gueltige Block-Laenge zwischen 2 und 31 Tagen." };
   }
-  if (isBlockFixed || isBlockFree) {
-    if (!isIsoDate(blockConfig.startDate) || !isIsoDate(blockConfig.endDate)) {
-      return { ok: false, message: "Bitte hinterlege fuer Block-Umfragen einen gueltigen Zeitraum." };
-    }
-    if (!parseIsoDate(blockConfig.startDate) || !parseIsoDate(blockConfig.endDate)) {
-      return { ok: false, message: "Der Block-Zeitraum enthaelt ein ungueltiges Datum." };
-    }
-    if (blockConfig.startDate > blockConfig.endDate) {
-      return { ok: false, message: "Das Startdatum des Block-Zeitraums muss vor dem Enddatum liegen." };
-    }
-    if (getPollBlockStartDates({ mode, dates, blockConfig }).length === 0) {
-      return { ok: false, message: "Im gewaehlten Zeitraum existiert kein gueltiger Block-Start." };
-    }
-  }
   if (isWeekly && weeklyConfig.slots.length === 0) {
     return { ok: false, message: "Bitte hinterlege mindestens einen Wochen-Slot." };
   }
   if ((mode === "fixed" || mode === "timeslots" || allowTimeSlots) && dates.length === 0) {
     return { ok: false, message: "Bitte waehle mindestens ein Datum aus." };
   }
+  if ((isBlockFixed || isBlockFree) && dates.length === 0) {
+    return { ok: false, message: "Bitte waehle mindestens einen Tag fuer den Block aus." };
+  }
   if (dates.some((date) => Number.isNaN(new Date(`${date}T00:00:00Z`).getTime()))) {
     return { ok: false, message: "Mindestens ein Datum ist ungueltig." };
+  }
+  if ((isBlockFixed || isBlockFree) && getPollBlockEntries({ mode, dates, blockConfig }).length === 0) {
+    return { ok: false, message: `Die ausgewaehlten Tage enthalten keinen zusammenhaengenden Block mit ${blockConfig.length} Tagen.` };
   }
   if (invalidTimeSlot) {
     return {
@@ -869,6 +900,28 @@ function validateBlockRangeResponse(poll, value) {
   }
 
   return { ok: true, value: range };
+}
+
+function validateBlockDaySelections(poll, value) {
+  const allowedDates = new Set(Array.isArray(poll?.dates) ? poll.dates : []);
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const normalized = {};
+
+  for (const [date, status] of Object.entries(source)) {
+    if (!allowedDates.has(date)) {
+      return { ok: false, message: `${date} ist fuer diese Block-Umfrage kein gueltiger Tag.` };
+    }
+    if (status !== "yes") {
+      return { ok: false, message: `Fuer ${date} ist nur eine Tagesauswahl per Klick erlaubt.` };
+    }
+    normalized[date] = "yes";
+  }
+
+  if (Object.keys(normalized).length === 0) {
+    return { ok: false, message: "Bitte markiere mindestens einen Tag." };
+  }
+
+  return { ok: true, value: normalized };
 }
 
 function isValidTimeValue(value) {
@@ -1340,107 +1393,95 @@ function calculateBestDateSlots(poll, responses) {
   };
 }
 
-function calculateBestBlocks(poll, responses) {
-  const blockConfig = getPollBlockConfig(poll);
-  const startDates = getPollBlockStartDates(poll);
-  const summary = startDates.map((date) => {
-    let yes = 0;
-    let maybe = 0;
-    let no = 0;
-    let score = 0;
+function sortBlockResults(left, right) {
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+  if (right.yes !== left.yes) {
+    return right.yes - left.yes;
+  }
+  if (right.maybe !== left.maybe) {
+    return right.maybe - left.maybe;
+  }
+  return left.start.localeCompare(right.start);
+}
 
-    for (const response of responses) {
-      const status = response.availabilities?.[date] || "no";
-      if (status === "yes") {
-        yes += 1;
-      } else if (status === "maybe") {
-        maybe += 1;
-      } else {
-        no += 1;
-      }
-      score += getScoreForStatus(status, Boolean(response.hasVeto));
-    }
+function buildBlockResultEntry(block, responses, resolveStatus) {
+  let yes = 0;
+  let maybe = 0;
+  let no = 0;
+  let score = 0;
 
-    return {
-      date,
-      endDate: getBlockEndDate(date, blockConfig.length),
-      length: blockConfig.length,
-      yes,
-      maybe,
-      no,
-      score,
-      participants: responses.length,
-    };
-  });
+  for (const response of responses) {
+    const status = resolveStatus(response, block);
+    if (status === "yes") {
+      yes += 1;
+    } else if (status === "maybe") {
+      maybe += 1;
+    } else {
+      no += 1;
+    }
+    score += getScoreForStatus(status, Boolean(response.hasVeto));
+  }
 
-  const sorted = [...summary].sort((left, right) => {
-    if (right.score !== left.score) {
-      return right.score - left.score;
-    }
-    if (right.yes !== left.yes) {
-      return right.yes - left.yes;
-    }
-    if (right.maybe !== left.maybe) {
-      return right.maybe - left.maybe;
-    }
-    return left.date.localeCompare(right.date);
-  });
-
-  const bestScore = sorted[0]?.score ?? 0;
   return {
-    summary,
-    bestDates: sorted.filter((entry) => entry.score === bestScore && sorted.length > 0),
+    start: block.start,
+    end: block.end,
+    date: block.start,
+    endDate: block.end,
+    length: block.length,
+    yes,
+    maybe,
+    no,
+    score,
+    participants: responses.length,
   };
 }
 
-function calculateBestFreeBlocks(poll, responses) {
-  const blockConfig = getPollBlockConfig(poll);
-  const summary = getPollBlockStartDates(poll)
-    .sort()
-    .map((date) => {
-      let yes = 0;
-      let no = 0;
-      let score = 0;
-      const blockEndDate = getBlockEndDate(date, blockConfig.length);
-
-      for (const response of responses) {
-        const range = normalizeBlockRange(response.availabilities || response.blockRange);
-        const isAvailable = rangeContainsBlock(range, date, blockConfig.length);
-        if (isAvailable) {
-          yes += 1;
-          score += getScoreForStatus("yes", Boolean(response.hasVeto));
-        } else {
-          no += 1;
-        }
-      }
-
-      return {
-        date,
-        endDate: blockEndDate,
-        length: blockConfig.length,
-        yes,
-        maybe: 0,
-        no,
-        score,
-        participants: responses.length,
-      };
-    });
-
-  const sorted = [...summary].sort((left, right) => {
-    if (right.score !== left.score) {
-      return right.score - left.score;
-    }
-    if (right.yes !== left.yes) {
-      return right.yes - left.yes;
-    }
-    return left.date.localeCompare(right.date);
-  });
-
+function calculateBestBlockResults(poll, responses, resolveStatus) {
+  const summary = getPollBlockEntries(poll).map((block) => buildBlockResultEntry(block, responses, resolveStatus));
+  const sorted = [...summary].sort(sortBlockResults);
   const bestScore = sorted[0]?.score ?? 0;
+  const bestBlocks = sorted.filter((entry) => entry.score === bestScore && sorted.length > 0);
+
   return {
     summary,
-    bestDates: sorted.filter((entry) => entry.score === bestScore && sorted.length > 0),
+    bestBlocks,
+    bestDates: bestBlocks,
   };
+}
+
+function getBlockFixedResponseStatus(response, block) {
+  let hasMaybe = false;
+
+  for (const date of block.dates) {
+    const status = response.availabilities?.[date] || "no";
+    if (status === "no") {
+      return "no";
+    }
+    if (status === "maybe") {
+      hasMaybe = true;
+    }
+  }
+
+  return hasMaybe ? "maybe" : "yes";
+}
+
+function getBlockFreeResponseStatus(response, block) {
+  const range = normalizeBlockRange(response.availabilities || response.blockRange);
+  if (range.start && range.end) {
+    return rangeContainsBlock(range, block.start, block.length) ? "yes" : "no";
+  }
+
+  return block.dates.every((date) => response.availabilities?.[date] === "yes") ? "yes" : "no";
+}
+
+function calculateBestBlocks(poll, responses) {
+  return calculateBestBlockResults(poll, responses, getBlockFixedResponseStatus);
+}
+
+function calculateBestFreeBlocks(poll, responses) {
+  return calculateBestBlockResults(poll, responses, getBlockFreeResponseStatus);
 }
 
 
@@ -3126,11 +3167,11 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
       }
       availabilities = availabilityCheck.value;
     } else if (data.poll.mode === "block_free") {
-      const blockRangeCheck = validateBlockRangeResponse(data.poll, req.body?.availabilities);
-      if (!blockRangeCheck.ok) {
-        return res.status(400).json({ error: blockRangeCheck.message });
+      const blockDayCheck = validateBlockDaySelections(data.poll, req.body?.availabilities);
+      if (!blockDayCheck.ok) {
+        return res.status(400).json({ error: blockDayCheck.message });
       }
-      availabilities = blockRangeCheck.value;
+      availabilities = blockDayCheck.value;
     } else {
       const suggestedDatesCheck = validateSuggestedDates(req.body?.suggestedDates, {
         requireRanges: data.poll.mode === "timeslots_free",
