@@ -3550,7 +3550,7 @@ function renderAvailabilityForm() {
 
   if (pollUsesBlockFixed(state.pollData.poll)) {
     legend.classList.remove("is-hidden");
-    renderFixedAvailabilityForm(grid);
+    renderFixedSlotAvailabilityForm(grid);
     return;
   }
 
