@@ -891,13 +891,27 @@ function normalizePollWeekdays(entries) {
 }
 
 function normalizePollStartWeekdays(entries, fallbackValue = null) {
-  const selected = new Set(normalizePollWeekdays(entries));
-  const fallbackWeekday = Number(fallbackValue);
-  if (Number.isInteger(fallbackWeekday) && fallbackWeekday >= 0 && fallbackWeekday <= 6) {
-    selected.add(fallbackWeekday);
+  const normalizedEntries = normalizePollWeekdays(entries);
+  if (normalizedEntries.length > 0) {
+    return normalizedEntries;
   }
 
-  return weeklyWeekdayOrder.filter((weekday) => selected.has(weekday));
+  const fallbackWeekday = Number(fallbackValue);
+  if (Number.isInteger(fallbackWeekday) && fallbackWeekday >= 0 && fallbackWeekday <= 6) {
+    return [fallbackWeekday];
+  }
+
+  // Legacy block polls may not have stored any weekday restriction at all.
+  return [];
+}
+
+function formatAllowedBlockStartDays(weekdays) {
+  const normalized = normalizePollWeekdays(weekdays);
+  if (normalized.length === 0) {
+    return "Alle Tage erlaubt";
+  }
+
+  return normalized.map((weekday) => formatWeeklyWeekday(weekday)).join(", ");
 }
 
 function normalizePollBlockConfig(poll = state.pollData?.poll) {
@@ -1660,9 +1674,7 @@ function fillCreateBlockFields() {
     endInput.value = state.createBlockConfig.endDate || "";
   }
   if (weekdaySummary) {
-    weekdaySummary.textContent = state.createBlockConfig.weekdays.length > 0
-      ? state.createBlockConfig.weekdays.map((weekday) => formatWeeklyWeekday(weekday)).join(", ")
-      : "Alle Starttage erlaubt";
+    weekdaySummary.textContent = formatAllowedBlockStartDays(state.createBlockConfig.weekdays);
   }
 
   if (weekdayButtons) {
@@ -1784,7 +1796,7 @@ function renderCreateBlockPreview() {
         <span class="pill">${escapeHtml(`${length} Tage`)}</span>
       </div>
       <p class="description">Die Auswertung durchsucht spaeter genau diese zusammenhaengenden Block-Zeitraeume.</p>
-      <p class="description">Erlaubte Starttage: ${escapeHtml(startWeekdays.length > 0 ? startWeekdays.map((weekday) => formatWeeklyWeekday(weekday)).join(", ") : "Beliebig")}</p>
+      <p class="description">Erlaubte Starttage: ${escapeHtml(formatAllowedBlockStartDays(startWeekdays))}</p>
       <div class="selected-dates">
         ${entries
           .slice(0, 12)
@@ -3651,9 +3663,7 @@ function renderBlockFreeAvailabilityForm(grid) {
   const poll = state.pollData.poll;
   const blockConfig = normalizePollBlockConfig(poll);
   const blockLength = blockConfig.length;
-  const startWeekdayLabel = blockConfig.weekdays.length > 0
-    ? blockConfig.weekdays.map((weekday) => formatWeeklyWeekday(weekday)).join(", ")
-    : "Beliebig";
+  const startWeekdayLabel = formatAllowedBlockStartDays(blockConfig.weekdays);
   const selectableDates = new Set(getPollBlockSelectableDates(poll));
   const selectedDates = getSelectedBlockFreeDates(state.responseDraft, poll);
   state.participantSelectedDates = new Set(selectedDates);

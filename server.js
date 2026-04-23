@@ -344,13 +344,18 @@ function normalizeBlockStartWeekday(value) {
 }
 
 function normalizeBlockStartWeekdays(entries, fallbackValue = null) {
-  const selected = new Set(normalizeWeekdaySelection(entries));
-  const fallbackWeekday = normalizeBlockStartWeekday(fallbackValue);
-  if (fallbackWeekday !== null) {
-    selected.add(fallbackWeekday);
+  const normalizedEntries = normalizeWeekdaySelection(entries);
+  if (normalizedEntries.length > 0) {
+    return normalizedEntries;
   }
 
-  return WEEKDAY_ORDER.filter((weekday) => selected.has(weekday));
+  const fallbackWeekday = normalizeBlockStartWeekday(fallbackValue);
+  if (fallbackWeekday !== null) {
+    return [fallbackWeekday];
+  }
+
+  // Legacy block polls without any stored weekday value allow all start days.
+  return [];
 }
 
 function normalizeBlockConfig(config, mode = "") {
