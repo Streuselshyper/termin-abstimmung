@@ -896,6 +896,10 @@ function normalizePollStartWeekdays(entries, fallbackValue = null) {
     return normalizedEntries;
   }
 
+  if (fallbackValue === null || fallbackValue === undefined || fallbackValue === "") {
+    return [];
+  }
+
   const fallbackWeekday = Number(fallbackValue);
   if (Number.isInteger(fallbackWeekday) && fallbackWeekday >= 0 && fallbackWeekday <= 6) {
     return [fallbackWeekday];
@@ -912,6 +916,10 @@ function formatAllowedBlockStartDays(weekdays) {
   }
 
   return normalized.map((weekday) => formatWeeklyWeekday(weekday)).join(", ");
+}
+
+function logBlockCreateDebug(scope, payload) {
+  console.log(`[block-create-debug] ${scope}`, payload);
 }
 
 function normalizePollBlockConfig(poll = state.pollData?.poll) {
@@ -937,6 +945,15 @@ function listBlockEntriesFromDates(dates, length, weekdays = []) {
   const allowedWeekdays = normalizePollWeekdays(weekdays);
   const allowedWeekdaySet = allowedWeekdays.length > 0 ? new Set(allowedWeekdays) : null;
   if (!Number.isInteger(length) || length < 2 || normalizedDates.length < length) {
+    logBlockCreateDebug("listBlockEntriesFromDates", {
+      dates,
+      normalizedDates,
+      length,
+      weekdays,
+      allowedWeekdays,
+      allowedWeekdaySet: null,
+      resultCount: 0,
+    });
     return [];
   }
 
@@ -972,6 +989,16 @@ function listBlockEntriesFromDates(dates, length, weekdays = []) {
     });
   }
 
+  logBlockCreateDebug("listBlockEntriesFromDates", {
+    dates,
+    normalizedDates,
+    length,
+    weekdays,
+    allowedWeekdays,
+    allowedWeekdaySet: allowedWeekdaySet ? Array.from(allowedWeekdaySet) : null,
+    resultCount: entries.length,
+    entries: entries.map((entry) => ({ start: entry.start, end: entry.end })),
+  });
   return entries;
 }
 
@@ -1708,6 +1735,10 @@ function fillCreateBlockFields() {
         }
 
         state.createBlockConfig.weekdays = weeklyWeekdayOrder.filter((value) => selected.has(value));
+        logBlockCreateDebug("toggleWeekday", {
+          clickedWeekday: weekday,
+          selectedWeekdays: state.createBlockConfig.weekdays,
+        });
         fillCreateBlockFields();
       });
     });
@@ -1817,10 +1848,19 @@ function renderCreateBlockPreview() {
 function normalizeCreateBlockConfigForSubmit() {
   const length = normalizePollBlockLength(state.createBlockConfig.length);
   const weekdays = normalizePollWeekdays(state.createBlockConfig.weekdays);
+  const selectedDates = Array.from(state.selectedDates).sort();
+  const entries = listBlockEntriesFromDates(selectedDates, length, weekdays);
+  logBlockCreateDebug("normalizeCreateBlockConfigForSubmit", {
+    rawWeekdays: state.createBlockConfig.weekdays,
+    weekdays,
+    selectedDates,
+    length,
+    entries: entries.map((entry) => ({ start: entry.start, end: entry.end })),
+  });
   if (!length) {
     return { ok: false, message: "Bitte hinterlege eine gueltige Block-Laenge zwischen 2 und 31 Tagen." };
   }
-  if (listBlockEntriesFromDates(Array.from(state.selectedDates).sort(), length, weekdays).length === 0) {
+  if (entries.length === 0) {
     return { ok: false, message: `Die ausgewaehlten Tage enthalten keinen zusammenhaengenden Block mit ${length} Tagen.` };
   }
 

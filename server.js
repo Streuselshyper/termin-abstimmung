@@ -339,6 +339,10 @@ function normalizeBlockLength(value) {
 }
 
 function normalizeBlockStartWeekday(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 0 && parsed <= 6 ? parsed : null;
 }
@@ -346,15 +350,30 @@ function normalizeBlockStartWeekday(value) {
 function normalizeBlockStartWeekdays(entries, fallbackValue = null) {
   const normalizedEntries = normalizeWeekdaySelection(entries);
   if (normalizedEntries.length > 0) {
+    console.log("[block-server-debug] normalizeBlockStartWeekdays", {
+      entries,
+      fallbackValue,
+      result: normalizedEntries,
+    });
     return normalizedEntries;
   }
 
   const fallbackWeekday = normalizeBlockStartWeekday(fallbackValue);
   if (fallbackWeekday !== null) {
+    console.log("[block-server-debug] normalizeBlockStartWeekdays", {
+      entries,
+      fallbackValue,
+      result: [fallbackWeekday],
+    });
     return [fallbackWeekday];
   }
 
   // Legacy block polls without any stored weekday value allow all start days.
+  console.log("[block-server-debug] normalizeBlockStartWeekdays", {
+    entries,
+    fallbackValue,
+    result: [],
+  });
   return [];
 }
 
