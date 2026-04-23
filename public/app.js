@@ -658,6 +658,7 @@ async function renderCreatePage(mode = "fixed", pollId = "") {
         length: blockConfig.length || getDefaultCreateBlockConfig().length,
         startDate: blockConfig.startDate,
         endDate: blockConfig.endDate,
+        startWeekday: blockConfig.startWeekday,
         weekdays: blockConfig.weekdays,
       };
     }
@@ -811,6 +812,7 @@ function getDefaultCreateBlockConfig() {
     length: 5,
     startDate: "",
     endDate: "",
+    startWeekday: null,
     weekdays: [],
   };
 }
@@ -890,12 +892,18 @@ function normalizePollWeekdays(entries) {
   return weeklyWeekdayOrder.filter((weekday) => selected.has(weekday));
 }
 
+function normalizePollStartWeekday(value) {
+  const weekday = Number(value);
+  return Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 ? weekday : null;
+}
+
 function normalizePollBlockConfig(poll = state.pollData?.poll) {
   const source = poll?.blockConfig || poll?.block_config || poll || {};
   return {
     length: normalizePollBlockLength(source.length),
     startDate: isIsoDateValue(source.startDate) ? source.startDate : "",
     endDate: isIsoDateValue(source.endDate) ? source.endDate : "",
+    startWeekday: normalizePollStartWeekday(source.startWeekday),
     weekdays: normalizePollWeekdays(source.weekdays),
   };
 }
@@ -908,8 +916,9 @@ function getBlockEndDateValue(startDate, length) {
   return addDaysToIsoDateValue(startDate, length - 1);
 }
 
-function listBlockEntriesFromDates(dates, length) {
+function listBlockEntriesFromDates(dates, length, startWeekday = null) {
   const normalizedDates = Array.isArray(dates) ? [...new Set(dates.filter(isIsoDateValue))].sort() : [];
+  const normalizedStartWeekday = normalizePollStartWeekday(startWeekday);
   if (!Number.isInteger(length) || length < 2 || normalizedDates.length < length) {
     return [];
   }
@@ -930,6 +939,9 @@ function listBlockEntriesFromDates(dates, length) {
     }
 
     if (!isContiguous) {
+      continue;
+    }
+    if (normalizedStartWeekday !== null && getIsoDateWeekdayValue(blockDates[0]) !== normalizedStartWeekday) {
       continue;
     }
 
@@ -996,8 +1008,8 @@ function getPollBlockEntries(poll = state.pollData?.poll) {
     return [];
   }
 
-  const blockLength = normalizePollBlockConfig(poll).length;
-  return listBlockEntriesFromDates(poll?.dates, blockLength);
+  const blockConfig = normalizePollBlockConfig(poll);
+  return listBlockEntriesFromDates(poll?.dates, blockConfig.length, blockConfig.startWeekday);
 }
 
 function listDatesCoveredByBlockStarts(startDates, length) {
@@ -1387,8 +1399,8 @@ function updateCreateModeLayout() {
 
   if (blockDescription) {
     blockDescription.textContent = state.createMode === "block_fixed"
-      ? "Waehle die moeglichen Tage aus. Die Auswertung bildet daraus automatisch alle zusammenhaengenden Bloecke mit der eingestellten Laenge."
-      : "Waehle die moeglichen Tage aus. Teilnehmende markieren spaeter freie Tage im Kalender, die Auswertung sucht daraus die besten zusammenhaengenden Bloecke.";
+      ? "Waehle die moeglichen Tage aus. Optional: Bloecke muessen an diesem Tag starten."
+      : "Waehle die moeglichen Tage aus. Optional: Bloecke muessen an diesem Tag starten.";
   }
 
   if (freeModeTitle) {
@@ -1649,6 +1661,7 @@ function normalizeCreateWeeklySlotsForSubmit() {
 
 function fillCreateBlockFields() {
   const lengthInput = document.querySelector("#create-block-length");
+  const startWeekdaySelect = document.querySelector("#create-block-start-weekday");
   const startInput = document.querySelector("#create-block-start");
   const endInput = document.querySelector("#create-block-end");
   const weekdaySummary = document.querySelector("#create-block-weekday-summary");
@@ -1656,6 +1669,9 @@ function fillCreateBlockFields() {
 
   if (lengthInput) {
     lengthInput.value = state.createBlockConfig.length ? String(state.createBlockConfig.length) : "";
+  }
+  if (startWeekdaySelect) {
+    startWeekdaySelect.value = state.createBlockConfig.startWeekday === null ? "" : String(state.createBlockConfig.startWeekday);
   }
   if (startInput) {
     startInput.value = state.createBlockConfig.startDate || "";
@@ -1708,6 +1724,7 @@ function fillCreateBlockFields() {
 
 function bindCreateBlockFields() {
   const lengthInput = document.querySelector("#create-block-length");
+  const startWeekdaySelect = document.querySelector("#create-block-start-weekday");
   const startInput = document.querySelector("#create-block-start");
   const endInput = document.querySelector("#create-block-end");
   const updateBlockDate = (input, key) => {
@@ -1738,6 +1755,11 @@ function bindCreateBlockFields() {
     renderCreateBlockPreview();
   });
 
+  startWeekdaySelect?.addEventListener("change", () => {
+    state.createBlockConfig.startWeekday = normalizePollStartWeekday(startWeekdaySelect.value);
+    renderCreateBlockPreview();
+  });
+
   ["input", "change"].forEach((eventName) => {
     startInput?.addEventListener(eventName, () => {
       updateBlockDate(startInput, "startDate");
@@ -1758,6 +1780,7 @@ function renderCreateBlockPreview() {
   }
 
   const length = normalizePollBlockLength(state.createBlockConfig.length);
+  const startWeekday = normalizePollStartWeekday(state.createBlockConfig.startWeekday);
   if (!createModeUsesBlockConfig()) {
     preview.innerHTML = "";
     return;
@@ -1768,7 +1791,7 @@ function renderCreateBlockPreview() {
     return;
   }
 
-  const entries = listBlockEntriesFromDates(Array.from(state.selectedDates).sort(), length);
+  const entries = listBlockEntriesFromDates(Array.from(state.selectedDates).sort(), length, startWeekday);
   if (state.selectedDates.size === 0) {
     preview.innerHTML = '<p class="description">Waehle zuerst moegliche Tage im Kalender aus.</p>';
     return;
@@ -1785,6 +1808,7 @@ function renderCreateBlockPreview() {
         <span class="pill">${escapeHtml(`${length} Tage`)}</span>
       </div>
       <p class="description">Die Auswertung durchsucht spaeter genau diese zusammenhaengenden Block-Zeitraeume.</p>
+      <p class="description">Starttag: ${escapeHtml(startWeekday === null ? "Beliebig" : formatWeeklyWeekday(startWeekday))}</p>
       <div class="selected-dates">
         ${entries
           .slice(0, 12)
@@ -1804,10 +1828,11 @@ function renderCreateBlockPreview() {
 
 function normalizeCreateBlockConfigForSubmit() {
   const length = normalizePollBlockLength(state.createBlockConfig.length);
+  const startWeekday = normalizePollStartWeekday(state.createBlockConfig.startWeekday);
   if (!length) {
     return { ok: false, message: "Bitte hinterlege eine gueltige Block-Laenge zwischen 2 und 31 Tagen." };
   }
-  if (listBlockEntriesFromDates(Array.from(state.selectedDates).sort(), length).length === 0) {
+  if (listBlockEntriesFromDates(Array.from(state.selectedDates).sort(), length, startWeekday).length === 0) {
     return { ok: false, message: `Die ausgewaehlten Tage enthalten keinen zusammenhaengenden Block mit ${length} Tagen.` };
   }
 
@@ -1817,6 +1842,7 @@ function normalizeCreateBlockConfigForSubmit() {
       length,
       startDate: "",
       endDate: "",
+      startWeekday,
       weekdays: [],
     },
   };
@@ -3333,6 +3359,9 @@ function fillPollSummary() {
   if (pollUsesBlockMode(poll) && blockConfig.length) {
     meta.innerHTML += `<span class="pill"><i class="fa-solid fa-arrow-right-long"></i> ${escapeHtml(`${blockConfig.length} Tage am Stueck`)}</span>`;
   }
+  if (pollUsesBlockMode(poll) && blockConfig.startWeekday !== null) {
+    meta.innerHTML += `<span class="pill"><i class="fa-solid fa-calendar-day"></i> ${escapeHtml(`Start: ${formatWeeklyWeekday(blockConfig.startWeekday)}`)}</span>`;
+  }
   if (pollUsesBlockMode(poll) && Array.isArray(poll?.dates) && poll.dates.length > 0) {
     meta.innerHTML += `<span class="pill"><i class="fa-regular fa-calendar-check"></i> ${escapeHtml(`${formatDateShort([...poll.dates].sort()[0])}-${formatDateShort([...poll.dates].sort()[poll.dates.length - 1])}`)}</span>`;
   }
@@ -3647,6 +3676,7 @@ function renderBlockFreeAvailabilityForm(grid) {
   const poll = state.pollData.poll;
   const blockConfig = normalizePollBlockConfig(poll);
   const blockLength = blockConfig.length;
+  const startWeekdayLabel = blockConfig.startWeekday === null ? "Beliebig" : formatWeeklyWeekday(blockConfig.startWeekday);
   const selectableDates = new Set(getPollBlockSelectableDates(poll));
   const selectedDates = getSelectedBlockFreeDates(state.responseDraft, poll);
   state.participantSelectedDates = new Set(selectedDates);
@@ -3657,6 +3687,7 @@ function renderBlockFreeAvailabilityForm(grid) {
     <div>
       <strong>Markiere alle Tage, an denen du fuer den Block kannst</strong>
       <p class="description">Waehle im Kalender beliebige passende Tage aus. Die Auswertung sucht daraus automatisch die besten zusammenhaengenden Bloecke ueber ${escapeHtml(formatBlockLengthLabel(blockLength))}.</p>
+      <p class="description">Starttag des Blocks: ${escapeHtml(startWeekdayLabel)}</p>
     </div>
     <button id="participant-toggle-calendar" class="ghost-button compact-button participant-mobile-toggle" type="button">
       ${state.participantCalendarExpanded ? "Kalender ausblenden" : "Teilnehmen"}

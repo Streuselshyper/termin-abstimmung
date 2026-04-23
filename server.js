@@ -338,6 +338,11 @@ function normalizeBlockLength(value) {
   return parsed;
 }
 
+function normalizeBlockStartWeekday(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 6 ? parsed : null;
+}
+
 function normalizeBlockConfig(config, mode = "") {
   const source = config && typeof config === "object" && !Array.isArray(config) ? config : {};
   const length = normalizeBlockLength(source.length);
@@ -349,6 +354,7 @@ function normalizeBlockConfig(config, mode = "") {
     length,
     startDate,
     endDate,
+    startWeekday: normalizeBlockStartWeekday(source.startWeekday),
     weekdays: normalizeWeekdaySelection(source.weekdays),
   };
 }
@@ -365,8 +371,9 @@ function getBlockEndDate(startDate, length) {
   return addDaysToIsoDate(startDate, length - 1);
 }
 
-function listContiguousBlocksFromDates(dates, length) {
+function listContiguousBlocksFromDates(dates, length, startWeekday = null) {
   const normalizedDates = normalizeDates(dates);
+  const normalizedStartWeekday = normalizeBlockStartWeekday(startWeekday);
   if (!Number.isInteger(length) || length < 2 || normalizedDates.length < length) {
     return [];
   }
@@ -387,6 +394,9 @@ function listContiguousBlocksFromDates(dates, length) {
     }
 
     if (!isContiguous) {
+      continue;
+    }
+    if (normalizedStartWeekday !== null && getIsoDateWeekday(blockDates[0]) !== normalizedStartWeekday) {
       continue;
     }
 
@@ -477,7 +487,7 @@ function rangeContainsBlock(range, startDate, length) {
 function getPollBlockStartDates(poll) {
   const blockConfig = getPollBlockConfig(poll);
   if (poll?.mode === "block_fixed" || poll?.mode === "block_free") {
-    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length).map((entry) => entry.start);
+    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length, blockConfig.startWeekday).map((entry) => entry.start);
   }
 
   return [];
@@ -486,7 +496,7 @@ function getPollBlockStartDates(poll) {
 function getPollBlockEntries(poll) {
   const blockConfig = getPollBlockConfig(poll);
   if (poll?.mode === "block_fixed" || poll?.mode === "block_free") {
-    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length);
+    return listContiguousBlocksFromDates(poll?.dates, blockConfig.length, blockConfig.startWeekday);
   }
 
   return [];
@@ -726,7 +736,7 @@ function validatePollInput(body) {
   const isWeekly = mode === "weekly";
   const isBlockFixed = mode === "block_fixed";
   const isBlockFree = mode === "block_free";
-  const blockConfig = isBlockFixed || isBlockFree ? normalizeBlockConfig(body?.blockConfig, mode) : { length: 0, startDate: "", endDate: "", weekdays: [] };
+  const blockConfig = isBlockFixed || isBlockFree ? normalizeBlockConfig(body?.blockConfig, mode) : { length: 0, startDate: "", endDate: "", startWeekday: null, weekdays: [] };
   const dates =
     mode === "fixed" || mode === "timeslots" || isBlockFixed || isBlockFree
       ? normalizeDates(body?.dates)
