@@ -1282,10 +1282,6 @@ body.poll-drawer-open {
 .poll-settings-shell summary {
   list-style: none;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  white-space: nowrap;
 }
 
 .poll-settings-shell summary::-webkit-details-marker {
