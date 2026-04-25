@@ -1265,9 +1265,16 @@ body.poll-drawer-open {
 .poll-summary-toolbar {
   align-items: center;
   justify-content: flex-end;
+  flex: 0 0 auto;
   flex-wrap: nowrap;
   min-width: 0;
   gap: 0.5rem;
+}
+
+#poll-open-response {
+  flex: 0 0 auto;
+  gap: 0.5rem;
+  white-space: nowrap;
 }
 
 .poll-settings-shell {
