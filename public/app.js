@@ -5230,6 +5230,52 @@ function getBlockHeatTone(entry, maxScore) {
   return "low";
 }
 
+function normalizeBlockResultEntry(entry) {
+  const start = typeof entry?.start === "string" ? entry.start : typeof entry?.date === "string" ? entry.date : "";
+  const end = typeof entry?.end === "string" ? entry.end : typeof entry?.endDate === "string" ? entry.endDate : "";
+  if (!start || !end) {
+    return null;
+  }
+
+  return {
+    ...entry,
+    start,
+    end,
+    date: start,
+    endDate: end,
+    length: Number.isInteger(entry?.length) && entry.length > 0 ? entry.length : getInclusiveDateSpan(start, end),
+    yes: Number(entry?.yes) || 0,
+    maybe: Number(entry?.maybe) || 0,
+    no: Number(entry?.no) || 0,
+    score: Number(entry?.score) || 0,
+  };
+}
+
+function getBlockResultEntries(results) {
+  return getTopMatrixDates((results?.summary || []).map(normalizeBlockResultEntry).filter(Boolean));
+}
+
+function sortBlockResultEntries(left, right) {
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+  if (right.yes !== left.yes) {
+    return right.yes - left.yes;
+  }
+  if (right.maybe !== left.maybe) {
+    return right.maybe - left.maybe;
+  }
+  return left.date.localeCompare(right.date);
+}
+
+function formatBlockVoteLabel(entry, poll) {
+  if (!entry) {
+    return "";
+  }
+
+  return pollUsesBlockFree(poll) ? `${entry.yes} Ja` : `${entry.yes} Ja · ${entry.maybe} Vielleicht`;
+}
+
 function renderBlockHeatmapMonth(monthDate, entryMap, winnerDates, maxScore, poll) {
   const days = buildCalendarDays(monthDate.getFullYear(), monthDate.getMonth());
 
@@ -5238,40 +5284,38 @@ function renderBlockHeatmapMonth(monthDate, entryMap, winnerDates, maxScore, pol
       <header class="block-month-head">
         <strong>${escapeHtml(formatMonthYear(monthDate))}</strong>
       </header>
-      <div class="block-month-grid">
-        ${weekdayLabels.map((weekday) => `<span class="block-month-weekday">${escapeHtml(weekday)}</span>`).join("")}
-        ${days
-          .map((day) => {
-            const entry = entryMap.get(day.isoDate);
-            const tone = getBlockHeatTone(entry, maxScore);
-            const isWinner = winnerDates.has(day.isoDate);
-            const metaLabel = entry
-              ? pollUsesBlockFree(poll)
-                ? `${entry.yes} Ja`
-                : `${entry.yes} Ja · ${entry.maybe} Vielleicht`
-              : "";
+      <div class="results-calendar-stage results-calendar-stage--month">
+        <div class="block-month-grid results-calendar-month-grid">
+          ${weekdayLabels.map((weekday) => `<span class="block-month-weekday results-calendar-month-weekday">${escapeHtml(weekday)}</span>`).join("")}
+          ${days
+            .map((day) => {
+              const entry = entryMap.get(day.isoDate);
+              const tone = getBlockHeatTone(entry, maxScore);
+              const isWinner = winnerDates.has(day.isoDate);
+              const metaLabel = formatBlockVoteLabel(entry, poll);
 
-            return `
-              <article
-                class="block-month-day${day.inCurrentMonth ? "" : " is-muted"}${entry ? ` is-active ${tone}` : ""}${isWinner ? " is-winner" : ""}"
-                ${entry ? `title="${escapeHtml(`${formatBlockRangeLong(entry.date, entry.endDate)} · ${metaLabel}`)}"` : ""}
-              >
-                <div class="block-month-day-head">
-                  <strong>${day.date.getDate()}</strong>
-                  ${entry ? `<span>${escapeHtml(String(entry.yes))}</span>` : ""}
-                </div>
-                ${
-                  entry
-                    ? `
-                      <span class="block-month-day-copy">${escapeHtml(formatDateShort(entry.endDate))}</span>
-                      <span class="block-month-day-meta">${escapeHtml(metaLabel)}</span>
-                    `
-                    : ""
-                }
-              </article>
-            `;
-          })
-          .join("")}
+              return `
+                <article
+                  class="block-month-day results-calendar-month-day${day.inCurrentMonth ? "" : " is-muted"}${entry ? ` is-active ${tone}` : ""}${isWinner ? " is-winner" : ""}"
+                  ${entry ? `title="${escapeHtml(`${formatBlockRangeLong(entry.date, entry.endDate)} · ${metaLabel}`)}"` : ""}
+                >
+                  <div class="block-month-day-head results-calendar-month-day-head">
+                    <strong>${day.date.getDate()}</strong>
+                    ${isWinner ? '<span class="block-month-day-meta">Top</span>' : ""}
+                  </div>
+                  ${
+                    entry
+                      ? `
+                        <span class="block-month-day-copy">${escapeHtml(formatDateShort(entry.endDate))}</span>
+                        <span class="block-month-day-meta">${escapeHtml(formatBlockPeriodMeta(entry.date, entry.endDate, entry.length))}</span>
+                      `
+                      : ""
+                  }
+                </article>
+              `;
+            })
+            .join("")}
+        </div>
       </div>
     </section>
   `;
@@ -5289,7 +5333,19 @@ function renderBlockResultsHeatmap(poll, results) {
     return;
   }
 
-  const entries = getTopMatrixDates(results?.summary || []);
+  const entries = getBlockResultEntries(results);
+  console.log("[block-results]", {
+    mode: poll.mode,
+    summaryCount: results?.summary?.length || 0,
+    entries: entries.slice(0, 8).map((entry) => ({
+      start: entry.date,
+      end: entry.endDate,
+      yes: entry.yes,
+      maybe: entry.maybe,
+      score: entry.score,
+    })),
+  });
+
   if (entries.length === 0) {
     blockPanel.classList.remove("is-hidden");
     blockPanel.innerHTML = renderEmptyStateMarkup(
@@ -5300,19 +5356,14 @@ function renderBlockResultsHeatmap(poll, results) {
     return;
   }
 
-  const winnerDates = new Set((results?.bestDates || []).map((entry) => entry.date));
+  const winnerDates = new Set(
+    (results?.bestBlocks || results?.bestDates || [])
+      .map(normalizeBlockResultEntry)
+      .filter(Boolean)
+      .map((entry) => entry.date)
+  );
   const maxScore = entries.reduce((highest, entry) => Math.max(highest, entry.score), 0);
-  const topEntries = [...entries]
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-      if (right.yes !== left.yes) {
-        return right.yes - left.yes;
-      }
-      return left.date.localeCompare(right.date);
-    })
-    .slice(0, 5);
+  const topEntries = [...entries].sort(sortBlockResultEntries).slice(0, 5);
   const monthEntries = new Map();
 
   entries.forEach((entry) => {
@@ -5341,9 +5392,7 @@ function renderBlockResultsHeatmap(poll, results) {
         }</strong>
         <p class="description">${
           topEntries[0]
-            ? pollUsesBlockFree(poll)
-              ? `${topEntries[0].yes} Ja-Stimmen fuer den aktuell besten Block.`
-              : `${topEntries[0].yes} Ja und ${topEntries[0].maybe} Vielleicht fuer den aktuell besten Block.`
+            ? `${escapeHtml(formatBlockPeriodMeta(topEntries[0].date, topEntries[0].endDate, topEntries[0].length))} · Details im Ranking.`
             : "Sobald Antworten vorliegen, erscheint hier der beste Block."
         }</p>
       </div>
