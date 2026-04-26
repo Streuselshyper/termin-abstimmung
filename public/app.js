@@ -678,8 +678,8 @@ function fillCreateForm(existingPoll) {
 
   document.querySelector("#create-title").value = existingPoll?.title || "";
   document.querySelector("#create-description").value = existingPoll?.description || "";
-  pageBadge.textContent = isEditing ? "Bearbeiten" : "Neue Umfrage";
-  pageTitle.textContent = isEditing ? "Umfrage bearbeiten" : "Neue Termin-Abstimmung";
+  pageBadge?.classList.toggle("is-hidden", true);
+  pageTitle.textContent = isEditing ? "Umfrage bearbeiten" : "Termin-Abstimmung erstellen";
   submitButton.innerHTML = isEditing
     ? '<i class="fa-regular fa-floppy-disk"></i> Aenderungen speichern'
     : '<i class="fa-regular fa-floppy-disk"></i> Umfrage speichern';

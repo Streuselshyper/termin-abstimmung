@@ -487,11 +487,27 @@ body[data-theme="light"] .selected-dates-box {
 }
 
 .create-hero {
+  display: block;
   align-items: start;
+  padding: 1.35rem 1.45rem;
 }
 
-.create-mode-stats {
-  grid-template-columns: 1fr;
+.create-hero .hero-copy {
+  max-width: 68rem;
+}
+
+.create-hero .inline-action-row {
+  justify-content: flex-start;
+}
+
+.create-hero h1 {
+  max-width: 100%;
+  font-size: clamp(2.1rem, 5vw, 3.8rem);
+  line-height: 1;
+}
+
+.create-hero .hero-text {
+  max-width: 58rem;
 }
 
 .hero-copy {
