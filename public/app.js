@@ -5215,12 +5215,16 @@ function renderResultsCalendar(calendarEvents) {
   }
 }
 
-function getBlockHeatTone(entry, maxScore) {
+function getBlockHeatTone(entry, maxYes) {
   if (!entry) {
     return "";
   }
 
-  const ratio = maxScore > 0 ? entry.score / maxScore : 0;
+  if (entry.yes <= 0) {
+    return "empty";
+  }
+
+  const ratio = maxYes > 0 ? entry.yes / maxYes : 0;
   if (ratio >= 0.66) {
     return "high";
   }
@@ -5255,17 +5259,19 @@ function getBlockResultEntries(results) {
   return getTopMatrixDates((results?.summary || []).map(normalizeBlockResultEntry).filter(Boolean));
 }
 
-function sortBlockResultEntries(left, right) {
-  if (right.score !== left.score) {
-    return right.score - left.score;
+function getBlockEntryDetailsLabel(entry, poll) {
+  if (!entry) {
+    return "";
   }
-  if (right.yes !== left.yes) {
-    return right.yes - left.yes;
-  }
-  if (right.maybe !== left.maybe) {
-    return right.maybe - left.maybe;
-  }
-  return left.date.localeCompare(right.date);
+
+  const voteLabel = pollUsesBlockFree(poll)
+    ? `${entry.yes} Ja · ${entry.no} Nein`
+    : `${entry.yes} Ja · ${entry.maybe} Vielleicht · ${entry.no} Nein`;
+  return `${formatBlockRangeLong(entry.date, entry.endDate)} · ${formatBlockPeriodMeta(
+    entry.date,
+    entry.endDate,
+    entry.length
+  )} · ${voteLabel}`;
 }
 
 function formatBlockVoteLabel(entry, poll) {
@@ -5273,52 +5279,73 @@ function formatBlockVoteLabel(entry, poll) {
     return "";
   }
 
-  return pollUsesBlockFree(poll) ? `${entry.yes} Ja` : `${entry.yes} Ja · ${entry.maybe} Vielleicht`;
+  return pollUsesBlockFree(poll)
+    ? `${entry.yes} Ja`
+    : `${entry.yes} Ja · ${entry.maybe} Vielleicht`;
 }
 
-function renderBlockHeatmapMonth(monthDate, entryMap, winnerDates, maxScore, poll) {
+function renderBlockHeatmapMonth(monthDate, entries, winnerDates, maxYes, poll) {
   const days = buildCalendarDays(monthDate.getFullYear(), monthDate.getMonth());
+  const entryMap = new Map(entries.map((entry) => [entry.date, entry]));
+  const currentIsoDate = toIsoDate(new Date());
 
   return `
-    <section class="block-month-panel">
-      <header class="block-month-head">
-        <strong>${escapeHtml(formatMonthYear(monthDate))}</strong>
-      </header>
-      <div class="results-calendar-stage results-calendar-stage--month">
-        <div class="block-month-grid results-calendar-month-grid">
-          ${weekdayLabels.map((weekday) => `<span class="block-month-weekday results-calendar-month-weekday">${escapeHtml(weekday)}</span>`).join("")}
-          ${days
-            .map((day) => {
-              const entry = entryMap.get(day.isoDate);
-              const tone = getBlockHeatTone(entry, maxScore);
-              const isWinner = winnerDates.has(day.isoDate);
-              const metaLabel = formatBlockVoteLabel(entry, poll);
+    <div class="results-calendar-stage results-calendar-stage--month block-heatmap-stage">
+      <div class="block-month-grid results-calendar-month-grid">
+        ${weekdayLabels.map((weekday) => `<span class="block-month-weekday results-calendar-month-weekday">${escapeHtml(weekday)}</span>`).join("")}
+        ${days
+          .map((day) => {
+            const entry = entryMap.get(day.isoDate);
+            const tone = getBlockHeatTone(entry, maxYes);
+            const isWinner = winnerDates.has(day.isoDate);
+            const detailsLabel = getBlockEntryDetailsLabel(entry, poll);
 
-              return `
-                <article
-                  class="block-month-day results-calendar-month-day${day.inCurrentMonth ? "" : " is-muted"}${entry ? ` is-active ${tone}` : ""}${isWinner ? " is-winner" : ""}"
-                  ${entry ? `title="${escapeHtml(`${formatBlockRangeLong(entry.date, entry.endDate)} · ${metaLabel}`)}"` : ""}
-                >
-                  <div class="block-month-day-head results-calendar-month-day-head">
-                    <strong>${day.date.getDate()}</strong>
-                    ${isWinner ? '<span class="block-month-day-meta">Top</span>' : ""}
-                  </div>
-                  ${
-                    entry
-                      ? `
-                        <span class="block-month-day-copy">${escapeHtml(formatDateShort(entry.endDate))}</span>
-                        <span class="block-month-day-meta">${escapeHtml(formatBlockPeriodMeta(entry.date, entry.endDate, entry.length))}</span>
-                      `
-                      : ""
-                  }
-                </article>
-              `;
-            })
-            .join("")}
-        </div>
+            return `
+              <article
+                class="block-month-day results-calendar-month-day${day.inCurrentMonth ? "" : " is-muted"}${
+                  day.isoDate === currentIsoDate ? " is-today" : ""
+                }${entry ? ` is-active ${tone}` : ""}${isWinner ? " is-winner" : ""}"
+                ${entry ? `title="${escapeHtml(detailsLabel)}" data-block-detail="${escapeHtml(detailsLabel)}" tabindex="0"` : ""}
+              >
+                <div class="block-month-day-head results-calendar-month-day-head">
+                  <strong>${day.date.getDate()}</strong>
+                  ${entry ? `<span>${escapeHtml(String(entry.yes))}</span>` : ""}
+                </div>
+                ${
+                  entry
+                    ? `
+                      <div class="block-month-day-copy">
+                        <span>${escapeHtml(formatDateShort(entry.endDate))}</span>
+                        ${isWinner ? '<span class="block-month-winner">Top</span>' : ""}
+                      </div>
+                      <div class="block-month-day-votes" aria-label="${escapeHtml(formatBlockVoteLabel(entry, poll))}">
+                        <span>${escapeHtml(`${entry.yes} Ja`)}</span>
+                        ${pollUsesBlockFree(poll) ? "" : `<span>${escapeHtml(`${entry.maybe} Vielleicht`)}</span>`}
+                        <span>${escapeHtml(`${entry.no} Nein`)}</span>
+                      </div>
+                    `
+                    : ""
+                }
+              </article>
+            `;
+          })
+          .join("")}
       </div>
-    </section>
+    </div>
   `;
+}
+
+function shiftBlockHeatmapMonth(delta) {
+  if (!delta) {
+    return;
+  }
+
+  const currentDate =
+    state.resultsCalendarDate instanceof Date && !Number.isNaN(state.resultsCalendarDate.getTime())
+      ? new Date(state.resultsCalendarDate.getFullYear(), state.resultsCalendarDate.getMonth(), 1)
+      : new Date();
+
+  state.resultsCalendarDate = addMonths(currentDate, delta);
 }
 
 function renderBlockResultsHeatmap(poll, results) {
@@ -5334,18 +5361,6 @@ function renderBlockResultsHeatmap(poll, results) {
   }
 
   const entries = getBlockResultEntries(results);
-  console.log("[block-results]", {
-    mode: poll.mode,
-    summaryCount: results?.summary?.length || 0,
-    entries: entries.slice(0, 8).map((entry) => ({
-      start: entry.date,
-      end: entry.endDate,
-      yes: entry.yes,
-      maybe: entry.maybe,
-      score: entry.score,
-    })),
-  });
-
   if (entries.length === 0) {
     blockPanel.classList.remove("is-hidden");
     blockPanel.innerHTML = renderEmptyStateMarkup(
@@ -5362,70 +5377,44 @@ function renderBlockResultsHeatmap(poll, results) {
       .filter(Boolean)
       .map((entry) => entry.date)
   );
-  const maxScore = entries.reduce((highest, entry) => Math.max(highest, entry.score), 0);
-  const topEntries = [...entries].sort(sortBlockResultEntries).slice(0, 5);
-  const monthEntries = new Map();
-
-  entries.forEach((entry) => {
-    const monthKey = entry.date.slice(0, 7);
-    if (!monthEntries.has(monthKey)) {
-      monthEntries.set(monthKey, []);
-    }
-    monthEntries.get(monthKey).push(entry);
-  });
+  const maxYes = entries.reduce((highest, entry) => Math.max(highest, entry.yes), 0);
+  const activeMonthDate =
+    state.resultsCalendarDate instanceof Date && !Number.isNaN(state.resultsCalendarDate.getTime())
+      ? new Date(state.resultsCalendarDate.getFullYear(), state.resultsCalendarDate.getMonth(), 1)
+      : new Date(`${entries[0].date.slice(0, 7)}-01T00:00:00`);
 
   blockPanel.classList.remove("is-hidden");
   blockPanel.innerHTML = `
-    <div class="panel-header">
+    <div class="panel-header block-heatmap-header">
       <div>
         <p class="eyebrow">Zusatzansicht</p>
         <h2>Block-Heatmap</h2>
       </div>
-      <span class="pill">${escapeHtml(`${entries.length} Bloecke`)}</span>
-    </div>
-    <div class="block-results-summary">
-      <div>
-        <strong>${
-          topEntries[0]
-            ? `${formatBlockRangeLong(topEntries[0].date, topEntries[0].endDate)}`
-            : "Noch kein Gewinner"
-        }</strong>
-        <p class="description">${
-          topEntries[0]
-            ? `${escapeHtml(formatBlockPeriodMeta(topEntries[0].date, topEntries[0].endDate, topEntries[0].length))} · Details im Ranking.`
-            : "Sobald Antworten vorliegen, erscheint hier der beste Block."
-        }</p>
-      </div>
-      <div class="block-ranking-list">
-        ${topEntries
-          .map(
-            (entry, index) => `
-              <article class="block-ranking-item${winnerDates.has(entry.date) ? " is-winner" : ""}">
-                <span class="pill">${escapeHtml(`#${index + 1}`)}</span>
-                <div>
-                  <strong>${escapeHtml(formatBlockRangeShort(entry.date, entry.endDate))}</strong>
-                  <p class="description">${
-                    pollUsesBlockFree(poll)
-                      ? escapeHtml(`${entry.yes} Ja-Stimmen`)
-                      : escapeHtml(`${entry.yes} Ja · ${entry.maybe} Vielleicht`)
-                  }</p>
-                </div>
-              </article>
-            `
-          )
-          .join("")}
+      <div class="results-calendar-nav block-heatmap-nav">
+        <button class="ghost-button compact-button" type="button" data-block-calendar-shift="-1" aria-label="Vorheriger Monat">
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <strong>${escapeHtml(formatMonthYear(activeMonthDate))}</strong>
+        <button class="ghost-button compact-button" type="button" data-block-calendar-shift="1" aria-label="Naechster Monat">
+          <i class="fa-solid fa-chevron-right"></i>
+        </button>
       </div>
     </div>
-    <div class="block-month-list">
-      ${Array.from(monthEntries.entries())
-        .map(([monthKey, monthItems]) => {
-          const monthDate = new Date(`${monthKey}-01T00:00:00`);
-          const entryMap = new Map(monthItems.map((entry) => [entry.date, entry]));
-          return renderBlockHeatmapMonth(monthDate, entryMap, winnerDates, maxScore, poll);
-        })
-        .join("")}
-    </div>
+    ${renderBlockHeatmapMonth(activeMonthDate, entries, winnerDates, maxYes, poll)}
   `;
+
+  blockPanel.querySelectorAll("[data-block-calendar-shift]").forEach((button) => {
+    button.addEventListener("click", () => {
+      shiftBlockHeatmapMonth(Number(button.dataset.blockCalendarShift) || 0);
+      renderResultsTable();
+    });
+  });
+
+  blockPanel.querySelectorAll("[data-block-detail]").forEach((day) => {
+    day.addEventListener("click", () => {
+      showToast(day.dataset.blockDetail || "");
+    });
+  });
 }
 
 function renderBlockFixedResultsTable(poll, responses, results, editableResponse, showEditIcon) {
