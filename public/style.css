@@ -530,7 +530,7 @@ body[data-theme="light"] .selected-dates-box {
 .hero-copy {
   display: grid;
   align-content: start;
-  gap: 0.6rem;
+  gap: 1.2rem;
   max-width: 52rem;
 }
 
