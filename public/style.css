@@ -1045,7 +1045,8 @@ select:focus {
 }
 
 .results-panel,
-.results-calendar-panel {
+.results-calendar-panel,
+.block-results-panel {
   grid-column: span 12;
 }
 
@@ -1830,10 +1831,18 @@ body.poll-drawer-open {
 }
 
 .results-calendar-panel,
+.block-results-panel,
 .results-calendar-summary-copy,
 .results-calendar-month-list {
   display: grid;
   gap: 1rem;
+}
+
+.block-results-panel,
+.block-results-summary,
+.block-month-list {
+  width: 100%;
+  max-width: none;
 }
 
 .results-calendar-toolbar,
@@ -2445,6 +2454,7 @@ body.poll-drawer-open {
   .poll-summary-panel,
   .poll-response-panel,
   .poll-ranking-panel,
+  .block-results-panel,
   .poll-shell > .panel:last-child {
     grid-column: span 1;
   }
