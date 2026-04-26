@@ -510,7 +510,7 @@ function rangeContainsBlock(range, startDate, length) {
 
 function getPollBlockStartDates(poll) {
   const blockConfig = getPollBlockConfig(poll);
-  if (poll?.mode === "block_fixed" || poll?.mode === "block_free") {
+  if (poll?.mode === "block_fixed") {
     return listContiguousBlocksFromDates(poll?.dates, blockConfig.length, blockConfig.weekdays).map((entry) => entry.start);
   }
 
@@ -519,7 +519,7 @@ function getPollBlockStartDates(poll) {
 
 function getPollBlockEntries(poll) {
   const blockConfig = getPollBlockConfig(poll);
-  if (poll?.mode === "block_fixed" || poll?.mode === "block_free") {
+  if (poll?.mode === "block_fixed") {
     return listContiguousBlocksFromDates(poll?.dates, blockConfig.length, blockConfig.weekdays);
   }
 
@@ -761,10 +761,7 @@ function validatePollInput(body) {
   const isBlockFixed = mode === "block_fixed";
   const isBlockFree = mode === "block_free";
   const blockConfig = isBlockFixed || isBlockFree ? normalizeBlockConfig(body?.blockConfig, mode) : { length: 0, startDate: "", endDate: "", weekdays: [] };
-  const dates =
-    mode === "fixed" || mode === "timeslots" || isBlockFixed || isBlockFree
-      ? normalizeDates(body?.dates)
-      : [];
+  const dates = mode === "fixed" || mode === "timeslots" || isBlockFixed ? normalizeDates(body?.dates) : [];
   const requestedTimeSlots = normalizeTimeSlotsByDate(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const invalidTimeSlot = findInvalidTimeSlotEntry(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const allowTimeSlots =
@@ -793,13 +790,13 @@ function validatePollInput(body) {
   if ((mode === "fixed" || mode === "timeslots" || allowTimeSlots) && dates.length === 0) {
     return { ok: false, message: "Bitte waehle mindestens ein Datum aus." };
   }
-  if ((isBlockFixed || isBlockFree) && dates.length === 0) {
+  if (isBlockFixed && dates.length === 0) {
     return { ok: false, message: "Bitte waehle mindestens einen Tag fuer den Block aus." };
   }
   if (dates.some((date) => Number.isNaN(new Date(`${date}T00:00:00Z`).getTime()))) {
     return { ok: false, message: "Mindestens ein Datum ist ungueltig." };
   }
-  if ((isBlockFixed || isBlockFree) && getPollBlockEntries({ mode, dates, blockConfig }).length === 0) {
+  if (isBlockFixed && getPollBlockEntries({ mode, dates, blockConfig }).length === 0) {
     return { ok: false, message: `Die ausgewaehlten Tage enthalten keinen zusammenhaengenden Block mit ${blockConfig.length} Tagen.` };
   }
   if (invalidTimeSlot) {
@@ -1489,6 +1486,54 @@ function calculateBestBlockResults(poll, responses, resolveStatus) {
   };
 }
 
+function getBlockFreeResponseSelectedDates(response) {
+  const selectedDates = new Set();
+  const availabilities = response?.availabilities || {};
+
+  for (const [date, status] of Object.entries(availabilities)) {
+    if (isIsoDate(date) && status === "yes") {
+      selectedDates.add(date);
+    }
+  }
+
+  const range = normalizeBlockRange(response?.blockRange || availabilities);
+  if (range.start && range.end && range.start <= range.end) {
+    let currentDate = range.start;
+    while (currentDate && currentDate <= range.end) {
+      selectedDates.add(currentDate);
+      currentDate = addDaysToIsoDate(currentDate, 1);
+    }
+  }
+
+  return Array.from(selectedDates).sort();
+}
+
+function getBlockFreeCandidateBlocks(poll, responses) {
+  const blockConfig = getPollBlockConfig(poll);
+  const selectedDates = new Set();
+
+  for (const response of responses || []) {
+    getBlockFreeResponseSelectedDates(response).forEach((date) => selectedDates.add(date));
+  }
+
+  return listContiguousBlocksFromDates(Array.from(selectedDates), blockConfig.length, blockConfig.weekdays);
+}
+
+function calculateBestFreeBlockResults(poll, responses) {
+  const summary = getBlockFreeCandidateBlocks(poll, responses).map((block) =>
+    buildBlockResultEntry(block, responses, getBlockFreeResponseStatus)
+  );
+  const sorted = [...summary].sort(sortBlockResults);
+  const bestScore = sorted[0]?.score ?? 0;
+  const bestBlocks = sorted.filter((entry) => entry.score === bestScore && sorted.length > 0);
+
+  return {
+    summary,
+    bestBlocks,
+    bestDates: bestBlocks,
+  };
+}
+
 function getBlockFixedResponseStatus(response, block) {
   let hasMaybe = false;
 
@@ -1506,7 +1551,7 @@ function getBlockFixedResponseStatus(response, block) {
 }
 
 function getBlockFreeResponseStatus(response, block) {
-  const range = normalizeBlockRange(response.availabilities || response.blockRange);
+  const range = normalizeBlockRange(response.blockRange || response.availabilities);
   if (range.start && range.end) {
     return rangeContainsBlock(range, block.start, block.length) ? "yes" : "no";
   }
@@ -1519,7 +1564,7 @@ function calculateBestBlocks(poll, responses) {
 }
 
 function calculateBestFreeBlocks(poll, responses) {
-  return calculateBestBlockResults(poll, responses, getBlockFreeResponseStatus);
+  return calculateBestFreeBlockResults(poll, responses);
 }
 
 

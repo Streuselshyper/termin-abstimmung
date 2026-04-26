@@ -816,7 +816,7 @@ function getDefaultCreateBlockConfig() {
 }
 
 function createModeUsesCalendar(mode = state.createMode) {
-  return mode === "fixed" || mode === "timeslots" || mode === "block_fixed" || mode === "block_free";
+  return mode === "fixed" || mode === "timeslots" || mode === "block_fixed";
 }
 
 function createModeUsesParticipantSuggestions(mode = state.createMode) {
@@ -1392,7 +1392,7 @@ function updateCreateModeLayout() {
     } else if (state.createMode === "block_fixed") {
       pageDescription.textContent = "Waehle die moeglichen Tage und die benoetigte Block-Laenge. Teilnehmende stimmen danach wie im Fixtermin-Modus pro Tag mit Ja, Vielleicht oder Nein ab.";
     } else if (isBlockFree) {
-      pageDescription.textContent = "Waehle die moeglichen Tage und die benoetigte Block-Laenge. Teilnehmende markieren danach wie im Freie-Wahl-Modus alle passenden Tage im Kalender.";
+      pageDescription.textContent = "Lege nur die benoetigte Block-Laenge fest. Teilnehmende markieren danach beliebige passende Tage im Kalender.";
     } else if (isFreeSlots) {
       pageDescription.textContent =
         "Lege Titel und Beschreibung fest. Teilnehmende schlagen danach selbst Tage mit passenden Zeitfenstern wie 14:00-16:00 vor.";
@@ -1411,7 +1411,7 @@ function updateCreateModeLayout() {
     } else if (state.createMode === "block_fixed") {
       formTitle.textContent = "Blocktage konfigurieren";
     } else if (isBlockFree) {
-      formTitle.textContent = "Freie Blocktage konfigurieren";
+      formTitle.textContent = "Freien Block konfigurieren";
     } else if (isFreeSlots) {
       formTitle.textContent = "Zeitslots Freie Wahl konfigurieren";
     } else if (isWeekly) {
@@ -1421,7 +1421,7 @@ function updateCreateModeLayout() {
     }
   }
 
-  fixedFields?.classList.toggle("is-hidden", isFreeChoice || isWeekly);
+  fixedFields?.classList.toggle("is-hidden", isFreeChoice || isWeekly || isBlockFree);
   freeFields?.classList.toggle("is-hidden", !isFreeChoice);
   weeklyFields?.classList.toggle("is-hidden", !isWeekly);
   blockFields?.classList.toggle("is-hidden", !isBlockMode);
@@ -1436,7 +1436,7 @@ function updateCreateModeLayout() {
   if (blockDescription) {
     blockDescription.textContent = state.createMode === "block_fixed"
       ? "Waehle die moeglichen Tage aus. Optional: Bloecke muessen an diesen Wochentagen starten."
-      : "Waehle die moeglichen Tage aus. Optional: Bloecke muessen an diesen Wochentagen starten.";
+      : "Lege die Block-Laenge fest. Optional: Bloecke muessen an diesen Wochentagen starten.";
   }
 
   if (freeModeTitle) {
@@ -1820,6 +1820,19 @@ function renderCreateBlockPreview() {
     preview.innerHTML = '<p class="description">Bitte hinterlege eine Block-Laenge zwischen 2 und 31 Tagen.</p>';
     return;
   }
+  if (state.createMode === "block_free") {
+    preview.innerHTML = `
+      <div class="block-preview-card">
+        <div class="selected-header">
+          <span>Freier Block</span>
+          <span class="pill">${escapeHtml(`${length} Tage`)}</span>
+        </div>
+        <p class="description">Teilnehmende koennen spaeter beliebige Tage markieren. Die Auswertung sucht daraus automatisch zusammenhaengende Bloecke.</p>
+        <p class="description">Erlaubte Starttage: ${escapeHtml(formatAllowedBlockStartDays(startWeekdays))}</p>
+      </div>
+    `;
+    return;
+  }
 
   const entries = listBlockEntriesFromDates(Array.from(state.selectedDates).sort(), length, startWeekdays);
   if (state.selectedDates.size === 0) {
@@ -1870,6 +1883,17 @@ function normalizeCreateBlockConfigForSubmit() {
   });
   if (!length) {
     return { ok: false, message: "Bitte hinterlege eine gueltige Block-Laenge zwischen 2 und 31 Tagen." };
+  }
+  if (state.createMode === "block_free") {
+    return {
+      ok: true,
+      value: {
+        length,
+        startDate: "",
+        endDate: "",
+        weekdays,
+      },
+    };
   }
   if (entries.length === 0) {
     return { ok: false, message: `Die ausgewaehlten Tage enthalten keinen zusammenhaengenden Block mit ${length} Tagen.` };
@@ -3376,6 +3400,8 @@ function fillPollSummary() {
     `<span class="pill"><i class="fa-regular fa-calendar"></i> ${escapeHtml(
       hasTimeSlots
         ? `${countPollScheduleEntries(poll)} Zeitslots`
+        : pollUsesBlockFree(poll)
+          ? `${results.summary.length || 0} Bloecke`
         : pollUsesBlockMode(poll)
           ? `${getPollBlockEntries(poll).length} Bloecke`
         : poll.mode === "weekly"
@@ -5506,7 +5532,8 @@ function renderBlockFreeResultsTable(poll, responses, results, editableResponse,
         selectedDates.length > 1
           ? formatBlockPeriodMeta(selectedDates[0], selectedDates[selectedDates.length - 1])
           : "";
-      const possibleBlocks = getPollBlockEntries(poll).filter((entry) => entry.dates.every((date) => selectedDates.includes(date)));
+      const blockConfig = normalizePollBlockConfig(poll);
+      const possibleBlocks = listBlockEntriesFromDates(selectedDates, blockConfig.length, blockConfig.weekdays);
 
       return `
         <tr>
