@@ -508,9 +508,10 @@ body[data-theme="light"] .selected-dates-box {
 }
 
 .create-hero h1 {
-  max-width: 24ch;
-  font-size: clamp(2rem, 4.4vw, 3.25rem);
+  max-width: none;
+  font-size: clamp(2rem, 4vw, 3rem);
   line-height: 0.98;
+  white-space: nowrap;
 }
 
 .create-hero .hero-text {
@@ -2665,6 +2666,10 @@ body.poll-drawer-open {
 
   .hero-card h1 {
     font-size: clamp(1.8rem, 10vw, 2.8rem);
+  }
+
+  .create-hero h1 {
+    white-space: normal;
   }
 
   .hero-stats {
