@@ -938,11 +938,15 @@ function validateBlockRangeResponse(poll, value) {
 
 function validateBlockDaySelections(poll, value) {
   const allowedDates = new Set(Array.isArray(poll?.dates) ? poll.dates : []);
+  const allowAnyDate = poll?.mode === "block_free";
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const normalized = {};
 
   for (const [date, status] of Object.entries(source)) {
-    if (!allowedDates.has(date)) {
+    if (!isIsoDate(date)) {
+      return { ok: false, message: `${date} ist kein gueltiger Tag.` };
+    }
+    if (!allowAnyDate && !allowedDates.has(date)) {
       return { ok: false, message: `${date} ist fuer diese Block-Umfrage kein gueltiger Tag.` };
     }
     if (status !== "yes") {

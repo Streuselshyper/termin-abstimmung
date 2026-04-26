@@ -3752,10 +3752,9 @@ function renderBlockFreeAvailabilityForm(grid) {
     <div id="participant-calendar-grid" class="calendar-grid" aria-live="polite"></div>
     <div class="selected-dates-box">
       <div class="selected-header">
-        <span>Deine ausgewaehlten Tage</span>
+        <span>Auswahl im Kalender sichtbar</span>
         <button id="participant-clear-dates" class="text-button" type="button">Leeren</button>
       </div>
-      <div id="participant-selected-dates" class="selected-dates"></div>
     </div>
   `;
 
@@ -3833,50 +3832,6 @@ function renderBlockFreeAvailabilityForm(grid) {
       calendarGrid.appendChild(button);
     }
   }
-
-  const container = document.querySelector("#participant-selected-dates");
-  if (!container) {
-    return;
-  }
-
-  if (selectedDates.length === 0) {
-    container.innerHTML = renderEmptyStateMarkup(
-      "fa-regular fa-hand-point-up",
-      "Noch keine Tage markiert",
-      "Markiere im Kalender alle Tage, die fuer deinen moeglichen Block infrage kommen."
-    );
-    return;
-  }
-
-  container.innerHTML = "";
-  selectedDates.forEach((date) => {
-    const card = document.createElement("div");
-    card.className = "time-slot-date-card";
-    card.innerHTML = `
-      <div class="time-slot-date-head">
-        <strong>${escapeHtml(formatDateLong(date))}</strong>
-        <div class="calendar-actions">
-          <button class="text-button" type="button" data-action="remove-date" data-date="${date}">
-            Entfernen
-          </button>
-        </div>
-      </div>
-      <p class="description"><strong>Fuer den Block verfuegbar</strong></p>
-    `;
-    container.appendChild(card);
-  });
-
-  container.querySelectorAll('[data-action="remove-date"]').forEach((button) => {
-    button.addEventListener("click", () => {
-      const { date } = button.dataset;
-      if (!date) {
-        return;
-      }
-      state.participantSelectedDates.delete(date);
-      delete state.responseDraft[date];
-      renderAvailabilityForm();
-    });
-  });
 }
 
 function renderFixedSlotAvailabilityForm(grid) {
