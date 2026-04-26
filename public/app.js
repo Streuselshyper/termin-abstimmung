@@ -12,7 +12,7 @@ const statusLabels = {
   maybe: "Vielleicht",
   no: "Nein",
 };
-const CREATE_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free", "weekly", "block_fixed", "block_free", "star_rating"]);
+const CREATE_POLL_MODES = new Set(["fixed", "block_fixed", "timeslots", "star_rating", "free", "block_free", "timeslots_free", "weekly"]);
 
 const state = {
   auth: {
