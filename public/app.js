@@ -1405,42 +1405,42 @@ function updateCreateModeLayout() {
 
   if (pageDescription) {
     if (isFixed) {
-      pageDescription.textContent = "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab.";
+      pageDescription.textContent = "Gib mehrere konkrete Tage vor und lass Teilnehmende pro Termin mit Ja, Vielleicht oder Nein abstimmen.";
     } else if (isStarRating) {
-      pageDescription.textContent = "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende bewerten spaeter jeden Termin mit 1 bis 5 Sternen.";
+      pageDescription.textContent = "Gib feste Termine vor und sammle eine Sternebewertung, wenn nicht nur Verfuegbarkeit, sondern Praeferenz zaehlt.";
     } else if (isTimeslots) {
-      pageDescription.textContent = "Lege Titel, Beschreibung, Daten und feste Zeitfenster fest. Teilnehmende stimmen danach pro Zeitslot mit Ja, Vielleicht oder Nein ab.";
+      pageDescription.textContent = "Plane Tage mit konkreten Zeitfenstern und lass jede Option einzeln bewerten.";
     } else if (state.createMode === "block_fixed") {
-      pageDescription.textContent = "Waehle die moeglichen Tage und die benoetigte Block-Laenge. Teilnehmende stimmen danach wie im Fixtermin-Modus pro Tag mit Ja, Vielleicht oder Nein ab.";
+      pageDescription.textContent = "Markiere moegliche Tage fuer einen zusammenhaengenden Block; die Auswertung findet den besten Start.";
     } else if (isBlockFree) {
-      pageDescription.textContent = "Lege nur die benoetigte Block-Laenge fest. Teilnehmende markieren danach beliebige passende Tage im Kalender.";
+      pageDescription.textContent = "Lege nur fest, wie lang der Block sein muss; Teilnehmende markieren passende Tage frei im Kalender.";
     } else if (isFreeSlots) {
       pageDescription.textContent =
-        "Lege Titel und Beschreibung fest. Teilnehmende schlagen danach selbst Tage mit passenden Zeitfenstern wie 14:00-16:00 vor.";
+        "Lass Teilnehmende eigene Tage mit passenden Uhrzeiten vorschlagen, statt Optionen vorzugeben.";
     } else if (isWeekly) {
-      pageDescription.textContent = "Lege wiederkehrende Wochen-Slots wie Mittwoch 09:45-11:15 fest. Teilnehmende stimmen pro Wochentag und Uhrzeit ab, ganz ohne Kalenderdaten.";
+      pageDescription.textContent = "Stimme wiederkehrende Wochenzeiten ab, zum Beispiel fuer regelmaessige Meetings oder Kurse.";
     } else {
-      pageDescription.textContent = "Lege Titel und Beschreibung fest. Teilnehmende koennen danach selbst beliebige passende Tage markieren.";
+      pageDescription.textContent = "Lass Teilnehmende selbst passende Tage eintragen, wenn du den Zeitraum bewusst offen halten willst.";
     }
   }
 
   if (formTitle) {
     if (isFixed) {
-      formTitle.textContent = "Feste Termine konfigurieren";
+      formTitle.textContent = "Termine zur Abstimmung";
     } else if (isStarRating) {
-      formTitle.textContent = "Bewertete Termine konfigurieren";
+      formTitle.textContent = "Termine fuer Sternebewertung";
     } else if (isTimeslots) {
-      formTitle.textContent = "Zeitslots konfigurieren";
+      formTitle.textContent = "Tage und Zeitfenster";
     } else if (state.createMode === "block_fixed") {
-      formTitle.textContent = "Blocktage konfigurieren";
+      formTitle.textContent = "Tage fuer festen Block";
     } else if (isBlockFree) {
-      formTitle.textContent = "Freien Block konfigurieren";
+      formTitle.textContent = "Freien Block vorbereiten";
     } else if (isFreeSlots) {
-      formTitle.textContent = "Zeitslots Freie Wahl konfigurieren";
+      formTitle.textContent = "Freie Zeitslots vorbereiten";
     } else if (isWeekly) {
-      formTitle.textContent = "Wochen-Slots konfigurieren";
+      formTitle.textContent = "Wiederkehrende Wochenzeiten";
     } else {
-      formTitle.textContent = "Freie Wahl konfigurieren";
+      formTitle.textContent = "Freie Terminvorschlaege";
     }
   }
 
@@ -1463,13 +1463,13 @@ function updateCreateModeLayout() {
   }
 
   if (freeModeTitle) {
-    freeModeTitle.textContent = isFreeSlots ? "Zeitslots Freie Wahl" : "Freie Wahl";
+    freeModeTitle.textContent = isFreeSlots ? "Freie Zeitfenster" : "Freie Terminvorschlaege";
   }
 
   if (freeModeDescription) {
     freeModeDescription.textContent = isFreeSlots
-      ? "In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst Tage markieren und dazu passende Zeitfenster pro Datum eintragen."
-      : "In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst beliebige Tage im Kalender markieren.";
+      ? "Teilnehmende schlagen eigene Tage vor und tragen passende Uhrzeiten direkt dazu ein."
+      : "Teilnehmende markieren passende Tage selbst im Kalender.";
   }
 
   if (timeSlotTitle) {
@@ -2893,25 +2893,25 @@ function getDashboardPollTypeMeta(mode) {
     return { label: "Feste Termine", icon: "fa-regular fa-calendar" };
   }
   if (mode === "timeslots") {
-    return { label: "Zeitslots", icon: "fa-regular fa-clock" };
+    return { label: "Zeitfenster", icon: "fa-regular fa-clock" };
   }
   if (mode === "block_fixed") {
-    return { label: "Block feste Starts", icon: "fa-solid fa-calendar-week" };
+    return { label: "Mehrtaegiger Block", icon: "fa-solid fa-calendar-week" };
   }
   if (mode === "block_free") {
-    return { label: "Block freie Zeitraeume", icon: "fa-solid fa-calendar-days" };
+    return { label: "Freier Block", icon: "fa-solid fa-calendar-days" };
   }
   if (mode === "star_rating") {
-    return { label: "Bewertete Termine", icon: "fa-regular fa-star" };
+    return { label: "Sterne-Bewertung", icon: "fa-regular fa-star" };
   }
   if (mode === "timeslots_free") {
-    return { label: "Zeitslots Freie Wahl", icon: "fa-regular fa-calendar-plus" };
+    return { label: "Freie Zeitfenster", icon: "fa-regular fa-calendar-plus" };
   }
   if (mode === "weekly") {
-    return { label: "Weekly", icon: "fa-regular fa-clock" };
+    return { label: "Wochenrhythmus", icon: "fa-regular fa-clock" };
   }
 
-  return { label: "Freie Wahl", icon: "fa-regular fa-pen-to-square" };
+  return { label: "Freie Terminvorschlaege", icon: "fa-regular fa-pen-to-square" };
 }
 
 async function handleRegister(event) {

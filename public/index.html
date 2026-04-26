@@ -590,8 +590,8 @@
               <p class="eyebrow">Schneller abstimmen</p>
               <h1>Umfragen erstellen, teilen und direkt auswerten</h1>
               <p class="hero-text">
-                Erstelle Termin-Abstimmungen mit festen Terminen, Bewertungen, Zeitslots, freier Wahl oder Block-Modi,
-                teile Einladungslinks, exportiere gewaehlte Tage nach iCal und behalte alle Antworten in deinem Dashboard im Blick.
+                Waehle den Abstimmungsmodus, der zu deiner Planung passt: feste Optionen, freie Vorschlaege,
+                Sternebewertungen, Zeitfenster oder mehrtaegige Bloecke.
               </p>
               <div class="hero-cta-row">
                 <a class="primary-link" href="/register">Konto erstellen</a>
@@ -827,62 +827,62 @@
               <h1>Schnell starten</h1>
             </div>
           </div>
-          <p class="description">Waehle zuerst den Typ deiner Umfrage. Der Editor wird im naechsten Schritt geoeffnet.</p>
+          <p class="description">Starte mit dem Format, das deiner Planung am naechsten kommt. Jede Auswahl fuehrt zu einer passenden Abstimmung und Auswertung.</p>
           <div class="dashboard-actions-grid">
             <a class="create-mode-card" href="/create?mode=fixed">
               <div class="create-mode-icon"><i class="fa-regular fa-calendar"></i></div>
               <div class="create-mode-copy">
                 <h3>Feste Termine</h3>
-                <p class="description">Du legst konkrete Tage fest und sammelst Ja-, Vielleicht- oder Nein-Antworten.</p>
+                <p class="description">Fuer wenige konkrete Tage, bei denen eine einfache Ja-, Vielleicht- oder Nein-Antwort reicht.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=block_fixed">
               <div class="create-mode-icon"><i class="fa-solid fa-calendar-week"></i></div>
               <div class="create-mode-copy">
-                <h3>Block feste Starts</h3>
-                <p class="description">Du legst Block-Laenge, Zeitraum und optional erlaubte Wochentage fest. Abgestimmt wird pro moeglichem Starttag.</p>
+                <h3>Mehrtaegiger Block</h3>
+                <p class="description">Fuer Workshops, Reisen oder Einsaetze, die mehrere Tage am Stueck dauern muessen.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=timeslots">
               <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
               <div class="create-mode-copy">
-                <h3>Zeitslots</h3>
-                <p class="description">Du definierst pro Datum feste Zeitfenster wie 14:00-16:00 oder 09:00-12:00.</p>
+                <h3>Zeitfenster</h3>
+                <p class="description">Fuer Termine mit festen Uhrzeiten, bei denen jeder Slot einzeln bewertet wird.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=star_rating">
               <div class="create-mode-icon"><i class="fa-regular fa-star"></i></div>
               <div class="create-mode-copy">
-                <h3>Bewertete Termine</h3>
-                <p class="description">Du legst feste Termine fest. Teilnehmende vergeben pro Termin 1 bis 5 Sterne.</p>
+                <h3>Sterne-Bewertung</h3>
+                <p class="description">Fuer feste Termine, bei denen die beste Option ueber Durchschnittsbewertungen gefunden wird.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=free">
               <div class="create-mode-icon"><i class="fa-regular fa-pen-to-square"></i></div>
               <div class="create-mode-copy">
-                <h3>Freie Wahl</h3>
-                <p class="description">Teilnehmende schlagen selbst passende Tage im Kalender vor.</p>
+                <h3>Freie Terminvorschlaege</h3>
+                <p class="description">Fuer offene Planungen, bei denen Teilnehmende selbst passende Tage markieren.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=block_free">
               <div class="create-mode-icon"><i class="fa-solid fa-calendar-days"></i></div>
               <div class="create-mode-copy">
-                <h3>Block freie Zeitraeume</h3>
-                <p class="description">Teilnehmende geben nur ihren verfuegbaren Zeitraum an. Das System sucht daraus den besten zusammenhaengenden Block.</p>
+                <h3>Freier Block</h3>
+                <p class="description">Fuer mehrtaegige Vorhaben ohne vorgegebene Tage; die besten zusammenhaengenden Tage entstehen aus den Antworten.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=timeslots_free">
               <div class="create-mode-icon"><i class="fa-regular fa-calendar-plus"></i></div>
               <div class="create-mode-copy">
-                <h3>Zeitslots Freie Wahl</h3>
-                <p class="description">Teilnehmende schlagen selbst Tage mit passenden Zeitfenstern wie 14:00-16:00 vor.</p>
+                <h3>Freie Zeitfenster</h3>
+                <p class="description">Fuer offene Terminfindung mit eigenen Tagen und Uhrzeiten pro Teilnehmer.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=weekly">
               <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
               <div class="create-mode-copy">
-                <h3>Weekly</h3>
-                <p class="description">Du definierst Wochentage plus Uhrzeiten wie Mittwoch 09:45-11:15. Ohne konkrete Kalenderdaten.</p>
+                <h3>Wochenrhythmus</h3>
+                <p class="description">Fuer wiederkehrende Termine nach Wochentag und Uhrzeit, unabhaengig vom Kalenderdatum.</p>
               </div>
             </a>
           </div>
@@ -979,17 +979,17 @@
             <p class="eyebrow">Umfrage erstellen</p>
             <h1 id="create-page-title">Neue Termin-Abstimmung</h1>
             <p id="create-page-description" class="hero-text">
-              Waehle zuerst den passenden Modus und erfasse dann Titel, Beschreibung und Termine.
+              Starte mit dem passenden Abstimmungsformat. Danach fuehrt dich der Editor nur durch die Felder, die dieser Modus wirklich braucht.
             </p>
           </div>
           <div class="hero-stats create-mode-stats">
             <article class="hero-stat">
-              <strong>Titel + Beschreibung</strong>
-              <span>Klare Einordnung fuer alle Teilnehmenden</span>
+              <strong>Passender Modus</strong>
+              <span>Von einfacher Tagesabstimmung bis mehrtaegigem Block</span>
             </article>
             <article class="hero-stat">
-              <strong>Direkter Flow</strong>
-              <span>Nach dem Speichern springst du direkt zur Detail-Seite</span>
+              <strong>Klare Auswertung</strong>
+              <span>Ergebnisse werden passend zum gewaehlten Format berechnet</span>
             </article>
           </div>
         </article>
@@ -1007,56 +1007,56 @@
               <div class="create-mode-icon"><i class="fa-regular fa-calendar"></i></div>
               <div class="create-mode-copy">
                 <h3>Feste Termine</h3>
-                <p class="description">Du definierst konkrete Tage und sammelst strukturierte Antworten.</p>
+                <p class="description">Fuer wenige konkrete Tage, bei denen eine einfache Ja-, Vielleicht- oder Nein-Antwort reicht.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=block_fixed">
               <div class="create-mode-icon"><i class="fa-solid fa-calendar-week"></i></div>
               <div class="create-mode-copy">
-                <h3>Block feste Starts</h3>
-                <p class="description">Du erzeugst moegliche Starttage fuer einen mehrtaegigen Block innerhalb eines festen Zeitraums.</p>
+                <h3>Mehrtaegiger Block</h3>
+                <p class="description">Fuer Workshops, Reisen oder Einsaetze, die mehrere Tage am Stueck dauern muessen.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=timeslots">
               <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
               <div class="create-mode-copy">
-                <h3>Zeitslots</h3>
-                <p class="description">Du waehlst Daten und hinterlegst pro Datum mehrere Zeitfenster fuer die Abstimmung.</p>
+                <h3>Zeitfenster</h3>
+                <p class="description">Fuer Termine mit festen Uhrzeiten, bei denen jeder Slot einzeln bewertet wird.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=star_rating">
               <div class="create-mode-icon"><i class="fa-regular fa-star"></i></div>
               <div class="create-mode-copy">
-                <h3>Bewertete Termine</h3>
-                <p class="description">Du definierst konkrete Tage. Teilnehmende bewerten jeden Termin mit 1 bis 5 Sternen.</p>
+                <h3>Sterne-Bewertung</h3>
+                <p class="description">Fuer feste Termine, bei denen die beste Option ueber Durchschnittsbewertungen gefunden wird.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=free">
               <div class="create-mode-icon"><i class="fa-regular fa-pen-to-square"></i></div>
               <div class="create-mode-copy">
-                <h3>Freie Wahl</h3>
-                <p class="description">Teilnehmende markieren selbst beliebige passende Tage im Kalender.</p>
+                <h3>Freie Terminvorschlaege</h3>
+                <p class="description">Fuer offene Planungen, bei denen Teilnehmende selbst passende Tage markieren.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=block_free">
               <div class="create-mode-icon"><i class="fa-solid fa-calendar-days"></i></div>
               <div class="create-mode-copy">
-                <h3>Block freie Zeitraeume</h3>
-                <p class="description">Teilnehmende melden zusammenhaengende Zeitraeume, aus denen automatisch der beste Block berechnet wird.</p>
+                <h3>Freier Block</h3>
+                <p class="description">Fuer mehrtaegige Vorhaben ohne vorgegebene Tage; die besten zusammenhaengenden Tage entstehen aus den Antworten.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=timeslots_free">
               <div class="create-mode-icon"><i class="fa-regular fa-calendar-plus"></i></div>
               <div class="create-mode-copy">
-                <h3>Zeitslots Freie Wahl</h3>
-                <p class="description">Teilnehmende markieren Tage und tragen dazu eigene Zeitfenster pro Datum ein.</p>
+                <h3>Freie Zeitfenster</h3>
+                <p class="description">Fuer offene Terminfindung mit eigenen Tagen und Uhrzeiten pro Teilnehmer.</p>
               </div>
             </a>
             <a class="create-mode-card" href="/create?mode=weekly">
               <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
               <div class="create-mode-copy">
-                <h3>Weekly</h3>
-                <p class="description">Du legst Wochentage plus Zeitfenster fest. Abgestimmt wird nur auf das Wochenmuster, ohne Datumsangaben.</p>
+                <h3>Wochenrhythmus</h3>
+                <p class="description">Fuer wiederkehrende Termine nach Wochentag und Uhrzeit, unabhaengig vom Kalenderdatum.</p>
               </div>
             </a>
           </div>
@@ -1116,19 +1116,18 @@
 
             <div id="create-free-fields" class="selected-dates-box is-hidden">
               <div class="selected-header">
-                <span id="create-free-mode-title">Freie Wahl</span>
+                <span id="create-free-mode-title">Freie Terminvorschlaege</span>
               </div>
               <p id="create-free-mode-description" class="description">
-                In diesem Modus legst du keine festen Termine vor. Teilnehmende koennen spaeter selbst beliebige Tage im
-                Kalender markieren.
+                Teilnehmende markieren passende Tage selbst im Kalender.
               </p>
             </div>
 
             <div id="create-weekly-fields" class="selected-dates-box is-hidden">
               <div class="selected-header">
-                <span>Weekly</span>
+                <span>Wochenrhythmus</span>
               </div>
-              <p class="description">Lege nur Wochentage und Zeitfenster fest. Es werden keine konkreten Datumsangaben erzeugt.</p>
+              <p class="description">Lege wiederkehrende Wochentage und Uhrzeiten fest, ohne konkrete Kalenderdaten.</p>
               <div id="create-weekly-editor" class="weekly-editor"></div>
             </div>
 
