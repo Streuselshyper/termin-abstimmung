@@ -372,20 +372,20 @@ async function renderResetPasswordPage(token) {
   tokenField.value = token;
 
   if (!token) {
-    setFeedback(feedback, "Es fehlt ein gueltiger Reset-Token.", "error");
+    setFeedback(feedback, "Es fehlt ein gültiger Reset-Token.", "error");
     details.innerHTML = '<p class="description">Fordere zuerst einen neuen Link an.</p>';
     return;
   }
 
-  setFeedback(feedback, "Reset-Link wird geprueft ...");
+  setFeedback(feedback, "Reset-Link wird geprüft ...");
 
   try {
     const data = await apiFetch(`/api/auth/reset-password/${encodeURIComponent(token)}`);
     details.innerHTML = `
       <p class="description">Konto: <strong>${escapeHtml(data.email)}</strong></p>
-      <p class="description">Gueltig bis ${escapeHtml(formatDateTime(data.expiresAt))}</p>
+      <p class="description">Gültig bis ${escapeHtml(formatDateTime(data.expiresAt))}</p>
     `;
-    setFeedback(feedback, "Link ist gueltig. Du kannst jetzt ein neues Passwort setzen.", "success");
+    setFeedback(feedback, "Link ist gültig. Du kannst jetzt ein neues Passwort setzen.", "success");
     document.querySelector("#reset-password-form").addEventListener("submit", handleResetPassword);
   } catch (error) {
     details.innerHTML = '<p class="description">Der Link muss neu angefordert werden.</p>';
@@ -420,7 +420,7 @@ async function renderAccountPage() {
         <div class="hero-stats auth-stats">
           <article class="hero-stat">
             <strong>${escapeHtml(profile.email)}</strong>
-            <span>E-Mail-Adresse bleibt unveraenderlich</span>
+            <span>E-Mail-Adresse bleibt unveränderlich</span>
           </article>
           <article class="hero-stat">
             <strong id="account-display-name">${escapeHtml(profile.name || "Kein Name gesetzt")}</strong>
@@ -438,7 +438,7 @@ async function renderAccountPage() {
           <div class="panel-header">
             <div>
               <p class="eyebrow">Profil</p>
-              <h2>Persoenliche Daten</h2>
+              <h2>Persönliche Daten</h2>
             </div>
           </div>
 
@@ -473,17 +473,17 @@ async function renderAccountPage() {
           <div class="panel-header">
             <div>
               <p class="eyebrow">Sicherheit</p>
-              <h2>Passwort aendern</h2>
+              <h2>Passwort ändern</h2>
             </div>
           </div>
 
           <div class="stack-form">
             <p class="description">
-              Aendere dein Passwort in einem separaten Dialog, ohne die restlichen Kontodaten zu unterbrechen.
+              Ändere dein Passwort in einem separaten Dialog, ohne die restlichen Kontodaten zu unterbrechen.
             </p>
             <button id="open-password-modal" class="primary-button wide-button" type="button">
               <i class="fa-solid fa-key"></i>
-              Passwort aendern
+              Passwort ändern
             </button>
           </div>
         </article>
@@ -491,7 +491,7 @@ async function renderAccountPage() {
         <article class="panel">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Uebersichten</p>
+              <p class="eyebrow">Übersichten</p>
               <h2>Schnellzugriff</h2>
             </div>
           </div>
@@ -512,18 +512,18 @@ async function renderAccountPage() {
           <div class="panel-header">
             <div>
               <p class="eyebrow">Gefahrenzone</p>
-              <h2>Konto loeschen</h2>
+              <h2>Konto löschen</h2>
             </div>
           </div>
 
           <div class="stack-form">
             <p class="description">
-              Beim Loeschen werden dein Konto, deine Antworten und alle von dir erstellten Umfragen dauerhaft entfernt.
+              Beim Löschen werden dein Konto, deine Antworten und alle von dir erstellten Umfragen dauerhaft entfernt.
             </p>
             <div id="account-delete-feedback" class="feedback" role="status" aria-live="polite"></div>
             <button id="account-delete-button" class="ghost-button wide-button" type="button">
               <i class="fa-regular fa-trash-can"></i>
-              Konto loeschen
+              Konto löschen
             </button>
           </div>
         </article>
@@ -534,7 +534,7 @@ async function renderAccountPage() {
           <div class="panel-header">
             <div>
               <p class="eyebrow">Sicherheit</p>
-              <h2 id="account-password-modal-title">Passwort aendern</h2>
+              <h2 id="account-password-modal-title">Passwort ändern</h2>
             </div>
           </div>
 
@@ -565,7 +565,7 @@ async function renderAccountPage() {
             </label>
 
             <label>
-              <span>Neues Passwort bestaetigen</span>
+              <span>Neues Passwort bestätigen</span>
               <input
                 id="account-confirm-password"
                 type="password"
@@ -573,7 +573,7 @@ async function renderAccountPage() {
                 autocomplete="new-password"
                 required
                 minlength="8"
-                placeholder="Neues Passwort bestaetigen"
+                placeholder="Neues Passwort bestätigen"
               />
             </label>
 
@@ -681,7 +681,7 @@ function fillCreateForm(existingPoll) {
   pageBadge?.classList.toggle("is-hidden", true);
   pageTitle.textContent = isEditing ? "Umfrage bearbeiten" : "Termin-Abstimmung erstellen";
   submitButton.innerHTML = isEditing
-    ? '<i class="fa-regular fa-floppy-disk"></i> Aenderungen speichern'
+    ? '<i class="fa-regular fa-floppy-disk"></i> Änderungen speichern'
     : '<i class="fa-regular fa-floppy-disk"></i> Umfrage speichern';
 
   document.querySelectorAll('.create-mode-card[href^="/create?mode="]').forEach((card) => {
@@ -776,7 +776,7 @@ function renderCreateSelectedDates() {
 
   const dates = Array.from(state.selectedDates).sort();
   if (dates.length === 0) {
-    container.innerHTML = '<p class="description">Noch keine Termine ausgewaehlt.</p>';
+    container.innerHTML = '<p class="description">Noch keine Termine ausgewählt.</p>';
     return;
   }
 
@@ -1407,18 +1407,18 @@ function updateCreateModeLayout() {
     if (isFixed) {
       pageDescription.textContent = "Gib mehrere konkrete Tage vor und lass Teilnehmende pro Termin mit Ja, Vielleicht oder Nein abstimmen.";
     } else if (isStarRating) {
-      pageDescription.textContent = "Gib feste Termine vor und sammle eine Sternebewertung, wenn nicht nur Verfuegbarkeit, sondern Praeferenz zaehlt.";
+      pageDescription.textContent = "Gib feste Termine vor und sammle eine Sternebewertung, wenn nicht nur Verfügbarkeit, sondern Präferenz zählt.";
     } else if (isTimeslots) {
       pageDescription.textContent = "Plane Tage mit konkreten Zeitfenstern und lass jede Option einzeln bewerten.";
     } else if (state.createMode === "block_fixed") {
-      pageDescription.textContent = "Markiere moegliche Tage fuer einen zusammenhaengenden Block; die Auswertung findet den besten Start.";
+      pageDescription.textContent = "Markiere mögliche Tage für einen zusammenhängenden Block; die Auswertung findet den besten Start.";
     } else if (isBlockFree) {
       pageDescription.textContent = "Lege nur fest, wie lang der Block sein muss; Teilnehmende markieren passende Tage frei im Kalender.";
     } else if (isFreeSlots) {
       pageDescription.textContent =
         "Lass Teilnehmende eigene Tage mit passenden Uhrzeiten vorschlagen, statt Optionen vorzugeben.";
     } else if (isWeekly) {
-      pageDescription.textContent = "Stimme wiederkehrende Wochenzeiten ab, zum Beispiel fuer regelmaessige Meetings oder Kurse.";
+      pageDescription.textContent = "Stimme wiederkehrende Wochenzeiten ab, zum Beispiel für regelmäßige Meetings oder Kurse.";
     } else {
       pageDescription.textContent = "Lass Teilnehmende selbst passende Tage eintragen, wenn du den Zeitraum bewusst offen halten willst.";
     }
@@ -1428,11 +1428,11 @@ function updateCreateModeLayout() {
     if (isFixed) {
       formTitle.textContent = "Termine zur Abstimmung";
     } else if (isStarRating) {
-      formTitle.textContent = "Termine fuer Sternebewertung";
+      formTitle.textContent = "Termine für Sternebewertung";
     } else if (isTimeslots) {
       formTitle.textContent = "Tage und Zeitfenster";
     } else if (state.createMode === "block_fixed") {
-      formTitle.textContent = "Tage fuer festen Block";
+      formTitle.textContent = "Tage für festen Block";
     } else if (isBlockFree) {
       formTitle.textContent = "Freien Block vorbereiten";
     } else if (isFreeSlots) {
@@ -1440,7 +1440,7 @@ function updateCreateModeLayout() {
     } else if (isWeekly) {
       formTitle.textContent = "Wiederkehrende Wochenzeiten";
     } else {
-      formTitle.textContent = "Freie Terminvorschlaege";
+      formTitle.textContent = "Freie Terminvorschläge";
     }
   }
 
@@ -1458,12 +1458,12 @@ function updateCreateModeLayout() {
 
   if (blockDescription) {
     blockDescription.textContent = state.createMode === "block_fixed"
-      ? "Waehle die moeglichen Tage aus. Optional: Bloecke muessen an diesen Wochentagen starten."
-      : "Lege die Block-Laenge fest. Optional: Bloecke muessen an diesen Wochentagen starten.";
+      ? "Wähle die möglichen Tage aus. Optional: Blöcke müssen an diesen Wochentagen starten."
+      : "Lege die Block-Länge fest. Optional: Blöcke müssen an diesen Wochentagen starten.";
   }
 
   if (freeModeTitle) {
-    freeModeTitle.textContent = isFreeSlots ? "Freie Zeitfenster" : "Freie Terminvorschlaege";
+    freeModeTitle.textContent = isFreeSlots ? "Freie Zeitfenster" : "Freie Terminvorschläge";
   }
 
   if (freeModeDescription) {
@@ -1686,10 +1686,10 @@ function normalizeCreateWeeklySlotsForSubmit() {
       continue;
     }
     if (weekdays.length === 0) {
-      return { ok: false, message: "Bitte waehle fuer jeden Wochen-Slot mindestens einen Wochentag." };
+      return { ok: false, message: "Bitte wähle für jeden Wochen-Slot mindestens einen Wochentag." };
     }
     if (!start || !end || start >= end) {
-      return { ok: false, message: "Bitte nutze fuer Wochen-Slots gueltige Zeiten im Format HH:MM-HH:MM." };
+      return { ok: false, message: "Bitte nutze für Wochen-Slots gültige Zeiten im Format HH:MM-HH:MM." };
     }
 
     weekdays.forEach((weekday) => {
@@ -1840,7 +1840,7 @@ function renderCreateBlockPreview() {
   }
 
   if (!length) {
-    preview.innerHTML = '<p class="description">Bitte hinterlege eine Block-Laenge zwischen 2 und 31 Tagen.</p>';
+    preview.innerHTML = '<p class="description">Bitte hinterlege eine Block-Länge zwischen 2 und 31 Tagen.</p>';
     return;
   }
   if (state.createMode === "block_free") {
@@ -1850,7 +1850,7 @@ function renderCreateBlockPreview() {
           <span>Freier Block</span>
           <span class="pill">${escapeHtml(`${length} Tage`)}</span>
         </div>
-        <p class="description">Teilnehmende koennen spaeter beliebige Tage markieren. Die Auswertung sucht daraus automatisch zusammenhaengende Bloecke.</p>
+        <p class="description">Teilnehmende können später beliebige Tage markieren. Die Auswertung sucht daraus automatisch zusammenhängende Blöcke.</p>
         <p class="description">Erlaubte Starttage: ${escapeHtml(formatAllowedBlockStartDays(startWeekdays))}</p>
       </div>
     `;
@@ -1859,21 +1859,21 @@ function renderCreateBlockPreview() {
 
   const entries = listBlockEntriesFromDates(Array.from(state.selectedDates).sort(), length, startWeekdays);
   if (state.selectedDates.size === 0) {
-    preview.innerHTML = '<p class="description">Waehle zuerst moegliche Tage im Kalender aus.</p>';
+    preview.innerHTML = '<p class="description">Wähle zuerst mögliche Tage im Kalender aus.</p>';
     return;
   }
   if (entries.length === 0) {
-    preview.innerHTML = `<p class="feedback error">Die ausgewaehlten Tage enthalten noch keinen zusammenhaengenden Block mit ${length} Tagen.</p>`;
+    preview.innerHTML = `<p class="feedback error">Die ausgewählten Tage enthalten noch keinen zusammenhängenden Block mit ${length} Tagen.</p>`;
     return;
   }
 
   preview.innerHTML = `
     <div class="block-preview-card">
       <div class="selected-header">
-        <span>${escapeHtml(`${entries.length} moegliche Bloecke`)}</span>
+        <span>${escapeHtml(`${entries.length} mögliche Blöcke`)}</span>
         <span class="pill">${escapeHtml(`${length} Tage`)}</span>
       </div>
-      <p class="description">Die Auswertung durchsucht spaeter genau diese zusammenhaengenden Block-Zeitraeume.</p>
+      <p class="description">Die Auswertung durchsucht später genau diese zusammenhängenden Block-Zeiträume.</p>
       <p class="description">Erlaubte Starttage: ${escapeHtml(formatAllowedBlockStartDays(startWeekdays))}</p>
       <div class="selected-dates">
         ${entries
@@ -1885,7 +1885,7 @@ function renderCreateBlockPreview() {
       </div>
       ${
         entries.length > 12
-          ? `<p class="description">+${escapeHtml(String(entries.length - 12))} weitere Bloecke</p>`
+          ? `<p class="description">+${escapeHtml(String(entries.length - 12))} weitere Blöcke</p>`
           : ""
       }
     </div>
@@ -1905,7 +1905,7 @@ function normalizeCreateBlockConfigForSubmit() {
     entries: entries.map((entry) => ({ start: entry.start, end: entry.end })),
   });
   if (!length) {
-    return { ok: false, message: "Bitte hinterlege eine gueltige Block-Laenge zwischen 2 und 31 Tagen." };
+    return { ok: false, message: "Bitte hinterlege eine gültige Block-Länge zwischen 2 und 31 Tagen." };
   }
   if (state.createMode === "block_free") {
     return {
@@ -1919,7 +1919,7 @@ function normalizeCreateBlockConfigForSubmit() {
     };
   }
   if (entries.length === 0) {
-    return { ok: false, message: `Die ausgewaehlten Tage enthalten keinen zusammenhaengenden Block mit ${length} Tagen.` };
+    return { ok: false, message: `Die ausgewählten Tage enthalten keinen zusammenhängenden Block mit ${length} Tagen.` };
   }
 
   return {
@@ -1950,7 +1950,7 @@ function renderCreateTimeSlots() {
 
   const dates = Array.from(state.selectedDates).sort();
   if (dates.length === 0) {
-    editor.innerHTML = '<p class="description">Waehle zuerst mindestens ein Datum aus.</p>';
+    editor.innerHTML = '<p class="description">Wähle zuerst mindestens ein Datum aus.</p>';
     return;
   }
 
@@ -1970,7 +1970,7 @@ function renderCreateTimeSlots() {
       ${
         slots.length === 0
           ? `<p class="description">${
-              usesRangeSlots ? "Noch keine Zeitslots definiert." : "Ganzer Tag verfuegbar."
+              usesRangeSlots ? "Noch keine Zeitslots definiert." : "Ganzer Tag verfügbar."
             }</p>`
           : ""
       }
@@ -2358,7 +2358,7 @@ function normalizeCreateTimeSlotsForSubmit() {
   const dates = Array.from(state.selectedDates).sort();
 
   if (dates.length === 0) {
-    return { ok: false, message: "Bitte waehle mindestens ein Datum aus." };
+    return { ok: false, message: "Bitte wähle mindestens ein Datum aus." };
   }
 
   for (const date of dates) {
@@ -2378,8 +2378,8 @@ function normalizeCreateTimeSlotsForSubmit() {
         return {
           ok: false,
           message: createModeUsesRangeSlots()
-            ? "Bitte nutze fuer Zeitslots Start- und Endzeiten im Format HH:MM bis HH:MM."
-            : "Bitte nutze fuer optionale Uhrzeiten das Format HH:MM.",
+            ? "Bitte nutze für Zeitslots Start- und Endzeiten im Format HH:MM bis HH:MM."
+            : "Bitte nutze für optionale Uhrzeiten das Format HH:MM.",
         };
       }
 
@@ -2391,7 +2391,7 @@ function normalizeCreateTimeSlotsForSubmit() {
     if (createModeRequiresTimeSlots() && normalized[date].length === 0) {
       return {
         ok: false,
-        message: "Bitte hinterlege fuer jedes ausgewaehlte Datum mindestens einen Zeitslot.",
+        message: "Bitte hinterlege für jedes ausgewählte Datum mindestens einen Zeitslot.",
       };
     }
   }
@@ -2730,7 +2730,7 @@ async function renderParticipatedPage() {
       summaryLabel: formatParticipationCountLabel(data.stats.totalPolls),
       sectionTitle: "Fremde Umfragen mit deiner Stimme",
       sectionDescription:
-        "Hier siehst du nur Umfragen anderer Personen, an denen du bereits mitgewirkt hast, mit der letzten Aktivitaet auf einen Blick.",
+        "Hier siehst du nur Umfragen anderer Personen, an denen du bereits mitgewirkt hast, mit der letzten Aktivität auf einen Blick.",
       containerId: "participated-polls-list",
       emptyTitle: "Noch keine Teilnahmen",
       emptyDescription: "Sobald du an Umfragen anderer Personen teilnimmst, erscheinen sie hier.",
@@ -2756,7 +2756,7 @@ function renderPollOverviewPage(options) {
           <div class="inline-action-row">
             <a class="ghost-link" href="/dashboard">
               <i class="fa-solid fa-arrow-left"></i>
-              Zurueck zum Dashboard
+              Zurück zum Dashboard
             </a>
           </div>
           <p class="eyebrow">${escapeHtml(options.eyebrow)}</p>
@@ -2768,7 +2768,7 @@ function renderPollOverviewPage(options) {
       <article class="panel overview-list-panel">
         <div class="overview-list-intro">
           <div class="overview-list-copy">
-            <p class="eyebrow">Uebersicht</p>
+            <p class="eyebrow">Übersicht</p>
             <h2>${escapeHtml(options.sectionTitle || options.title)}</h2>
             <p class="description">${escapeHtml(options.sectionDescription || options.description)}</p>
           </div>
@@ -2803,8 +2803,8 @@ function renderPaginationControls(pagination, basePath) {
         ? `<a class="ghost-link" href="${prevHref}"><i class="fa-solid fa-arrow-left"></i> Vorherige Seite</a>`
         : '<span class="ghost-link is-disabled"><i class="fa-solid fa-arrow-left"></i> Vorherige Seite</span>'}
       ${pagination.page < pagination.totalPages
-        ? `<a class="ghost-link" href="${nextHref}">Naechste Seite <i class="fa-solid fa-arrow-right"></i></a>`
-        : '<span class="ghost-link is-disabled">Naechste Seite <i class="fa-solid fa-arrow-right"></i></span>'}
+        ? `<a class="ghost-link" href="${nextHref}">Nächste Seite <i class="fa-solid fa-arrow-right"></i></a>`
+        : '<span class="ghost-link is-disabled">Nächste Seite <i class="fa-solid fa-arrow-right"></i></span>'}
     </div>
   `;
 }
@@ -2896,7 +2896,7 @@ function getDashboardPollTypeMeta(mode) {
     return { label: "Zeitfenster", icon: "fa-regular fa-clock" };
   }
   if (mode === "block_fixed") {
-    return { label: "Mehrtaegiger Block", icon: "fa-solid fa-calendar-week" };
+    return { label: "Mehrtägiger Block", icon: "fa-solid fa-calendar-week" };
   }
   if (mode === "block_free") {
     return { label: "Freier Block", icon: "fa-solid fa-calendar-days" };
@@ -2911,7 +2911,7 @@ function getDashboardPollTypeMeta(mode) {
     return { label: "Wochenrhythmus", icon: "fa-regular fa-clock" };
   }
 
-  return { label: "Freie Terminvorschlaege", icon: "fa-regular fa-pen-to-square" };
+  return { label: "Freie Terminvorschläge", icon: "fa-regular fa-pen-to-square" };
 }
 
 async function handleRegister(event) {
@@ -2922,7 +2922,7 @@ async function handleRegister(event) {
   const passwordConfirm = document.querySelector("#register-password-confirm").value;
 
   if (password !== passwordConfirm) {
-    setFeedback(feedback, "Die Passwoerter stimmen nicht ueberein.", "error");
+    setFeedback(feedback, "Die Passwörter stimmen nicht überein.", "error");
     return;
   }
 
@@ -2947,7 +2947,7 @@ async function handleLogin(event) {
   const password = document.querySelector("#login-password").value;
 
   try {
-    setFeedback(feedback, "Login wird geprueft ...");
+    setFeedback(feedback, "Login wird geprüft ...");
     await apiFetch("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
@@ -2980,7 +2980,7 @@ async function handleForgotPassword(event) {
       const openButton = document.createElement("button");
       openButton.type = "button";
       openButton.className = "primary-button";
-      openButton.textContent = "Reset-Seite oeffnen";
+      openButton.textContent = "Reset-Seite öffnen";
       openButton.addEventListener("click", async () => {
         const resetUrl = new URL(data.resetUrl, window.location.origin);
         const token = resetUrl.searchParams.get("token") || "";
@@ -3016,7 +3016,7 @@ async function handleResetPassword(event) {
   const token = document.querySelector("#reset-password-token").value;
 
   if (password !== passwordConfirm) {
-    setFeedback(feedback, "Die Passwoerter stimmen nicht ueberein.", "error");
+    setFeedback(feedback, "Die Passwörter stimmen nicht überein.", "error");
     return;
   }
 
@@ -3082,18 +3082,18 @@ async function handlePasswordChange(event) {
   const confirmPassword = document.querySelector("#account-confirm-password").value;
 
   if (newPassword !== confirmPassword) {
-    setFeedback(feedback, "Die neuen Passwoerter stimmen nicht ueberein.", "error");
+    setFeedback(feedback, "Die neuen Passwörter stimmen nicht überein.", "error");
     return;
   }
 
   try {
-    setFeedback(feedback, "Passwort wird geaendert ...");
+    setFeedback(feedback, "Passwort wird geändert ...");
     await apiFetch("/api/user/password", {
       method: "PUT",
       body: JSON.stringify({ currentPassword, newPassword }),
     });
     document.querySelector("#account-password-form").reset();
-    setFeedback(feedback, "Passwort erfolgreich geaendert.", "success");
+    setFeedback(feedback, "Passwort erfolgreich geändert.", "success");
     closePasswordModal();
   } catch (error) {
     setFeedback(feedback, error.message, "error");
@@ -3136,13 +3136,13 @@ function closePasswordModal() {
 
 async function handleAccountDelete() {
   const feedback = document.querySelector("#account-delete-feedback");
-  const confirmed = confirm("Willst du dein Konto wirklich dauerhaft loeschen?");
+  const confirmed = confirm("Willst du dein Konto wirklich dauerhaft löschen?");
   if (!confirmed) {
     return;
   }
 
   try {
-    setFeedback(feedback, "Konto wird geloescht ...");
+    setFeedback(feedback, "Konto wird gelöscht ...");
     await apiFetch("/api/user/account", { method: "DELETE" });
     await refreshAuthState();
     renderTopbarNav();
@@ -3331,7 +3331,7 @@ function updatePollResponseCta() {
     label.textContent = "Derzeit deaktiviert";
     return;
   }
-  label.textContent = hasEditableResponse() ? "Verfuegbarkeit aendern" : "Jetzt abstimmen";
+  label.textContent = hasEditableResponse() ? "Verfügbarkeit ändern" : "Jetzt abstimmen";
 }
 
 function getCurrentParticipantState() {
@@ -3415,13 +3415,13 @@ function fillPollSummary() {
       : "";
   favoriteSummary.classList.toggle("is-hidden", !(responses.length > 0 && favorite));
   document.querySelector("#participant-form-title").textContent = hasEditableResponse()
-    ? "Verfuegbarkeit anpassen"
+    ? "Verfügbarkeit anpassen"
     : hasTimeSlots
       ? "Deine Zeitfenster"
       : poll.mode === "block_fixed"
-        ? "Deine Verfuegbarkeit"
+        ? "Deine Verfügbarkeit"
       : poll.mode === "block_free"
-        ? "Deine moeglichen Tage"
+        ? "Deine möglichen Tage"
       : poll.mode === "star_rating"
         ? "Deine Bewertung"
       : poll.mode === "timeslots_free"
@@ -3429,11 +3429,11 @@ function fillPollSummary() {
       : poll.mode === "weekly"
         ? "Deine Wochen-Slots"
       : poll.mode === "fixed"
-        ? "Deine Verfuegbarkeit"
+        ? "Deine Verfügbarkeit"
       : "Teilnehmen";
   document.querySelector("#poll-back-link").setAttribute("href", state.auth.user ? "/dashboard" : "/");
   document.querySelector("#poll-back-link").innerHTML = state.auth.user
-    ? '<i class="fa-solid fa-arrow-left"></i> Zurueck'
+    ? '<i class="fa-solid fa-arrow-left"></i> Zurück'
     : '<i class="fa-solid fa-arrow-left"></i> Start';
 
   meta.innerHTML = [
@@ -3442,9 +3442,9 @@ function fillPollSummary() {
       hasTimeSlots
         ? `${countPollScheduleEntries(poll)} Zeitslots`
         : pollUsesBlockFree(poll)
-          ? `${results.summary.length || 0} Bloecke`
+          ? `${results.summary.length || 0} Blöcke`
         : pollUsesBlockMode(poll)
-          ? `${getPollBlockEntries(poll).length} Bloecke`
+          ? `${getPollBlockEntries(poll).length} Blöcke`
         : poll.mode === "star_rating"
           ? `${poll.dates.length} Termine`
         : poll.mode === "weekly"
@@ -3464,7 +3464,7 @@ function fillPollSummary() {
     meta.innerHTML += `<span class="pill"><i class="fa-solid fa-crown"></i> Veto-Recht</span>`;
   }
   if (pollUsesBlockMode(poll) && blockConfig.length) {
-    meta.innerHTML += `<span class="pill"><i class="fa-solid fa-arrow-right-long"></i> ${escapeHtml(`${blockConfig.length} Tage am Stueck`)}</span>`;
+    meta.innerHTML += `<span class="pill"><i class="fa-solid fa-arrow-right-long"></i> ${escapeHtml(`${blockConfig.length} Tage am Stück`)}</span>`;
   }
   if (pollUsesBlockMode(poll) && blockConfig.weekdays.length > 0) {
     meta.innerHTML += `<span class="pill"><i class="fa-solid fa-calendar-day"></i> ${escapeHtml(`Start: ${blockConfig.weekdays.map((weekday) => formatWeeklyWeekday(weekday)).join(", ")}`)}</span>`;
@@ -3482,8 +3482,8 @@ function fillPollSummary() {
     if ((results.bestDates || results.bestBlocks || []).length === 0) {
       summaryEmpty.innerHTML = renderEmptyStateMarkup(
         "fa-regular fa-calendar-plus",
-        "Noch keine Vorschlaege eingegangen",
-        "Die Matrix bleibt bewusst schlank. Die ersten Eintraege tauchen direkt in der Uebersicht auf."
+        "Noch keine Vorschläge eingegangen",
+        "Die Matrix bleibt bewusst schlank. Die ersten Einträge tauchen direkt in der Übersicht auf."
       );
       summaryEmpty.classList.remove("is-hidden");
     }
@@ -3494,7 +3494,7 @@ function fillPollSummary() {
     summaryEmpty.innerHTML = renderEmptyStateMarkup(
       "fa-regular fa-comments",
       "Noch keine Antworten eingegangen",
-      "Die Matrix fuellt sich automatisch, sobald die ersten Personen abstimmen."
+      "Die Matrix füllt sich automatisch, sobald die ersten Personen abstimmen."
     );
     summaryEmpty.classList.remove("is-hidden");
   }
@@ -3622,7 +3622,7 @@ function renderPollOwnerActions() {
                       `
                     )
                     .join("")
-                : '<option value="">Kein Datum verfuegbar</option>'
+                : '<option value="">Kein Datum verfügbar</option>'
             }
           </select>
           <button id="owner-export-ics" class="ghost-button wide-button" type="button" ${
@@ -3633,7 +3633,7 @@ function renderPollOwnerActions() {
 
       <button id="owner-delete-poll" class="settings-action danger-button" type="button">
         <span class="settings-action-copy">
-          <span class="settings-action-title">Loeschen</span>
+          <span class="settings-action-title">Löschen</span>
           <small>Entfernt die Umfrage inklusive aller Antworten dauerhaft.</small>
         </span>
         <i class="fa-regular fa-trash-can"></i>
@@ -3658,12 +3658,12 @@ function renderPollOwnerActions() {
   document.querySelector("#owner-export-ics")?.addEventListener("click", handleCalendarDownload);
 
   document.querySelector("#owner-delete-poll").addEventListener("click", async () => {
-    if (!confirm("Umfrage wirklich loeschen?")) {
+    if (!confirm("Umfrage wirklich löschen?")) {
       return;
     }
 
     try {
-      setFeedback(document.querySelector("#response-feedback"), "Umfrage wird geloescht ...");
+      setFeedback(document.querySelector("#response-feedback"), "Umfrage wird gelöscht ...");
       await apiFetch(`/api/polls/${poll.id}`, { method: "DELETE" });
       await navigateTo("/dashboard", { replace: true });
     } catch (error) {
@@ -3712,10 +3712,10 @@ function renderAvailabilityForm() {
     legend.classList.add("is-hidden");
     grid.innerHTML = renderEmptyStateMarkup(
       participant.isBlocked ? "fa-solid fa-user-lock" : "fa-solid fa-ban",
-      participant.isBlocked ? "Du bist fuer diese Umfrage gesperrt" : "Deine Teilnahme ist aktuell deaktiviert",
+      participant.isBlocked ? "Du bist für diese Umfrage gesperrt" : "Deine Teilnahme ist aktuell deaktiviert",
       participant.isBlocked
         ? "Der Ersteller hat deine Teilnahme an dieser Umfrage blockiert."
-        : "Der Ersteller hat deine Stimmabgabe voruebergehend deaktiviert."
+        : "Der Ersteller hat deine Stimmabgabe vorübergehend deaktiviert."
     );
     return;
   }
@@ -3796,7 +3796,7 @@ function renderStarRatingAvailabilityForm(grid) {
     card.className = "availability-card star-rating-card";
     card.innerHTML = `
       <strong>${escapeHtml(formatDateLong(date))}</strong>
-      <div class="star-rating-row" role="radiogroup" aria-label="Bewertung fuer ${escapeHtml(formatDateLong(date))}">
+      <div class="star-rating-row" role="radiogroup" aria-label="Bewertung für ${escapeHtml(formatDateLong(date))}">
         ${[1, 2, 3, 4, 5]
           .map((rating) => {
             const isActive = Number(state.responseDraft[date] || 0) >= rating;
@@ -3837,7 +3837,7 @@ function renderBlockFixedAvailabilityForm(grid) {
   const selectableDates = getPollBlockSelectableDates(poll);
 
   if (selectableDates.length === 0) {
-    grid.innerHTML = '<p class="description">Keine gueltigen Block-Tage vorhanden.</p>';
+    grid.innerHTML = '<p class="description">Keine gültigen Block-Tage vorhanden.</p>';
     return;
   }
 
@@ -3884,8 +3884,8 @@ function renderBlockFreeAvailabilityForm(grid) {
   intro.className = "free-mode-intro";
   intro.innerHTML = `
     <div>
-      <strong>Markiere alle Tage, an denen du fuer den Block kannst</strong>
-      <p class="description">Waehle im Kalender beliebige passende Tage aus. Die Auswertung sucht daraus automatisch die besten zusammenhaengenden Bloecke ueber ${escapeHtml(formatBlockLengthLabel(blockLength))}.</p>
+      <strong>Markiere alle Tage, an denen du für den Block kannst</strong>
+      <p class="description">Wähle im Kalender beliebige passende Tage aus. Die Auswertung sucht daraus automatisch die besten zusammenhängenden Blöcke über ${escapeHtml(formatBlockLengthLabel(blockLength))}.</p>
       <p class="description">Erlaubte Starttage: ${escapeHtml(startWeekdayLabel)}</p>
     </div>
     <button id="participant-toggle-calendar" class="ghost-button compact-button participant-mobile-toggle" type="button">
@@ -3905,7 +3905,7 @@ function renderBlockFreeAvailabilityForm(grid) {
         <button id="participant-prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
           <i class="fa-solid fa-chevron-left"></i>
         </button>
-        <button id="participant-next-month" class="ghost-button compact-button" type="button" aria-label="Naechster Monat">
+        <button id="participant-next-month" class="ghost-button compact-button" type="button" aria-label="Nächster Monat">
           <i class="fa-solid fa-chevron-right"></i>
         </button>
       </div>
@@ -4164,7 +4164,7 @@ function renderFreeChoiceForm(grid) {
   intro.className = "free-mode-intro";
   intro.innerHTML = `
     <div>
-      <strong>${usesRangeSlots ? "Waehle Tage und passende Zeitfenster" : "Waehle alle Tage, an denen du kannst"}</strong>
+      <strong>${usesRangeSlots ? "Wähle Tage und passende Zeitfenster" : "Wähle alle Tage, an denen du kannst"}</strong>
       <p class="description">${
         usesRangeSlots
           ? "Du kannst beliebige Tage im Kalender markieren und dazu passende Zeitfenster je Datum hinterlegen."
@@ -4188,7 +4188,7 @@ function renderFreeChoiceForm(grid) {
         <button id="participant-prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
           <i class="fa-solid fa-chevron-left"></i>
         </button>
-        <button id="participant-next-month" class="ghost-button compact-button" type="button" aria-label="Naechster Monat">
+        <button id="participant-next-month" class="ghost-button compact-button" type="button" aria-label="Nächster Monat">
           <i class="fa-solid fa-chevron-right"></i>
         </button>
       </div>
@@ -4196,7 +4196,7 @@ function renderFreeChoiceForm(grid) {
     <div id="participant-calendar-grid" class="calendar-grid" aria-live="polite"></div>
     <div class="selected-dates-box">
       <div class="selected-header">
-        <span>Deine Vorschlaege</span>
+        <span>Deine Vorschläge</span>
         <button id="participant-clear-dates" class="text-button" type="button">Leeren</button>
       </div>
       <div id="participant-selected-dates" class="selected-dates"></div>
@@ -4290,9 +4290,9 @@ function renderParticipantSelectedDates() {
   if (dates.length === 0) {
     container.innerHTML = renderEmptyStateMarkup(
       "fa-regular fa-hand-point-up",
-      "Noch keine Tage ausgewaehlt",
+      "Noch keine Tage ausgewählt",
       usesRangeSlots
-        ? "Markiere ein paar Optionen im Kalender. Fuer jeden Vorschlag kannst du danach passende Zeitfenster eintragen."
+        ? "Markiere ein paar Optionen im Kalender. Für jeden Vorschlag kannst du danach passende Zeitfenster eintragen."
         : "Markiere ein paar Optionen im Kalender."
     );
     return;
@@ -4998,7 +4998,7 @@ function renderResultsCalendarLegend(participants) {
 
 function renderResultsCalendarAllDayItems(events) {
   if (!events.length) {
-    return '<span class="results-calendar-lane-empty">Keine ganztägigen Eintraege</span>';
+    return '<span class="results-calendar-lane-empty">Keine ganztägigen Einträge</span>';
   }
 
   return events
@@ -5093,7 +5093,7 @@ function renderResultsCalendarTimeline(days, eventsByDate, options = {}) {
                     timedEvents.length > 0
                       ? timedEvents.map((event) => renderResultsCalendarTimedItem(event)).join("")
                       : `<span class="results-calendar-time-empty">${
-                          allDayEvents.length > 0 ? "Nur ganztägige Eintraege" : "Keine Zeitfenster"
+                          allDayEvents.length > 0 ? "Nur ganztägige Einträge" : "Keine Zeitfenster"
                         }</span>`
                   }
                 </div>
@@ -5315,7 +5315,7 @@ function renderResultsCalendar(calendarEvents) {
             <i class="fa-solid fa-chevron-left"></i>
           </button>
           <strong>${escapeHtml(formatResultsCalendarRangeLabel(state.resultsCalendarView, state.resultsCalendarDate))}</strong>
-          <button class="ghost-button compact-button" type="button" data-calendar-shift="1" aria-label="Naechster Zeitraum">
+          <button class="ghost-button compact-button" type="button" data-calendar-shift="1" aria-label="Nächster Zeitraum">
             <i class="fa-solid fa-chevron-right"></i>
           </button>
         </div>
@@ -5325,12 +5325,12 @@ function renderResultsCalendar(calendarEvents) {
       <div class="results-calendar-summary-copy">
         <strong>${
           visibleEvents.length > 0
-            ? `${visibleEvents.length} Eintraege auf ${visibleDateCount} ${visibleDateCount === 1 ? "Tag" : "Tagen"}`
-            : "Keine Eintraege in diesem Zeitraum"
+            ? `${visibleEvents.length} Einträge auf ${visibleDateCount} ${visibleDateCount === 1 ? "Tag" : "Tagen"}`
+            : "Keine Einträge in diesem Zeitraum"
         }</strong>
         <p class="description">${
           calendarEvents.length > 0
-            ? "Farben markieren die Teilnehmenden. Blaettere oder wechsle die Ansicht fuer mehr Kontext."
+            ? "Farben markieren die Teilnehmenden. Blaettere oder wechsle die Ansicht für mehr Kontext."
             : "Sobald Antworten zu Tagen oder Zeitfenstern eingehen, erscheint hier die Kalender-Ansicht."
         }</p>
       </div>
@@ -5341,7 +5341,7 @@ function renderResultsCalendar(calendarEvents) {
         ? renderEmptyStateMarkup(
             "fa-regular fa-calendar-plus",
             "Noch keine Kalendereintraege vorhanden",
-            "Die Kalenderansicht fuellt sich automatisch, sobald Antworten zu Tagen oder Zeitfenstern eingehen."
+            "Die Kalenderansicht füllt sich automatisch, sobald Antworten zu Tagen oder Zeitfenstern eingehen."
           )
         : visibleEvents.length === 0
           ? renderEmptyStateMarkup(
@@ -5572,8 +5572,8 @@ function renderBlockResultsHeatmap(poll, results) {
     blockPanel.classList.remove("is-hidden");
     blockPanel.innerHTML = renderEmptyStateMarkup(
       "fa-regular fa-calendar",
-      "Noch keine auswertbaren Bloecke vorhanden",
-      "Sobald Antworten eingehen, erscheint hier eine Heatmap der moeglichen zusammenhaengenden Bloecke."
+      "Noch keine auswertbaren Blöcke vorhanden",
+      "Sobald Antworten eingehen, erscheint hier eine Heatmap der möglichen zusammenhängenden Blöcke."
     );
     return;
   }
@@ -5601,7 +5601,7 @@ function renderBlockResultsHeatmap(poll, results) {
           <i class="fa-solid fa-chevron-left"></i>
         </button>
         <strong>${escapeHtml(formatMonthYear(activeMonthDate))}</strong>
-        <button class="ghost-button compact-button" type="button" data-block-calendar-shift="1" aria-label="Naechster Monat">
+        <button class="ghost-button compact-button" type="button" data-block-calendar-shift="1" aria-label="Nächster Monat">
           <i class="fa-solid fa-chevron-right"></i>
         </button>
       </div>
@@ -5697,8 +5697,8 @@ function renderBlockFreeResultsTable(poll, responses, results, editableResponse,
   head.innerHTML = `
     <tr>
       <th class="name-column">Name</th>
-      <th>Ausgewaehlte Tage</th>
-      <th>Moegliche Bloecke</th>
+      <th>Ausgewählte Tage</th>
+      <th>Mögliche Blöcke</th>
     </tr>
   `;
 
@@ -5761,7 +5761,7 @@ function renderBlockFreeResultsTable(poll, responses, results, editableResponse,
               <strong>${escapeHtml(formatBlockRangeLong(winner.date, winner.endDate))}</strong>
               <div class="results-matrix-subline">${escapeHtml(`${winner.yes} Ja-Stimmen`)}</div>
             `
-            : '<span class="results-matrix-subline">Noch kein Gewinner verfuegbar.</span>'
+            : '<span class="results-matrix-subline">Noch kein Gewinner verfügbar.</span>'
         }
       </td>
     </tr>
@@ -5874,7 +5874,7 @@ function renderResultsMatrixTable(poll, responses, results, editableResponse, sh
             ${renderEmptyStateMarkup(
               "fa-regular fa-comments",
               "Noch niemand hat abgestimmt",
-              "Sobald die ersten Antworten eingehen, siehst du hier sofort die Verfuegbarkeits-Matrix."
+              "Sobald die ersten Antworten eingehen, siehst du hier sofort die Verfügbarkeits-Matrix."
             )}
           </td>
         </tr>
@@ -5895,7 +5895,7 @@ function renderResultsMatrixTable(poll, responses, results, editableResponse, sh
             const fullTimeLabel = formatSuggestedTimeValues(suggestion?.times);
             return `
               <td class="matrix-cell ${isAvailable ? "is-available" : ""}" title="${escapeHtml(
-                `${response.name}: ${isAvailable ? "Ja" : "Nein"} fuer ${formatDateLong(entry.date)}${
+                `${response.name}: ${isAvailable ? "Ja" : "Nein"} für ${formatDateLong(entry.date)}${
                   fullTimeLabel ? ` mit ${fullTimeLabel}` : ""
                 }`
               )}">
@@ -6332,7 +6332,7 @@ function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
         ${
           isOwnRow
             ? `
-              <button class="matrix-edit-button" type="button" data-response-id="${response.id}" aria-label="Eigene Verfuegbarkeit bearbeiten">
+              <button class="matrix-edit-button" type="button" data-response-id="${response.id}" aria-label="Eigene Verfügbarkeit bearbeiten">
                 <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
               </button>
             `
@@ -6341,11 +6341,11 @@ function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
         ${
           canManage
             ? `
-              <select class="veto-dropdown veto-dropdown-inline" data-response-id="${response.id}" aria-label="Veto fuer ${escapeHtml(name)}">
+              <select class="veto-dropdown veto-dropdown-inline" data-response-id="${response.id}" aria-label="Veto für ${escapeHtml(name)}">
                 <option value="none" ${response.hasVeto ? "" : "selected"}>Kein Veto</option>
                 <option value="veto" ${response.hasVeto ? "selected" : ""}>Veto</option>
               </select>
-              <button class="matrix-delete-button" type="button" data-response-id="${response.id}" aria-label="Antwort loeschen">
+              <button class="matrix-delete-button" type="button" data-response-id="${response.id}" aria-label="Antwort löschen">
                 <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
               </button>
             `
@@ -6445,8 +6445,8 @@ async function handleResponseSubmit(event) {
       setFeedback(
         feedback,
         suggestionModeUsesRangeSlots()
-          ? "Bitte nutze fuer vorgeschlagene Zeitslots das Format HH:MM-HH:MM."
-          : "Bitte nutze fuer optionale Uhrzeiten das Format HH:MM.",
+          ? "Bitte nutze für vorgeschlagene Zeitslots das Format HH:MM-HH:MM."
+          : "Bitte nutze für optionale Uhrzeiten das Format HH:MM.",
         "error"
       );
       return;
@@ -6505,7 +6505,7 @@ async function handleCalendarDownload() {
 
   const exportDate = getSelectedExportDate();
   if (!exportDate) {
-    setFeedback(document.querySelector("#response-feedback"), "Noch kein exportierbarer Termin verfuegbar.", "error");
+    setFeedback(document.querySelector("#response-feedback"), "Noch kein exportierbarer Termin verfügbar.", "error");
     return;
   }
   const query = exportDate ? `?date=${encodeURIComponent(exportDate)}` : "";
@@ -6909,7 +6909,7 @@ async function handleAdminDeleteResponse(responseId) {
 
   console.log("[Delete] Button clicked, responseId:", responseId);
 
-  const confirmed = confirm("Diese Antwort wirklich loeschen?");
+  const confirmed = confirm("Diese Antwort wirklich löschen?");
   console.log("[Delete] Dialog confirmed:", confirmed);
 
   if (!confirmed) {
@@ -6920,14 +6920,14 @@ async function handleAdminDeleteResponse(responseId) {
   const feedback = document.querySelector("#response-feedback");
   const pollId = state.pollData?.poll?.id;
   if (!pollId) {
-    const error = new Error("Poll-ID fehlt. Antwort kann nicht geloescht werden.");
+    const error = new Error("Poll-ID fehlt. Antwort kann nicht gelöscht werden.");
     console.error("[Delete] Error:", error);
     throw error;
   }
 
   try {
     console.log("[Delete] API call starting...");
-    setFeedback(feedback, "Antwort wird geloescht ...");
+    setFeedback(feedback, "Antwort wird gelöscht ...");
 
     const data = await apiFetch(`/api/polls/${pollId}/responses/${encodeURIComponent(responseId)}`, {
       method: "DELETE",
@@ -6936,7 +6936,7 @@ async function handleAdminDeleteResponse(responseId) {
     console.log("[Delete] API response:", 200);
 
     if (!data?.poll || !Array.isArray(data.responses)) {
-      throw new Error("Unerwartete Server-Antwort nach dem Loeschen.");
+      throw new Error("Unerwartete Server-Antwort nach dem Löschen.");
     }
 
     state.pollData = data;
@@ -6944,7 +6944,7 @@ async function handleAdminDeleteResponse(responseId) {
     console.log("[Delete] Success, re-rendering...");
     refreshPollView();
 
-    setFeedback(feedback, "Antwort geloescht.", "success");
+    setFeedback(feedback, "Antwort gelöscht.", "success");
   } catch (error) {
     console.error("[Delete] Error:", error);
     setFeedback(feedback, error.message, "error");
@@ -6968,7 +6968,7 @@ function renderEmptyStateMarkup(iconClass, title, description) {
 
 async function copyTextToClipboard(text) {
   if (!text) {
-    throw new Error("Kein Share-Link verfuegbar.");
+    throw new Error("Kein Share-Link verfügbar.");
   }
 
   if (navigator.clipboard?.writeText) {
