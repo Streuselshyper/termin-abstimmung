@@ -15,7 +15,7 @@ const APP_BASE_URL = normalizeConfiguredBaseUrl(process.env.APP_BASE_URL || "");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
-const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free", "weekly", "block_fixed", "block_free"]);
+const VALID_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free", "weekly", "block_fixed", "block_free", "star_rating"]);
 const SCORE_MAP = { yes: 2, maybe: 1, no: 0 };
 const VETO_SCORE_MAP = { yes: 3, maybe: 2, no: 0 };
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -760,8 +760,9 @@ function validatePollInput(body) {
   const isWeekly = mode === "weekly";
   const isBlockFixed = mode === "block_fixed";
   const isBlockFree = mode === "block_free";
+  const isStarRating = mode === "star_rating";
   const blockConfig = isBlockFixed || isBlockFree ? normalizeBlockConfig(body?.blockConfig, mode) : { length: 0, startDate: "", endDate: "", weekdays: [] };
-  const dates = mode === "fixed" || mode === "timeslots" || isBlockFixed ? normalizeDates(body?.dates) : [];
+  const dates = mode === "fixed" || mode === "timeslots" || isBlockFixed || isStarRating ? normalizeDates(body?.dates) : [];
   const requestedTimeSlots = normalizeTimeSlotsByDate(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const invalidTimeSlot = findInvalidTimeSlotEntry(dates, body?.timeSlots, { allowRanges: mode === "timeslots" });
   const allowTimeSlots =
@@ -787,7 +788,7 @@ function validatePollInput(body) {
   if (isWeekly && weeklyConfig.slots.length === 0) {
     return { ok: false, message: "Bitte hinterlege mindestens einen Wochen-Slot." };
   }
-  if ((mode === "fixed" || mode === "timeslots" || allowTimeSlots) && dates.length === 0) {
+  if ((mode === "fixed" || mode === "timeslots" || allowTimeSlots || isStarRating) && dates.length === 0) {
     return { ok: false, message: "Bitte waehle mindestens ein Datum aus." };
   }
   if (isBlockFixed && dates.length === 0) {
@@ -847,6 +848,23 @@ function validateAvailabilities(dates, availabilities) {
       return { ok: false, message: `Fuer ${date} fehlt ein gueltiger Status.` };
     }
     normalized[date] = status;
+  }
+
+  return { ok: true, value: normalized };
+}
+
+function validateRatingAvailabilities(dates, availabilities) {
+  if (!availabilities || typeof availabilities !== "object" || Array.isArray(availabilities)) {
+    return { ok: false, message: "Ungueltige Bewertungen." };
+  }
+
+  const normalized = {};
+  for (const date of dates) {
+    const rating = Number(availabilities[date]);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return { ok: false, message: `Fuer ${date} fehlt eine Bewertung von 1 bis 5 Sternen.` };
+    }
+    normalized[date] = rating;
   }
 
   return { ok: true, value: normalized };
@@ -1374,6 +1392,48 @@ function calculateBestDates(dates, responses) {
   };
 }
 
+function calculateStarRatingResults(dates, responses) {
+  const summary = dates.map((date) => {
+    let total = 0;
+    let count = 0;
+
+    for (const response of responses) {
+      const rating = Number(response.availabilities?.[date]);
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        continue;
+      }
+      total += rating;
+      count += 1;
+    }
+
+    const average = count > 0 ? total / count : 0;
+    return {
+      date,
+      total,
+      count,
+      average,
+      score: average,
+      participants: responses.length,
+    };
+  });
+
+  const sorted = [...summary].sort((left, right) => {
+    if (right.average !== left.average) {
+      return right.average - left.average;
+    }
+    if (right.count !== left.count) {
+      return right.count - left.count;
+    }
+    return left.date.localeCompare(right.date);
+  });
+
+  const bestAverage = sorted[0]?.average ?? 0;
+  return {
+    summary,
+    bestDates: sorted.filter((entry) => entry.average === bestAverage && bestAverage > 0),
+  };
+}
+
 function calculateBestDateSlots(poll, responses) {
   const summary = [];
 
@@ -1657,6 +1717,10 @@ function calculatePollResults(poll, responses) {
 
   if (poll.mode === "weekly") {
     return calculateBestWeeklySlots(poll, responses);
+  }
+
+  if (poll.mode === "star_rating") {
+    return calculateStarRatingResults(poll.dates, responses);
   }
 
   if (poll.mode === "fixed") {
@@ -2481,7 +2545,7 @@ function listPollExportDates(poll, results = null) {
     return [];
   }
 
-  if (poll?.mode === "fixed") {
+  if (poll?.mode === "fixed" || poll?.mode === "star_rating") {
     return Array.isArray(poll?.dates) ? [...poll.dates].sort() : [];
   }
 
@@ -3243,6 +3307,12 @@ app.post("/api/polls/:pollId/responses", requireCsrf, createRateLimit({ keyPrefi
         return res.status(400).json({ error: weeklyResponsesCheck.message });
       }
       slotAvailabilities = weeklyResponsesCheck.value;
+    } else if (data.poll.mode === "star_rating") {
+      const ratingCheck = validateRatingAvailabilities(data.poll.dates, req.body?.availabilities);
+      if (!ratingCheck.ok) {
+        return res.status(400).json({ error: ratingCheck.message });
+      }
+      availabilities = ratingCheck.value;
     } else if (data.poll.mode === "fixed" || data.poll.mode === "block_fixed") {
       const availabilityCheck = validateAvailabilities(data.poll.dates, req.body?.availabilities);
       if (!availabilityCheck.ok) {

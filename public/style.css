@@ -1757,6 +1757,49 @@ body.poll-drawer-open {
   color: var(--text);
 }
 
+.star-rating-card {
+  gap: 0.85rem;
+}
+
+.star-rating-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(2.25rem, 1fr));
+  gap: 0.4rem;
+}
+
+.star-rating-button {
+  min-height: 2.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.star-rating-button:hover,
+.star-rating-button.active {
+  border-color: color-mix(in srgb, #f59e0b 58%, var(--border));
+  background: color-mix(in srgb, #f59e0b 16%, var(--surface-muted));
+  color: #f59e0b;
+}
+
+.star-rating-display {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
+  color: #f59e0b;
+  white-space: nowrap;
+}
+
+.star-rating-result-cell {
+  min-width: 7rem;
+}
+
+.star-rating-result-cell .star-rating-display {
+  font-size: 0.9rem;
+}
+
 .status-chip[data-status="yes"].active,
 .status-chip[data-weekly-status="yes"].active,
 .legend-item.yes,

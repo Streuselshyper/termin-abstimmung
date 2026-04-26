@@ -12,7 +12,7 @@ const statusLabels = {
   maybe: "Vielleicht",
   no: "Nein",
 };
-const CREATE_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free", "weekly", "block_fixed", "block_free"]);
+const CREATE_POLL_MODES = new Set(["fixed", "timeslots", "free", "timeslots_free", "weekly", "block_fixed", "block_free", "star_rating"]);
 
 const state = {
   auth: {
@@ -816,7 +816,7 @@ function getDefaultCreateBlockConfig() {
 }
 
 function createModeUsesCalendar(mode = state.createMode) {
-  return mode === "fixed" || mode === "timeslots" || mode === "block_fixed";
+  return mode === "fixed" || mode === "timeslots" || mode === "block_fixed" || mode === "star_rating";
 }
 
 function createModeUsesParticipantSuggestions(mode = state.createMode) {
@@ -861,6 +861,10 @@ function pollUsesBlockMode(poll = state.pollData?.poll) {
 
 function pollUsesWeeklySlots(poll = state.pollData?.poll) {
   return poll?.mode === "weekly";
+}
+
+function pollUsesStarRating(poll = state.pollData?.poll) {
+  return poll?.mode === "star_rating";
 }
 
 function suggestionModeUsesRangeSlots(mode = state.pollData?.poll?.mode) {
@@ -1223,6 +1227,20 @@ function buildBlockFreeAvailabilityPayload(poll, draft = state.responseDraft) {
   };
 }
 
+function buildStarRatingAvailabilityPayload(poll, draft = state.responseDraft) {
+  const payload = {};
+
+  for (const date of poll?.dates || []) {
+    const rating = Number(draft?.[date]);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return { ok: false, message: `Bitte bewerte ${formatDateLong(date)} mit 1 bis 5 Sternen.` };
+    }
+    payload[date] = rating;
+  }
+
+  return { ok: true, value: payload };
+}
+
 function getBlockFixedStatusForEntry(response, entry) {
   let hasMaybe = false;
   const entryDates =
@@ -1358,6 +1376,7 @@ function updateCreateModeLayout() {
   const isBlockMode = createModeUsesBlockConfig();
   const isBlockFixed = state.createMode === "block_fixed";
   const isBlockFree = state.createMode === "block_free";
+  const isStarRating = state.createMode === "star_rating";
   const isFixed = state.createMode === "fixed";
   const isTimeslots = state.createMode === "timeslots";
   const isFreeSlots = state.createMode === "timeslots_free";
@@ -1378,7 +1397,7 @@ function updateCreateModeLayout() {
   const timeSlotDescription = document.querySelector("#create-time-slots-description");
   const timeSlotToggleShell = document.querySelector("#create-time-slots-toggle-shell");
 
-  if (isFreeChoice || isWeekly || isFixed || isBlockMode) {
+  if (isFreeChoice || isWeekly || isFixed || isBlockMode || isStarRating) {
     state.createTimeSlotsEnabled = false;
   } else if (isTimeslots) {
     state.createTimeSlotsEnabled = true;
@@ -1387,6 +1406,8 @@ function updateCreateModeLayout() {
   if (pageDescription) {
     if (isFixed) {
       pageDescription.textContent = "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende stimmen danach strukturiert pro Termin ab.";
+    } else if (isStarRating) {
+      pageDescription.textContent = "Lege Titel, Beschreibung und feste Termine fest. Teilnehmende bewerten spaeter jeden Termin mit 1 bis 5 Sternen.";
     } else if (isTimeslots) {
       pageDescription.textContent = "Lege Titel, Beschreibung, Daten und feste Zeitfenster fest. Teilnehmende stimmen danach pro Zeitslot mit Ja, Vielleicht oder Nein ab.";
     } else if (state.createMode === "block_fixed") {
@@ -1406,6 +1427,8 @@ function updateCreateModeLayout() {
   if (formTitle) {
     if (isFixed) {
       formTitle.textContent = "Feste Termine konfigurieren";
+    } else if (isStarRating) {
+      formTitle.textContent = "Bewertete Termine konfigurieren";
     } else if (isTimeslots) {
       formTitle.textContent = "Zeitslots konfigurieren";
     } else if (state.createMode === "block_fixed") {
@@ -1427,7 +1450,7 @@ function updateCreateModeLayout() {
   blockFields?.classList.toggle("is-hidden", !isBlockMode);
   blockWindow?.classList.toggle("is-hidden", true);
   blockWeekdays?.classList.toggle("is-hidden", !isBlockMode);
-  timeSlotControls?.classList.toggle("is-hidden", isFreeChoice || isWeekly || isFixed || isBlockMode);
+  timeSlotControls?.classList.toggle("is-hidden", isFreeChoice || isWeekly || isFixed || isBlockMode || isStarRating);
 
   if (blockTitle) {
     blockTitle.textContent = state.createMode === "block_fixed" ? "Block mit Tagesabstimmung" : "Freier Block";
@@ -2878,6 +2901,9 @@ function getDashboardPollTypeMeta(mode) {
   if (mode === "block_free") {
     return { label: "Block freie Zeitraeume", icon: "fa-solid fa-calendar-days" };
   }
+  if (mode === "star_rating") {
+    return { label: "Bewertete Termine", icon: "fa-regular fa-star" };
+  }
   if (mode === "timeslots_free") {
     return { label: "Zeitslots Freie Wahl", icon: "fa-regular fa-calendar-plus" };
   }
@@ -3203,6 +3229,19 @@ function initializeDraftFromPoll(poll) {
     return;
   }
 
+  if (pollUsesStarRating(poll)) {
+    const defaultDraft = {};
+    for (const date of poll.dates || []) {
+      const rating = Number(editableResponse?.availabilities?.[date] || 0);
+      defaultDraft[date] = Number.isInteger(rating) && rating >= 1 && rating <= 5 ? rating : 0;
+    }
+    state.responseDraft = defaultDraft;
+    state.participantSelectedDates = new Set();
+    state.participantSuggestedTimes = {};
+    state.participantCurrentMonth = startOfMonth(getFirstSelectedCreateDate(poll.dates || []));
+    return;
+  }
+
   if (pollUsesParticipantSuggestions(poll.mode) && !hasTimeSlots) {
     const suggestedEntries = getSuggestedDateEntries(
       editableResponse?.suggestedDateEntries || editableResponse?.suggestedDates
@@ -3372,7 +3411,7 @@ function fillPollSummary() {
   document.querySelector("#poll-description-view").classList.toggle("is-hidden", !poll.description);
   favoriteSummary.textContent =
     responses.length > 0 && favorite
-      ? `🏆 Favorit: ${escapeFavoriteLabel(poll, favorite)} mit ${formatVoteCountLabel(favorite.votes)}`
+      ? `🏆 Favorit: ${escapeFavoriteLabel(poll, favorite)} mit ${formatFavoriteMetricLabel(poll, favorite)}`
       : "";
   favoriteSummary.classList.toggle("is-hidden", !(responses.length > 0 && favorite));
   document.querySelector("#participant-form-title").textContent = hasEditableResponse()
@@ -3383,6 +3422,8 @@ function fillPollSummary() {
         ? "Deine Verfuegbarkeit"
       : poll.mode === "block_free"
         ? "Deine moeglichen Tage"
+      : poll.mode === "star_rating"
+        ? "Deine Bewertung"
       : poll.mode === "timeslots_free"
         ? "Deine Zeitfenster"
       : poll.mode === "weekly"
@@ -3404,6 +3445,8 @@ function fillPollSummary() {
           ? `${results.summary.length || 0} Bloecke`
         : pollUsesBlockMode(poll)
           ? `${getPollBlockEntries(poll).length} Bloecke`
+        : poll.mode === "star_rating"
+          ? `${poll.dates.length} Termine`
         : poll.mode === "weekly"
           ? `${getWeeklySlotsFromPoll(poll).length} Wochen-Slots`
         : poll.mode === "fixed"
@@ -3475,6 +3518,23 @@ function formatResponseCountLabel(count) {
 
 function formatVoteCountLabel(count) {
   return count === 1 ? "1 Stimme" : `${count} Stimmen`;
+}
+
+function formatRatingCountLabel(count) {
+  return count === 1 ? "1 Bewertung" : `${count} Bewertungen`;
+}
+
+function formatAverageRating(value) {
+  const rating = Number(value);
+  return Number.isFinite(rating) ? rating.toFixed(1) : "0.0";
+}
+
+function formatFavoriteMetricLabel(poll, favorite) {
+  if (pollUsesStarRating(poll)) {
+    return `${formatAverageRating(favorite.average)} Sterne`;
+  }
+
+  return formatVoteCountLabel(favorite.votes);
 }
 
 function formatFavoriteSlotLabel(poll, slot) {
@@ -3659,6 +3719,12 @@ function renderAvailabilityForm() {
     return;
   }
 
+  if (pollUsesStarRating(state.pollData.poll)) {
+    legend.classList.add("is-hidden");
+    renderStarRatingAvailabilityForm(grid);
+    return;
+  }
+
   if (pollUsesParticipantSuggestions(state.pollData.poll.mode)) {
     legend.classList.add("is-hidden");
     renderFreeChoiceForm(grid);
@@ -3693,6 +3759,50 @@ function renderAvailabilityForm() {
     }
 
     card.appendChild(row);
+    grid.appendChild(card);
+  }
+}
+
+function renderStarRatingAvailabilityForm(grid) {
+  const poll = state.pollData.poll;
+
+  for (const date of poll.dates || []) {
+    const card = document.createElement("div");
+    card.className = "availability-card star-rating-card";
+    card.innerHTML = `
+      <strong>${escapeHtml(formatDateLong(date))}</strong>
+      <div class="star-rating-row" role="radiogroup" aria-label="Bewertung fuer ${escapeHtml(formatDateLong(date))}">
+        ${[1, 2, 3, 4, 5]
+          .map((rating) => {
+            const isActive = Number(state.responseDraft[date] || 0) >= rating;
+            return `
+              <button
+                class="star-rating-button${isActive ? " active" : ""}"
+                type="button"
+                data-date="${date}"
+                data-rating="${rating}"
+                aria-label="${rating} von 5 Sternen"
+                aria-pressed="${isActive ? "true" : "false"}"
+              >
+                <i class="${isActive ? "fa-solid" : "fa-regular"} fa-star"></i>
+              </button>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+
+    card.querySelectorAll("[data-rating]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const rating = Number(button.dataset.rating);
+        if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+          return;
+        }
+        state.responseDraft[date] = rating;
+        renderAvailabilityForm();
+      });
+    });
+
     grid.appendChild(card);
   }
 }
@@ -4463,13 +4573,15 @@ function getResultsCalendarScheduleEntries(poll) {
   });
 }
 
-function buildResultsCalendarEvent({ id, date, name, color, slotValue = "", status = "" }) {
+function buildResultsCalendarEvent({ id, date, name, color, slotValue = "", status = "", labelOverride = "" }) {
   const slot = parseResultsCalendarTimeSlot(slotValue);
   const statusLabel = statusLabels[status] || "";
-  const label = status === "maybe" && statusLabel ? `${slot.label} · ${statusLabel}` : slot.label;
+  const label = labelOverride || (status === "maybe" && statusLabel ? `${slot.label} · ${statusLabel}` : slot.label);
   const titleParts = [name, formatDateLong(date), slot.label];
   if (statusLabel) {
     titleParts.push(statusLabel);
+  } else if (labelOverride) {
+    titleParts.push(labelOverride);
   }
 
   return {
@@ -4522,7 +4634,9 @@ function collectResultsCalendarEvents(poll, responses) {
           ? response.slotAvailabilities?.[entry.date]?.[entry.slot] || "no"
           : response.availabilities?.[entry.date] || "no";
 
-        if (status === "no") {
+        const rating = Number(status);
+        const isRating = pollUsesStarRating(poll) && Number.isInteger(rating) && rating >= 1 && rating <= 5;
+        if (status === "no" || (pollUsesStarRating(poll) && !isRating)) {
           continue;
         }
 
@@ -4533,7 +4647,8 @@ function collectResultsCalendarEvents(poll, responses) {
             name: participantName,
             color,
             slotValue: entry.slot,
-            status,
+            status: isRating ? "" : status,
+            labelOverride: isRating ? `${rating}/5 Sterne` : "",
           })
         );
       }
@@ -5613,6 +5728,7 @@ function renderResultsMatrixTable(poll, responses, results, editableResponse, sh
 
   table.classList.toggle("free-choice-matrix", pollUsesParticipantSuggestions(poll.mode) && !hasTimeSlots);
   table.classList.toggle("fixed-choice-matrix", (poll.mode === "fixed" || poll.mode === "block_fixed") && !hasTimeSlots);
+  table.classList.toggle("star-rating-matrix", pollUsesStarRating(poll));
   table.classList.toggle("slot-choice-matrix", hasTimeSlots);
 
   if (hasTimeSlots) {
@@ -5635,6 +5751,12 @@ function renderResultsMatrixTable(poll, responses, results, editableResponse, sh
 
   if (pollUsesWeeklySlots(poll)) {
     renderWeeklyResultsTable(poll, responses, editableResponse, showEditIcon);
+    bindMatrixEditButtons();
+    return;
+  }
+
+  if (pollUsesStarRating(poll)) {
+    renderStarRatingResultsTable(poll, responses, editableResponse, showEditIcon);
     bindMatrixEditButtons();
     return;
   }
@@ -5826,6 +5948,92 @@ function renderResultsMatrixTable(poll, responses, results, editableResponse, sh
   `;
 
   bindMatrixEditButtons();
+}
+
+function renderRatingStars(rating, options = {}) {
+  const value = Number(rating);
+  const rounded = Number.isFinite(value) ? Math.round(value) : 0;
+  const label = options.label || `${formatAverageRating(value)} von 5 Sternen`;
+  return `
+    <span class="star-rating-display" aria-label="${escapeHtml(label)}">
+      ${[1, 2, 3, 4, 5]
+        .map((star) => `<i class="${star <= rounded ? "fa-solid" : "fa-regular"} fa-star"></i>`)
+        .join("")}
+    </span>
+  `;
+}
+
+function renderStarRatingResultsTable(poll, responses, editableResponse, showEditIcon) {
+  const head = document.querySelector("#results-head");
+  const body = document.querySelector("#results-body");
+  const foot = document.querySelector("#results-foot");
+  const ratingStats = getStarRatingStats(poll.dates, responses);
+
+  head.innerHTML = `
+    <tr>
+      <th class="name-column">Name</th>
+      ${ratingStats.entries
+        .map(
+          (entry) => `
+            <th class="${entry.date === ratingStats.winnerDate ? "winner-column" : ""}">
+              <div class="results-matrix-header">
+                <strong>${escapeHtml(formatDateShort(entry.date))}</strong>
+                <span class="results-matrix-subline">${renderRatingStars(entry.average)} ${escapeHtml(formatAverageRating(entry.average))}</span>
+              </div>
+            </th>
+          `
+        )
+        .join("")}
+    </tr>
+  `;
+
+  if (responses.length === 0) {
+    foot.innerHTML = "";
+    body.innerHTML = `
+      <tr>
+        <td colspan="${Math.max(ratingStats.entries.length, 1) + 1}" class="description">Noch keine Bewertungen eingetragen.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  body.innerHTML = responses
+    .map((response) => {
+      const cells = ratingStats.entries
+        .map((entry) => {
+          const rating = Number(response.availabilities?.[entry.date]);
+          const hasRating = Number.isInteger(rating) && rating >= 1 && rating <= 5;
+          return `
+            <td class="matrix-cell star-rating-result-cell ${entry.date === ratingStats.winnerDate ? "winner-column" : ""}">
+              ${
+                hasRating
+                  ? `${renderRatingStars(rating, { label: `${rating} von 5 Sternen` })}<div class="results-matrix-subline">${rating}/5</div>`
+                  : '<span class="matrix-empty" aria-hidden="true">-</span>'
+              }
+            </td>
+          `;
+        })
+        .join("");
+
+      return `<tr><td class="name-column">${renderMatrixNameCell(response.name, response, editableResponse, showEditIcon)}</td>${cells}</tr>`;
+    })
+    .join("");
+
+  foot.innerHTML = `
+    <tr>
+      <td class="name-column score-footer">Durchschnitt</td>
+      ${ratingStats.entries
+        .map(
+          (entry) => `
+            <td class="score-footer ${entry.date === ratingStats.winnerDate ? "winner-column" : ""}">
+              <strong>${renderRatingStars(entry.average)} ${escapeHtml(formatAverageRating(entry.average))}</strong>
+              <div class="results-matrix-subline">${escapeHtml(formatRatingCountLabel(entry.count))}</div>
+            </td>
+          `
+        )
+        .join("")}
+    </tr>
+  `;
 }
 
 function getWeeklySlotStats(poll, responses) {
@@ -6141,6 +6349,13 @@ async function handleResponseSubmit(event) {
       return;
     }
     payload.availabilities = availabilityPayload.value;
+  } else if (pollUsesStarRating(state.pollData.poll)) {
+    const ratingPayload = buildStarRatingAvailabilityPayload(state.pollData.poll, state.responseDraft);
+    if (!ratingPayload.ok) {
+      setFeedback(feedback, ratingPayload.message, "error");
+      return;
+    }
+    payload.availabilities = ratingPayload.value;
   } else if (isFixed) {
     payload.availabilities = state.responseDraft;
   } else {
@@ -6243,7 +6458,7 @@ function getPollExportDates(poll) {
     return Array.isArray(state.pollData?.results?.summary) ? state.pollData.results.summary.map((entry) => entry.date) : [];
   }
 
-  if (poll.mode === "fixed") {
+  if (poll.mode === "fixed" || poll.mode === "star_rating") {
     return [...poll.dates];
   }
 
@@ -6360,6 +6575,53 @@ function getFixedDateStats(dates, responses) {
   };
 }
 
+function getStarRatingStats(dates, responses) {
+  const entries = (dates || []).map((date) => ({
+    date,
+    total: 0,
+    count: 0,
+    average: 0,
+    participants: responses?.length || 0,
+  }));
+  const entryByDate = new Map(entries.map((entry) => [entry.date, entry]));
+
+  for (const response of responses || []) {
+    for (const date of dates || []) {
+      const rating = Number(response.availabilities?.[date]);
+      const entry = entryByDate.get(date);
+      if (!entry || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+        continue;
+      }
+
+      entry.total += rating;
+      entry.count += 1;
+    }
+  }
+
+  entries.forEach((entry) => {
+    entry.average = entry.count > 0 ? entry.total / entry.count : 0;
+    entry.score = entry.average;
+  });
+
+  const sortedEntries = [...entries].sort((left, right) => {
+    if (right.average !== left.average) {
+      return right.average - left.average;
+    }
+    if (right.count !== left.count) {
+      return right.count - left.count;
+    }
+    return left.date.localeCompare(right.date);
+  });
+
+  const bestAverage = sortedEntries[0]?.average || 0;
+
+  return {
+    entries: sortedEntries,
+    winnerDate: bestAverage > 0 ? sortedEntries[0]?.date || "" : "",
+    winnerEntry: bestAverage > 0 ? sortedEntries[0] : null,
+  };
+}
+
 function getFixedSlotStats(poll, responses) {
   const entries = getFixedScheduleEntries(poll).map((entry) => ({
     ...entry,
@@ -6428,6 +6690,13 @@ function getPollFavorite(poll, responses, results) {
     const { winnerEntry } = getWeeklySlotStats(poll, responses);
     return winnerEntry
       ? { date: formatWeeklyWeekday(winnerEntry.weekday), slot: winnerEntry.time, votes: winnerEntry.yes, score: winnerEntry.score }
+      : null;
+  }
+
+  if (pollUsesStarRating(poll)) {
+    const { winnerEntry } = getStarRatingStats(poll.dates, responses);
+    return winnerEntry
+      ? { date: winnerEntry.date, votes: winnerEntry.count, average: winnerEntry.average, score: winnerEntry.average }
       : null;
   }
 
