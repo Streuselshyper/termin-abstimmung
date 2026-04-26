@@ -2139,6 +2139,14 @@ body.poll-drawer-open {
     color-mix(in srgb, var(--surface-muted) 88%, var(--participant-color));
 }
 
+.results-calendar-chip.is-star-rating {
+  border-color: color-mix(in srgb, var(--participant-color) 62%, var(--border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--participant-color) 74%, transparent), color-mix(in srgb, var(--participant-color) 38%, transparent)),
+    color-mix(in srgb, var(--surface-muted) 70%, var(--participant-color));
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
 .results-calendar-chip-copy {
   display: grid;
   gap: 0.08rem;
@@ -2222,6 +2230,20 @@ body.poll-drawer-open {
   display: grid;
   align-content: start;
   gap: 0.65rem;
+}
+
+.results-calendar-month-day.has-star-rating {
+  border-color: color-mix(in srgb, var(--star-rating-color) 54%, var(--border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--star-rating-color) 30%, transparent), color-mix(in srgb, var(--star-rating-color) 12%, transparent)),
+    color-mix(in srgb, var(--surface) 82%, var(--star-rating-color));
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.results-calendar-month-day.has-star-rating .results-calendar-month-day-head span,
+.results-calendar-year-day.has-star-rating small {
+  color: color-mix(in srgb, var(--star-rating-color) 74%, var(--text));
+  font-weight: 800;
 }
 
 .results-calendar-month-day.is-muted,
@@ -2325,6 +2347,15 @@ body.poll-drawer-open {
     color-mix(in srgb, var(--participant-color) 10%, var(--surface-muted));
 }
 
+.results-calendar-mini-event.is-star-rating {
+  border-color: color-mix(in srgb, var(--participant-color) 62%, var(--border));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--participant-color) 76%, transparent), color-mix(in srgb, var(--participant-color) 28%, transparent)),
+    color-mix(in srgb, var(--surface-muted) 70%, var(--participant-color));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--participant-color) 16%, transparent);
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
 .results-calendar-mini-time {
   color: var(--muted);
   font-size: 0.74rem;
@@ -2399,6 +2430,14 @@ body.poll-drawer-open {
 
 .results-calendar-year-day.has-events {
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-muted));
+}
+
+.results-calendar-year-day.has-star-rating {
+  border: 1px solid color-mix(in srgb, var(--star-rating-color) 54%, var(--border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--star-rating-color) 30%, transparent), color-mix(in srgb, var(--star-rating-color) 10%, transparent)),
+    color-mix(in srgb, var(--surface-muted) 76%, var(--star-rating-color));
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .results-calendar-year-number {

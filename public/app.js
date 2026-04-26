@@ -3291,7 +3291,7 @@ function initializeResultsCalendarState(poll, responses, results) {
   }
 
   const anchorDate =
-    collectResultsCalendarEvents(poll, responses)[0]?.date ||
+    collectResultsCalendarEvents(poll, responses, results)[0]?.date ||
     getTopMatrixDates(results?.summary || [])[0]?.date ||
     (Array.isArray(poll?.dates) ? [...poll.dates].sort()[0] : "") ||
     toIsoDate(new Date());
@@ -3527,6 +3527,31 @@ function formatRatingCountLabel(count) {
 function formatAverageRating(value) {
   const rating = Number(value);
   return Number.isFinite(rating) ? rating.toFixed(1) : "0.0";
+}
+
+function getStarRatingCalendarColor(value) {
+  const rating = Math.min(5, Math.max(1, Number(value) || 1));
+  const stops = [
+    { rating: 1, h: 0, s: 80, l: 50 },
+    { rating: 2, h: 30, s: 95, l: 55 },
+    { rating: 3, h: 50, s: 90, l: 60 },
+    { rating: 4, h: 120, s: 70, l: 50 },
+    { rating: 5, h: 140, s: 80, l: 30 },
+  ];
+  const upperIndex = stops.findIndex((stop) => rating <= stop.rating);
+  if (upperIndex <= 0) {
+    const stop = stops[0];
+    return `hsl(${stop.h}, ${stop.s}%, ${stop.l}%)`;
+  }
+
+  const lower = stops[upperIndex - 1];
+  const upper = stops[upperIndex] || stops[stops.length - 1];
+  const ratio = (rating - lower.rating) / (upper.rating - lower.rating);
+  const h = lower.h + (upper.h - lower.h) * ratio;
+  const s = lower.s + (upper.s - lower.s) * ratio;
+  const l = lower.l + (upper.l - lower.l) * ratio;
+
+  return `hsl(${h.toFixed(1)}, ${s.toFixed(1)}%, ${l.toFixed(1)}%)`;
 }
 
 function formatFavoriteMetricLabel(poll, favorite) {
@@ -4573,7 +4598,18 @@ function getResultsCalendarScheduleEntries(poll) {
   });
 }
 
-function buildResultsCalendarEvent({ id, date, name, color, slotValue = "", status = "", labelOverride = "" }) {
+function buildResultsCalendarEvent({
+  id,
+  date,
+  name,
+  color,
+  slotValue = "",
+  status = "",
+  labelOverride = "",
+  type = "",
+  average = null,
+  count = null,
+}) {
   const slot = parseResultsCalendarTimeSlot(slotValue);
   const statusLabel = statusLabels[status] || "";
   const label = labelOverride || (status === "maybe" && statusLabel ? `${slot.label} · ${statusLabel}` : slot.label);
@@ -4595,6 +4631,9 @@ function buildResultsCalendarEvent({ id, date, name, color, slotValue = "", stat
     startMinutes: slot.startMinutes,
     endMinutes: slot.endMinutes,
     label,
+    type,
+    average,
+    count,
     title: titleParts.join(" · "),
   };
 }
@@ -4619,8 +4658,38 @@ function sortResultsCalendarEvents(events) {
   });
 }
 
-function collectResultsCalendarEvents(poll, responses) {
+function collectResultsCalendarEvents(poll, responses, results = state.pollData?.results) {
   const events = [];
+
+  if (pollUsesStarRating(poll)) {
+    const sourceEntries = Array.isArray(results?.summary) && results.summary.length > 0
+      ? results.summary
+      : getStarRatingStats(poll?.dates || [], responses).entries;
+
+    for (const entry of sourceEntries) {
+      const average = Number(entry.average);
+      const count = Number(entry.count || 0);
+      if (!entry.date || !Number.isFinite(average) || count <= 0) {
+        continue;
+      }
+
+      const label = `${formatAverageRating(average)} Sterne (${formatRatingCountLabel(count)})`;
+      events.push(
+        buildResultsCalendarEvent({
+          id: `star-rating-${entry.date}`,
+          date: entry.date,
+          name: "Durchschnitt",
+          color: getStarRatingCalendarColor(average),
+          labelOverride: label,
+          type: "star-rating",
+          average,
+          count,
+        })
+      );
+    }
+
+    return sortResultsCalendarEvents(events);
+  }
 
   if (!pollUsesParticipantSuggestions(poll?.mode)) {
     const scheduleEntries = getResultsCalendarScheduleEntries(poll);
@@ -4936,7 +5005,7 @@ function renderResultsCalendarAllDayItems(events) {
     .map(
       (event) => `
         <span
-          class="results-calendar-chip"
+          class="results-calendar-chip${event.type === "star-rating" ? " is-star-rating" : ""}"
           style="--participant-color: ${escapeHtml(event.color)};"
           title="${escapeHtml(event.title)}"
           aria-label="${escapeHtml(event.title)}"
@@ -5059,7 +5128,7 @@ function renderResultsCalendarMonthEntries(events) {
         .map(
           (event) => `
             <div
-              class="results-calendar-mini-event"
+              class="results-calendar-mini-event${event.type === "star-rating" ? " is-star-rating" : ""}"
               style="--participant-color: ${escapeHtml(event.color)};"
               title="${escapeHtml(event.title)}"
               aria-label="${escapeHtml(event.title)}"
@@ -5090,13 +5159,16 @@ function renderResultsCalendarMonthView(anchorDate, eventsByDate) {
         ${days
           .map((day) => {
             const dayEvents = eventsByDate.get(day.isoDate) || [];
+            const starRatingEvent = dayEvents.find((event) => event.type === "star-rating");
             return `
               <article class="results-calendar-month-day${day.inCurrentMonth ? "" : " is-muted"}${
                 day.isoDate === currentIsoDate ? " is-today" : ""
-              }">
+              }${starRatingEvent ? " has-star-rating" : ""}"${
+                starRatingEvent ? ` style="--star-rating-color: ${escapeHtml(starRatingEvent.color)};"` : ""
+              }>
                 <div class="results-calendar-month-day-head">
                   <strong>${day.date.getDate()}</strong>
-                  ${dayEvents.length > 0 ? `<span>${dayEvents.length}</span>` : ""}
+                  ${starRatingEvent ? `<span>${escapeHtml(formatAverageRating(starRatingEvent.average))}</span>` : dayEvents.length > 0 ? `<span>${dayEvents.length}</span>` : ""}
                 </div>
                 ${renderResultsCalendarMonthEntries(dayEvents)}
               </article>
@@ -5126,6 +5198,7 @@ function renderResultsCalendarYearMonth(year, monthIndex, anchorDate, eventsByDa
         ${days
           .map((day) => {
             const dayEvents = eventsByDate.get(day.isoDate) || [];
+            const starRatingEvent = dayEvents.find((event) => event.type === "star-rating");
             const visibleParticipants = getResultsCalendarParticipants(dayEvents).slice(0, 3);
             const title =
               dayEvents.length > 0 ? dayEvents.map((event) => `${event.name}: ${event.label}`).join(" | ") : "";
@@ -5134,7 +5207,8 @@ function renderResultsCalendarYearMonth(year, monthIndex, anchorDate, eventsByDa
               <div
                 class="results-calendar-year-day${day.inCurrentMonth ? "" : " is-muted"}${
                   day.isoDate === currentIsoDate ? " is-today" : ""
-                }${dayEvents.length > 0 ? " has-events" : ""}"
+                }${dayEvents.length > 0 ? " has-events" : ""}${starRatingEvent ? " has-star-rating" : ""}"
+                ${starRatingEvent ? `style="--star-rating-color: ${escapeHtml(starRatingEvent.color)};"` : ""}
                 ${title ? `title="${escapeHtml(title)}"` : ""}
               >
                 <span class="results-calendar-year-number">${day.date.getDate()}</span>
@@ -5150,7 +5224,13 @@ function renderResultsCalendarYearMonth(year, monthIndex, anchorDate, eventsByDa
                     )
                     .join("")}
                 </span>
-                ${dayEvents.length > visibleParticipants.length ? `<small>+${dayEvents.length - visibleParticipants.length}</small>` : ""}
+                ${
+                  starRatingEvent
+                    ? `<small>${escapeHtml(formatAverageRating(starRatingEvent.average))}</small>`
+                    : dayEvents.length > visibleParticipants.length
+                      ? `<small>+${dayEvents.length - visibleParticipants.length}</small>`
+                      : ""
+                }
               </div>
             `;
           })
@@ -5695,7 +5775,7 @@ function renderResultsTable() {
   const editableResponse = getEditableResponse();
   const showEditIcon = Boolean(editableResponse) && hasEditableResponse();
   const hasTimeSlots = pollHasTimeSlots(poll);
-  const calendarEvents = supportsResultsCalendar(poll) ? collectResultsCalendarEvents(poll, responses) : [];
+  const calendarEvents = supportsResultsCalendar(poll) ? collectResultsCalendarEvents(poll, responses, results) : [];
 
   if (!table) {
     return;
