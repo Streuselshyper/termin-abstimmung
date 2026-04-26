@@ -1068,8 +1068,21 @@ function getPollBlockSelectableDates(poll = state.pollData?.poll) {
   if (!pollUsesBlockMode(poll)) {
     return [];
   }
+  if (pollUsesBlockFree(poll)) {
+    return [];
+  }
 
   return Array.isArray(poll?.dates) ? [...new Set(poll.dates.filter(isIsoDateValue))].sort() : [];
+}
+
+function isPollBlockDateSelectable(poll, date) {
+  if (!isIsoDateValue(date)) {
+    return false;
+  }
+  if (pollUsesBlockFree(poll)) {
+    return true;
+  }
+  return getPollBlockSelectableDates(poll).includes(date);
 }
 
 function isValidResponseStatus(status) {
@@ -1138,11 +1151,10 @@ function buildBlockFixedDailyDraft(poll, response) {
 }
 
 function buildBlockFreeDailyDraft(poll, response) {
-  const selectableDates = new Set(getPollBlockSelectableDates(poll));
   const draft = {};
 
   Object.entries(response?.availabilities || {}).forEach(([date, status]) => {
-    if (selectableDates.has(date) && status === "yes") {
+    if (isPollBlockDateSelectable(poll, date) && status === "yes") {
       draft[date] = "yes";
     }
   });
@@ -1158,7 +1170,7 @@ function buildBlockFreeDailyDraft(poll, response) {
 
   let currentDate = range.start;
   while (currentDate && currentDate <= range.end) {
-    if (selectableDates.has(currentDate)) {
+    if (isPollBlockDateSelectable(poll, currentDate)) {
       draft[currentDate] = "yes";
     }
     currentDate = addDaysToIsoDateValue(currentDate, 1);
@@ -1168,9 +1180,8 @@ function buildBlockFreeDailyDraft(poll, response) {
 }
 
 function getSelectedBlockFreeDates(draft = state.responseDraft, poll = state.pollData?.poll) {
-  const selectableDates = new Set(getPollBlockSelectableDates(poll));
   return Object.entries(draft || {})
-    .filter(([date, status]) => selectableDates.has(date) && status === "yes")
+    .filter(([date, status]) => isPollBlockDateSelectable(poll, date) && status === "yes")
     .map(([date]) => date)
     .sort();
 }
@@ -3792,7 +3803,7 @@ function renderBlockFreeAvailabilityForm(grid) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "calendar-day";
-      const isSelectable = selectableDates.has(day.isoDate);
+      const isSelectable = pollUsesBlockFree(poll) ? true : selectableDates.has(day.isoDate);
       if (!day.inCurrentMonth || !isSelectable) {
         button.classList.add("muted");
       }
