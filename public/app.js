@@ -5284,9 +5284,29 @@ function formatBlockVoteLabel(entry, poll) {
     : `${entry.yes} Ja · ${entry.maybe} Vielleicht`;
 }
 
+function buildBlockHeatmapEntryMap(entries) {
+  const entryMap = new Map();
+
+  entries.forEach((entry) => {
+    const length = Number.isInteger(entry.length) && entry.length > 0 ? entry.length : getInclusiveDateSpan(entry.date, entry.endDate);
+    for (let offset = 0; offset < length; offset += 1) {
+      const date = addDaysToIsoDateValue(entry.date, offset);
+      if (date) {
+        entryMap.set(date, entry);
+      }
+    }
+  });
+
+  return entryMap;
+}
+
+function buildBlockHeatmapDateSet(entries) {
+  return new Set(buildBlockHeatmapEntryMap(entries).keys());
+}
+
 function renderBlockHeatmapMonth(monthDate, entries, winnerDates, maxYes, poll) {
   const days = buildCalendarDays(monthDate.getFullYear(), monthDate.getMonth());
-  const entryMap = new Map(entries.map((entry) => [entry.date, entry]));
+  const entryMap = buildBlockHeatmapEntryMap(entries);
   const currentIsoDate = toIsoDate(new Date());
 
   return `
@@ -5371,11 +5391,10 @@ function renderBlockResultsHeatmap(poll, results) {
     return;
   }
 
-  const winnerDates = new Set(
+  const winnerDates = buildBlockHeatmapDateSet(
     (results?.bestBlocks || results?.bestDates || [])
       .map(normalizeBlockResultEntry)
       .filter(Boolean)
-      .map((entry) => entry.date)
   );
   const maxYes = entries.reduce((highest, entry) => Math.max(highest, entry.yes), 0);
   const activeMonthDate =
