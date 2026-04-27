@@ -51,7 +51,7 @@ cd termin-abstimmung
 # 2. Abhängigkeiten installieren
 npm install
 
-# 3. Umgebungsvariablen konfigurieren
+# 3. Umgebungsvariablen konfigurieren (aus Template kopieren)
 cp .env.example .env
 # .env editieren und eigene Werte eintragen
 
