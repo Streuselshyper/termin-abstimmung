@@ -2794,6 +2794,31 @@ body.poll-drawer-open {
     align-items: flex-start;
   }
 
+  .poll-summary-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
+  }
+
+  .poll-summary-main,
+  .poll-summary-toolbar,
+  .poll-summary-meta-row {
+    min-width: 0;
+  }
+
+  .poll-summary-toolbar,
+  .poll-summary-meta-row {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .poll-summary-meta-row .pill {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   #poll-open-response {
     display: none;
   }
