@@ -1083,6 +1083,8 @@ select:focus {
   width: 100%;
   max-width: none;
   justify-self: stretch;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .poll-response-overlay {
@@ -1283,8 +1285,15 @@ body.poll-drawer-open {
 }
 
 .poll-summary-title-row {
+  min-width: 0;
   flex-wrap: wrap;
   align-items: baseline;
+}
+
+#poll-title-view {
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .poll-summary-title-row .eyebrow,
@@ -3189,6 +3198,11 @@ textarea {
   .poll-summary-meta-row {
     width: 100%;
     max-width: none;
+  }
+
+  .poll-summary-panel {
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
 
   .hero-card h1,
