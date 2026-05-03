@@ -1264,7 +1264,7 @@
           </div>
         </article>
 
-        <article class="panel">
+        <article id="poll-results-panel" class="panel">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Übersicht</p>
@@ -1283,6 +1283,17 @@
             </table>
           </div>
         </article>
+
+        <div class="poll-mobile-actions" aria-label="Schnellaktionen">
+          <button id="poll-mobile-results" class="ghost-button wide-button" type="button">
+            <i class="fa-solid fa-table-columns"></i>
+            Ergebnisse anzeigen
+          </button>
+          <button id="poll-mobile-response" class="primary-button wide-button" type="button">
+            <i class="fa-regular fa-pen-to-square"></i>
+            <span id="poll-mobile-response-label">Jetzt abstimmen</span>
+          </button>
+        </div>
       </section>
     </template>
 

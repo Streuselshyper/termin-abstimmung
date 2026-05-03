@@ -12,6 +12,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "data", "terminabstimmung.db");
 const MAIL_LOG_PATH = path.join(path.dirname(DB_PATH), "mail-outbox.log");
 const APP_BASE_URL = normalizeConfiguredBaseUrl(process.env.APP_BASE_URL || "");
+const ADMIN_EMAIL = normalizeAdminEmail(process.env.ADMIN_EMAIL || "admin@localhost");
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const VALID_STATUSES = new Set(["yes", "maybe", "no"]);
@@ -167,6 +168,11 @@ function normalizeText(value, maxLength) {
 
 function normalizeEmail(value) {
   return normalizeText(value, 320).toLowerCase();
+}
+
+function normalizeAdminEmail(value) {
+  const normalized = normalizeText(value, 320).toLowerCase();
+  return /^[^\s@]+@[^\s@]+$/.test(normalized) ? normalized : "admin@localhost";
 }
 
 function normalizeBoolean(value, fallback = false) {
@@ -2487,6 +2493,25 @@ function sendOwnerResponseNotification(req, pollId, responseName, isUpdate) {
   });
 }
 
+function sendAdminPollCreatedNotification(req, poll) {
+  if (!poll || !["fixed", "block_fixed"].includes(poll.mode) || !ADMIN_EMAIL) {
+    return;
+  }
+
+  deliverEmail({
+    to: ADMIN_EMAIL,
+    subject: `Neue Umfrage erstellt: ${poll.title}`,
+    text: [
+      `Es wurde eine neue Umfrage erstellt.`,
+      `Titel: ${poll.title}`,
+      `Modus: ${poll.mode}`,
+      `Erstellt von: ${req.currentUser?.email || "unbekannt"}`,
+      `Link: ${getShareUrl(req, poll.id)}`,
+    ].join("\n"),
+    meta: { type: "admin_poll_created", pollId: poll.id, mode: poll.mode },
+  });
+}
+
 function sendDailySummaryIfDue(req, userId) {
   const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
   if (!user || !user.daily_summary) {
@@ -2957,6 +2982,7 @@ app.post("/api/polls", requireCsrf, requireAuth, createRateLimit({ keyPrefix: "p
     );
 
     const poll = mapPollRow(db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId), req);
+    sendAdminPollCreatedNotification(req, poll);
     const invitedCount = input.sendInvites ? sendInvitationEmails(req, poll, input.inviteEmails) : 0;
 
     res.status(201).json({

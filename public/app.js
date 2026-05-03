@@ -3412,20 +3412,27 @@ function bindCalendarSwipe(element, onPrevious, onNext) {
 
 function updatePollResponseCta() {
   const label = document.querySelector("#poll-open-response-label");
+  const mobileLabel = document.querySelector("#poll-mobile-response-label");
   const currentParticipant = getCurrentParticipantState();
-  if (!label) {
+  if (!label && !mobileLabel) {
     return;
   }
 
+  let nextLabel = "";
   if (currentParticipant.isBlocked) {
-    label.textContent = "Gesperrt";
-    return;
+    nextLabel = "Gesperrt";
+  } else if (!currentParticipant.canVote) {
+    nextLabel = "Derzeit deaktiviert";
+  } else {
+    nextLabel = hasEditableResponse() ? "Verfügbarkeit ändern" : "Jetzt abstimmen";
   }
-  if (!currentParticipant.canVote) {
-    label.textContent = "Derzeit deaktiviert";
-    return;
+
+  if (label) {
+    label.textContent = nextLabel;
   }
-  label.textContent = hasEditableResponse() ? "Verfügbarkeit ändern" : "Jetzt abstimmen";
+  if (mobileLabel) {
+    mobileLabel.textContent = nextLabel;
+  }
 }
 
 function getCurrentParticipantState() {
@@ -3473,6 +3480,14 @@ function closePollResponseDrawer() {
 function bindPollResponseEvents() {
   document.querySelector("#poll-open-response")?.addEventListener("click", () => {
     openPollResponseDrawer();
+  });
+
+  document.querySelector("#poll-mobile-response")?.addEventListener("click", () => {
+    openPollResponseDrawer();
+  });
+
+  document.querySelector("#poll-mobile-results")?.addEventListener("click", () => {
+    document.querySelector("#poll-results-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   document.querySelector("#poll-close-response")?.addEventListener("click", () => {
@@ -3773,16 +3788,18 @@ function renderAvailabilityForm() {
   const legend = document.querySelector("#availability-legend");
   const panel = document.querySelector("#poll-response-panel");
   const cta = document.querySelector("#poll-open-response");
+  const mobileCta = document.querySelector("#poll-mobile-response");
   const form = document.querySelector("#response-form");
   const submitButton = document.querySelector("#submit-response-button");
 
-  if (!grid || !legend || !panel || !cta || !form || !submitButton) {
+  if (!grid || !legend || !panel || !cta || !mobileCta || !form || !submitButton) {
     return;
   }
 
   if (!state.auth.user) {
     panel.classList.add("is-hidden");
     cta.classList.add("is-hidden");
+    mobileCta.classList.add("is-hidden");
     form.reset();
     grid.innerHTML = "";
     legend.classList.add("is-hidden");
@@ -3791,6 +3808,7 @@ function renderAvailabilityForm() {
 
   panel.classList.remove("is-hidden");
   cta.classList.remove("is-hidden");
+  mobileCta.classList.remove("is-hidden");
   renderParticipantIdentity();
   updatePollResponseCta();
   syncPollResponsePanelState();
@@ -3800,6 +3818,8 @@ function renderAvailabilityForm() {
   const canRespond = participant.canVote && !participant.isBlocked;
   cta.disabled = !canRespond;
   cta.classList.toggle("is-disabled", !canRespond);
+  mobileCta.disabled = !canRespond;
+  mobileCta.classList.toggle("is-disabled", !canRespond);
   submitButton.disabled = !canRespond;
   submitButton.classList.toggle("is-disabled", !canRespond);
 
