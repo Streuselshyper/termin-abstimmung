@@ -13,6 +13,7 @@ const statusLabels = {
   no: "Nein",
 };
 const CREATE_POLL_MODES = new Set(["fixed", "block_fixed", "timeslots", "star_rating", "free", "block_free", "timeslots_free", "weekly"]);
+const mobileMediaQuery = window.matchMedia("(max-width: 720px)");
 
 const state = {
   auth: {
@@ -32,7 +33,7 @@ const state = {
   participantSelectedDates: new Set(),
   participantSuggestedTimes: {},
   participantCurrentMonth: startOfMonth(new Date()),
-  participantCalendarExpanded: !window.matchMedia("(max-width: 720px)").matches,
+  participantCalendarExpanded: !mobileMediaQuery.matches,
   pollData: null,
   responseDraft: {},
   pollDrawerOpen: false,
@@ -46,11 +47,13 @@ let toastTimeoutId = 0;
 initializeRouting();
 bindStaticEventHandlers();
 document.addEventListener("keydown", handleGlobalKeydown);
+window.addEventListener("resize", handleViewportResize);
 
 initializeApp().catch(handleRenderError);
 
 themeToggle.addEventListener("click", toggleTheme);
 applyStoredTheme();
+registerServiceWorker();
 
 async function initializeApp() {
   await refreshAuthState();
@@ -148,6 +151,22 @@ function bindStaticEventHandlers() {
   document.querySelector("#login-form").addEventListener("submit", handleLogin);
   document.querySelector("#register-form").addEventListener("submit", handleRegister);
   document.querySelector("#forgot-password-form").addEventListener("submit", handleForgotPassword);
+}
+
+function handleViewportResize() {
+  syncPollResponsePanelState();
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator) || !window.isSecureContext) {
+    return;
+  }
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch((error) => {
+      console.debug("Service Worker konnte nicht registriert werden.", error);
+    });
+  });
 }
 
 function isSpaPath(pathname) {
@@ -766,6 +785,18 @@ function renderCreateCalendar() {
     });
     grid.appendChild(button);
   }
+
+  bindCalendarSwipe(
+    grid,
+    () => {
+      state.currentMonth = addMonths(state.currentMonth, -1);
+      renderCreateCalendar();
+    },
+    () => {
+      state.currentMonth = addMonths(state.currentMonth, 1);
+      renderCreateCalendar();
+    }
+  );
 }
 
 function renderCreateSelectedDates() {
@@ -3193,7 +3224,7 @@ async function renderPollPage(pollId) {
 
 function initializeDraftFromPoll(poll) {
   const editableResponse = getEditableResponse();
-  state.participantCalendarExpanded = !window.matchMedia("(max-width: 720px)").matches;
+  state.participantCalendarExpanded = !mobileMediaQuery.matches;
   const hasTimeSlots = pollHasTimeSlots(poll);
 
   if (pollUsesBlockFixed(poll)) {
@@ -3313,7 +3344,70 @@ function hasEditableResponse() {
 }
 
 function isCompactPollLayout() {
-  return window.matchMedia("(max-width: 720px)").matches;
+  return mobileMediaQuery.matches;
+}
+
+function bindCalendarSwipe(element, onPrevious, onNext) {
+  if (!element || element.dataset.swipeBound === "true" || !window.PointerEvent) {
+    return;
+  }
+
+  element.dataset.swipeBound = "true";
+  element.dataset.swipeHint = "true";
+
+  let startX = 0;
+  let startY = 0;
+  let activePointerId = null;
+  let isTracking = false;
+
+  element.addEventListener("pointerdown", (event) => {
+    if (!mobileMediaQuery.matches || event.pointerType === "mouse") {
+      return;
+    }
+
+    activePointerId = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    isTracking = true;
+  });
+
+  element.addEventListener("pointermove", (event) => {
+    if (!isTracking || event.pointerId !== activePointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    element.classList.toggle("is-swiping", Math.abs(deltaX) > 18 && Math.abs(deltaX) > Math.abs(deltaY));
+  });
+
+  element.addEventListener("pointerup", (event) => {
+    if (!isTracking || event.pointerId !== activePointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    activePointerId = null;
+    isTracking = false;
+    element.classList.remove("is-swiping");
+
+    if (Math.abs(deltaX) < 54 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4) {
+      return;
+    }
+
+    if (deltaX < 0) {
+      onNext();
+    } else {
+      onPrevious();
+    }
+  });
+
+  element.addEventListener("pointercancel", () => {
+    activePointerId = null;
+    isTracking = false;
+    element.classList.remove("is-swiping");
+  });
 }
 
 function updatePollResponseCta() {
@@ -3349,7 +3443,7 @@ function syncPollResponsePanelState() {
     return;
   }
 
-  const drawerOpen = state.pollDrawerOpen && !isCompactPollLayout();
+  const drawerOpen = state.pollDrawerOpen;
   panel.classList.toggle("is-open", drawerOpen);
   overlay.classList.toggle("is-hidden", !drawerOpen);
   document.body.classList.toggle("poll-drawer-open", drawerOpen);
@@ -3361,13 +3455,14 @@ function openPollResponseDrawer(options = {}) {
     renderAvailabilityForm();
   }
 
-  if (isCompactPollLayout()) {
-    document.querySelector("#poll-response-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  state.pollDrawerOpen = true;
+  syncPollResponsePanelState();
+
+  if (!isCompactPollLayout()) {
     return;
   }
 
-  state.pollDrawerOpen = true;
-  syncPollResponsePanelState();
+  document.querySelector("#poll-response-card")?.scrollTo({ top: 0, behavior: "auto" });
 }
 
 function closePollResponseDrawer() {
@@ -3992,6 +4087,18 @@ function renderBlockFreeAvailabilityForm(grid) {
 
       calendarGrid.appendChild(button);
     }
+
+    bindCalendarSwipe(
+      calendarGrid,
+      () => {
+        state.participantCurrentMonth = addMonths(state.participantCurrentMonth, -1);
+        renderAvailabilityForm();
+      },
+      () => {
+        state.participantCurrentMonth = addMonths(state.participantCurrentMonth, 1);
+        renderAvailabilityForm();
+      }
+    );
   }
 }
 
@@ -4276,6 +4383,18 @@ function renderParticipantCalendar() {
 
     calendarGrid.appendChild(button);
   }
+
+  bindCalendarSwipe(
+    calendarGrid,
+    () => {
+      state.participantCurrentMonth = addMonths(state.participantCurrentMonth, -1);
+      renderAvailabilityForm();
+    },
+    () => {
+      state.participantCurrentMonth = addMonths(state.participantCurrentMonth, 1);
+      renderAvailabilityForm();
+    }
+  );
 }
 
 function renderParticipantSelectedDates() {
