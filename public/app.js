@@ -3818,8 +3818,10 @@ function renderAvailabilityForm() {
 
   const participant = getCurrentParticipantState();
   const canRespond = participant.canVote && !participant.isBlocked;
-  cta.disabled = !canRespond;
-  cta.classList.toggle("is-disabled", !canRespond);
+  if (cta) {
+    cta.disabled = !canRespond;
+    cta.classList.toggle("is-disabled", !canRespond);
+  }
   mobileCta.disabled = !canRespond;
   mobileCta.classList.toggle("is-disabled", !canRespond);
   submitButton.disabled = !canRespond;
