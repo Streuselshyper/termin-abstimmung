@@ -4,9 +4,11 @@ const themeToggle = document.querySelector("#theme-toggle");
 const dynamicViewElement = document.querySelector("#dynamic-view");
 const toastElement = document.querySelector("#toast");
 const staticViewIds = ["landing-view", "login-view", "register-view", "forgot-password-view", "dynamic-view"];
-const weekdayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-const weeklyWeekdayOrder = [1, 2, 3, 4, 5, 6, 0];
-const weeklyWeekdayLabels = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+const firstDayOfWeek = 1;
+const weekdayLabelsByDayIndex = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+const weeklyWeekdayOrder = Array.from({ length: 7 }, (_, index) => (firstDayOfWeek + index) % 7);
+const weekdayLabels = weeklyWeekdayOrder.map((weekday) => weekdayLabelsByDayIndex[weekday]);
+const weeklyWeekdayLabels = weekdayLabelsByDayIndex;
 const statusLabels = {
   yes: "Ja",
   maybe: "Vielleicht",
@@ -4947,9 +4949,13 @@ function addDays(date, delta) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + delta);
 }
 
+function getWeekdayColumnIndex(dayIndex) {
+  return (dayIndex - firstDayOfWeek + 7) % 7;
+}
+
 function startOfWeek(date) {
   const nextDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const weekdayIndex = (nextDate.getDay() + 6) % 7;
+  const weekdayIndex = getWeekdayColumnIndex(nextDate.getDay());
   return addDays(nextDate, -weekdayIndex);
 }
 
@@ -7165,8 +7171,8 @@ function setFeedback(element, message, type = "") {
 function buildCalendarDays(year, month) {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
-  const prefix = (firstDay.getDay() + 6) % 7;
-  const suffix = 6 - ((lastDay.getDay() + 6) % 7);
+  const prefix = getWeekdayColumnIndex(firstDay.getDay());
+  const suffix = 6 - getWeekdayColumnIndex(lastDay.getDay());
   const days = [];
 
   for (let index = prefix; index > 0; index -= 1) {

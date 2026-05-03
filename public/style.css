@@ -2775,6 +2775,8 @@ body.poll-drawer-open {
     background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
     backdrop-filter: blur(18px);
     box-shadow: var(--shadow);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
 
   #poll-close-response {
