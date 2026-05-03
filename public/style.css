@@ -1079,6 +1079,8 @@ select:focus {
   position: relative;
   /* Admin-Dropdown muss vor dem Antwort-Drawer und anderen Panels liegen. */
   z-index: 100;
+  width: 100%;
+  justify-self: stretch;
 }
 
 .poll-response-overlay {

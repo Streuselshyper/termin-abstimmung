@@ -3794,13 +3794,13 @@ function renderAvailabilityForm() {
   const form = document.querySelector("#response-form");
   const submitButton = document.querySelector("#submit-response-button");
 
-  if (!grid || !legend || !panel || !cta || !mobileCta || !form || !submitButton) {
+  if (!grid || !legend || !panel || !mobileCta || !form || !submitButton) {
     return;
   }
 
   if (!state.auth.user) {
     panel.classList.add("is-hidden");
-    cta.classList.add("is-hidden");
+    cta?.classList.add("is-hidden");
     mobileCta.classList.add("is-hidden");
     form.reset();
     grid.innerHTML = "";
@@ -3809,7 +3809,7 @@ function renderAvailabilityForm() {
   }
 
   panel.classList.remove("is-hidden");
-  cta.classList.remove("is-hidden");
+  cta?.classList.remove("is-hidden");
   mobileCta.classList.remove("is-hidden");
   renderParticipantIdentity();
   updatePollResponseCta();
