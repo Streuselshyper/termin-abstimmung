@@ -1079,7 +1079,9 @@ select:focus {
   position: relative;
   /* Admin-Dropdown muss vor dem Antwort-Drawer und anderen Panels liegen. */
   z-index: 100;
+  grid-column: 1 / -1;
   width: 100%;
+  max-width: none;
   justify-self: stretch;
 }
 
@@ -2678,6 +2680,10 @@ body.poll-drawer-open {
     grid-column: span 1;
   }
 
+  .poll-summary-panel {
+    grid-column: 1 / -1;
+  }
+
   .poll-list-row {
     gap: 0.7rem;
   }
@@ -3175,6 +3181,14 @@ textarea {
   .auth-panel-highlight {
     padding: 1rem;
     border-radius: 1rem;
+  }
+
+  .poll-summary-panel,
+  .poll-summary-top,
+  .poll-summary-main,
+  .poll-summary-meta-row {
+    width: 100%;
+    max-width: none;
   }
 
   .hero-card h1,
