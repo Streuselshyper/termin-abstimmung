@@ -1053,6 +1053,14 @@ select:focus {
 .poll-shell {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   align-items: start;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.poll-shell > * {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .poll-summary-panel,
@@ -2778,7 +2786,7 @@ body.poll-drawer-open {
     bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
     z-index: 25;
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
     gap: 0.75rem;
     margin-top: 1rem;
     padding: 0.75rem;
@@ -3362,7 +3370,7 @@ textarea {
     inset: auto max(0.55rem, var(--mobile-safe-right)) calc(0.55rem + var(--mobile-safe-bottom)) max(0.55rem, var(--mobile-safe-left));
     z-index: 190;
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
     gap: 0.65rem;
     padding: 0.7rem;
     border: 1px solid var(--border);

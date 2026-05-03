@@ -3484,6 +3484,9 @@ function bindPollResponseEvents() {
     openPollResponseDrawer();
   });
 
+  document.querySelector("#poll-mobile-response")?.addEventListener("click", () => {
+    openPollResponseDrawer();
+  });
 
   document.querySelector("#poll-mobile-results")?.addEventListener("click", () => {
     document.querySelector("#poll-results-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3787,16 +3790,18 @@ function renderAvailabilityForm() {
   const legend = document.querySelector("#availability-legend");
   const panel = document.querySelector("#poll-response-panel");
   const cta = document.querySelector("#poll-open-response");
+  const mobileCta = document.querySelector("#poll-mobile-response");
   const form = document.querySelector("#response-form");
   const submitButton = document.querySelector("#submit-response-button");
 
-  if (!grid || !legend || !panel || !cta || !form || !submitButton) {
+  if (!grid || !legend || !panel || !cta || !mobileCta || !form || !submitButton) {
     return;
   }
 
   if (!state.auth.user) {
     panel.classList.add("is-hidden");
     cta.classList.add("is-hidden");
+    mobileCta.classList.add("is-hidden");
     form.reset();
     grid.innerHTML = "";
     legend.classList.add("is-hidden");
@@ -3805,6 +3810,7 @@ function renderAvailabilityForm() {
 
   panel.classList.remove("is-hidden");
   cta.classList.remove("is-hidden");
+  mobileCta.classList.remove("is-hidden");
   renderParticipantIdentity();
   updatePollResponseCta();
   syncPollResponsePanelState();
@@ -3814,6 +3820,8 @@ function renderAvailabilityForm() {
   const canRespond = participant.canVote && !participant.isBlocked;
   cta.disabled = !canRespond;
   cta.classList.toggle("is-disabled", !canRespond);
+  mobileCta.disabled = !canRespond;
+  mobileCta.classList.toggle("is-disabled", !canRespond);
   submitButton.disabled = !canRespond;
   submitButton.classList.toggle("is-disabled", !canRespond);
 
