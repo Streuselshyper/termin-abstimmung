@@ -405,12 +405,18 @@
         align-items: center;
         justify-content: space-between;
         gap: 0.75rem;
+        max-width: 100%;
+        min-width: 0;
       }
 
       .matrix-name-label {
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .participant-inline-icon {
@@ -1287,11 +1293,7 @@
         <div class="poll-mobile-actions" aria-label="Schnellaktionen">
           <button id="poll-mobile-results" class="ghost-button wide-button" type="button">
             <i class="fa-solid fa-table-columns"></i>
-            Ergebnisse anzeigen
-          </button>
-          <button id="poll-mobile-response" class="primary-button wide-button" type="button">
-            <i class="fa-regular fa-pen-to-square"></i>
-            <span id="poll-mobile-response-label">Jetzt abstimmen</span>
+            Ergebnisse
           </button>
         </div>
       </section>
