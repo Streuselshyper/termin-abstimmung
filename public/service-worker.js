@@ -1,4 +1,4 @@
-const CACHE_NAME = "termin-abstimmung-v2-admin-visibility";
+const CACHE_NAME = "termin-abstimmung-v3-admin-fix";
 const APP_SHELL = [
   "/",
   "/index.html",
