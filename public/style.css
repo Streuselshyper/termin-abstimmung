@@ -1073,6 +1073,9 @@ select:focus {
 .results-calendar-panel,
 .block-results-panel {
   grid-column: span 12;
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
 }
 
 .poll-summary-panel {
