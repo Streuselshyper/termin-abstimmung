@@ -1348,6 +1348,7 @@ body.poll-drawer-open {
   white-space: nowrap;
 }
 
+#poll-share-button,
 .poll-settings-shell {
   display: inline-flex !important;
   align-items: center !important;
@@ -1361,6 +1362,7 @@ body.poll-drawer-open {
   flex-wrap: nowrap !important;
 }
 
+#poll-share-button > *,
 .poll-settings-shell > * {
   flex-shrink: 0 !important;
 }
@@ -2935,6 +2937,7 @@ body.poll-drawer-open {
     display: none;
   }
 
+  #poll-share-button,
   .poll-settings-shell {
     width: 100%;
   }
@@ -3321,6 +3324,7 @@ textarea {
   }
 
   .admin-toggle,
+  #poll-share-button,
   .poll-settings-shell,
   .owner-actions button {
     display: inline-flex !important;
@@ -3331,6 +3335,7 @@ textarea {
   }
 
   .admin-toggle *,
+  #poll-share-button *,
   .poll-settings-shell *,
   .owner-actions button * {
     flex-shrink: 0 !important;
