@@ -3020,7 +3020,8 @@ body.poll-drawer-open {
   .results-table.free-choice-matrix,
   .results-table.fixed-choice-matrix,
   .results-table.slot-choice-matrix {
-    width: max-content;
+    width: 100%;
+    min-width: max-content;
   }
 
   .results-table th:first-child,
