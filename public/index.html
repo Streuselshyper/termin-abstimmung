@@ -1219,18 +1219,23 @@
                 <i class="fa-regular fa-copy"></i>
               </button>
 
-              <details id="poll-settings-shell" class="poll-settings-shell is-hidden">
-                <summary class="ghost-button compact-button" aria-label="Admin-Tools">
-                  <i class="fa-solid fa-gear"></i>
-                  <span>Admin</span>
-                </summary>
-                <div id="poll-owner-actions" class="owner-actions"></div>
-              </details>
+              <button id="poll-settings-shell" class="ghost-button compact-button poll-settings-shell is-hidden" type="button" aria-label="Admin-Tools" aria-haspopup="dialog" aria-controls="adminModal">
+                <i class="fa-solid fa-gear"></i>
+                <span>Admin</span>
+              </button>
             </div>
           </div>
 
           <div id="poll-summary-empty" class="empty-state poll-summary-empty is-hidden"></div>
         </article>
+
+        <div class="admin-modal" id="adminModal" aria-hidden="true">
+          <div class="admin-modal-backdrop"></div>
+          <div class="admin-modal-content" role="dialog" aria-modal="true" aria-label="Admin-Tools">
+            <button class="admin-modal-close" type="button" aria-label="Admin-Tools schliessen">×</button>
+            <div id="poll-owner-actions" class="owner-actions"></div>
+          </div>
+        </div>
 
         <article id="poll-response-overlay" class="poll-response-overlay is-hidden"></article>
 

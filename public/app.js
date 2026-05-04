@@ -3499,10 +3499,49 @@ function bindPollResponseEvents() {
   document.querySelector("#poll-response-overlay")?.addEventListener("click", () => {
     closePollResponseDrawer();
   });
+
+  document.querySelector("#poll-settings-shell")?.addEventListener("click", openAdminModal);
+  document.querySelector("#adminModal .admin-modal-backdrop")?.addEventListener("click", closeAdminModal);
+  document.querySelector("#adminModal .admin-modal-close")?.addEventListener("click", closeAdminModal);
+}
+
+function openAdminModal() {
+  const modal = document.querySelector("#adminModal");
+  const trigger = document.querySelector("#poll-settings-shell");
+  if (!modal) {
+    return;
+  }
+
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+  trigger?.setAttribute("aria-expanded", "true");
+  document.body.classList.add("modal-open");
+}
+
+function closeAdminModal() {
+  const modal = document.querySelector("#adminModal");
+  const trigger = document.querySelector("#poll-settings-shell");
+  if (!modal) {
+    return;
+  }
+
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+  trigger?.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("modal-open");
 }
 
 function handleGlobalKeydown(event) {
-  if (event.key === "Escape" && state.pollDrawerOpen) {
+  if (event.key !== "Escape") {
+    return;
+  }
+
+  if (document.querySelector("#adminModal.active")) {
+    closeAdminModal();
+    return;
+  }
+
+  if (state.pollDrawerOpen) {
     closePollResponseDrawer();
   }
 }
@@ -3691,8 +3730,9 @@ function renderPollOwnerActions() {
     }
     if (shell) {
       shell.classList.add("is-hidden");
-      shell.open = false;
+      shell.setAttribute("aria-expanded", "false");
     }
+    closeAdminModal();
     return;
   }
 
@@ -3700,6 +3740,7 @@ function renderPollOwnerActions() {
   const exportDates = getPollExportDates(poll);
   const defaultDate = exportDates[0] || "";
   shell.classList.remove("is-hidden");
+  shell.setAttribute("aria-expanded", "false");
   container.innerHTML = `
     <div class="owner-action-stack">
       <button id="owner-edit-poll" class="settings-action" type="button">
@@ -3754,6 +3795,7 @@ function renderPollOwnerActions() {
   `;
 
   document.querySelector("#owner-edit-poll").addEventListener("click", () => {
+    closeAdminModal();
     navigateTo(`/create?mode=${encodeURIComponent(poll.mode)}&edit=${encodeURIComponent(poll.id)}`).catch(handleRenderError);
   });
 
