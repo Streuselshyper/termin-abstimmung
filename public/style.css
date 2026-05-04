@@ -2611,8 +2611,8 @@ body.poll-drawer-open {
 
 .results-table {
   --results-date-column-width: 10.5rem;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: max-content;
   border-collapse: separate;
   border-spacing: 0;
 }
