@@ -3308,6 +3308,10 @@ textarea {
     margin-bottom: 1rem !important;
   }
 
+  .poll-list {
+    gap: 1rem !important;
+  }
+
   .admin-toggle,
   .owner-actions button {
     display: inline-flex !important;
