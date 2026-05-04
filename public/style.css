@@ -3299,6 +3299,18 @@ textarea {
     border-radius: 1rem;
   }
 
+  .poll-card {
+    margin-bottom: 1rem !important;
+  }
+
+  .admin-toggle,
+  .owner-actions button {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.35rem !important;
+    white-space: nowrap !important;
+  }
+
   .poll-summary-panel,
   .poll-summary-top,
   .poll-summary-main,
