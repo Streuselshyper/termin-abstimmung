@@ -1868,6 +1868,7 @@ body.poll-drawer-open {
 
 .block-period-card.is-compact {
   gap: 0.35rem;
+  width: 100%;
   padding: 0.75rem 0.8rem;
   min-width: 9.75rem;
 }
@@ -2609,8 +2610,9 @@ body.poll-drawer-open {
 }
 
 .results-table {
+  --results-date-column-width: 10.5rem;
   width: max-content;
-  min-width: max-content;
+  min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -2651,6 +2653,12 @@ body.poll-drawer-open {
 .results-table th:not(:first-child),
 .results-table td:not(:first-child) {
   min-width: 7rem;
+}
+
+.results-table.fixed-choice-matrix th:not(:first-child),
+.results-table.fixed-choice-matrix td:not(:first-child) {
+  width: var(--results-date-column-width);
+  min-width: var(--results-date-column-width);
 }
 
 .matrix-name-cell {
