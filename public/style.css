@@ -3521,13 +3521,25 @@ textarea {
   }
   
   .poll-summary-top {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column;
     width: 100% !important;
   }
   
   .poll-summary-main {
     display: block !important;
+    order: 1;
     width: 100% !important;
     max-width: 100% !important;
+  }
+
+  .poll-summary-toolbar {
+    order: 2;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .poll-summary-toolbar > * {
+    flex: 1 1 auto;
   }
 }
