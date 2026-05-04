@@ -2935,7 +2935,7 @@ function getDashboardPollTypeMeta(mode) {
     return { label: "Freier Block", icon: "fa-solid fa-calendar-days" };
   }
   if (mode === "star_rating") {
-    return { label: "Sterne-Bewertung", icon: "fa-regular fa-star" };
+    return { label: "Sterne", icon: "fa-regular fa-star" };
   }
   if (mode === "timeslots_free") {
     return { label: "Freie Zeitfenster", icon: "fa-regular fa-calendar-plus" };

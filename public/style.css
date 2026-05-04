@@ -3546,11 +3546,21 @@ textarea {
 
   .poll-summary-toolbar {
     order: 2;
-    width: 100%;
-    justify-content: flex-start;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+    justify-content: stretch;
   }
 
   .poll-summary-toolbar > * {
-    flex: 1 1 auto;
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .poll-summary-toolbar .compact-button,
+  .poll-summary-toolbar summary {
+    width: 100% !important;
+    white-space: nowrap;
   }
 }
