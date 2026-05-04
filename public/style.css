@@ -1274,10 +1274,14 @@ body.poll-drawer-open {
 }
 
 .poll-summary-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
+  justify-items: stretch;
 }
 
 .poll-summary-main {
+  width: 100%;
   min-width: 0;
   flex: 1 1 auto;
   flex-direction: column;
@@ -1302,7 +1306,22 @@ body.poll-drawer-open {
 }
 
 .poll-summary-meta-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   flex-wrap: wrap;
+}
+
+.poll-summary-main > .info-pills {
+  width: 100%;
+}
+
+.poll-summary-meta-row .pill {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .poll-summary-toolbar {
@@ -3482,5 +3501,33 @@ textarea {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+/* ABSOLUTER FIX für Mobile - poll-summary-panel volle Breite */
+@media (max-width: 720px) {
+  .poll-shell {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  .poll-summary-panel {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    grid-column: 1 / -1 !important;
+    box-sizing: border-box !important;
+  }
+  
+  .poll-summary-top {
+    display: block !important;
+    width: 100% !important;
+  }
+  
+  .poll-summary-main {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }
