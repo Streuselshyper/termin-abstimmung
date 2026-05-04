@@ -3590,7 +3590,9 @@ textarea {
 /* ABSOLUTER FIX für Mobile - poll-summary-panel volle Breite */
 @media (max-width: 720px) {
   .poll-shell {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1rem !important;
     width: 100% !important;
     max-width: 100% !important;
   }
