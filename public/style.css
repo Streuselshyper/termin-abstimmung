@@ -3325,13 +3325,17 @@ textarea {
 
   .admin-toggle,
   #poll-share-button,
-  .poll-settings-shell,
+  .poll-settings-shell:not(.is-hidden),
   .owner-actions button {
     display: inline-flex !important;
     align-items: center !important;
     gap: 0.35rem !important;
     white-space: nowrap !important;
     flex-wrap: nowrap !important;
+  }
+
+  .poll-settings-shell.is-hidden {
+    display: none !important;
   }
 
   .admin-toggle *,
