@@ -3019,8 +3019,9 @@ body.poll-drawer-open {
 
   .results-table th:first-child,
   .results-table td:first-child {
-    min-width: 8rem;
-    max-width: 8rem;
+    min-width: max-content;
+    max-width: 20rem;
+    width: max-content;
   }
 
   .results-table.star-rating-matrix th:not(:first-child),
@@ -3471,8 +3472,9 @@ textarea {
 
   .results-table th:first-child,
   .results-table td:first-child {
-    min-width: 8rem;
-    max-width: 8rem;
+    min-width: max-content;
+    max-width: 20rem;
+    width: max-content;
   }
 
   .results-table.star-rating-matrix th:not(:first-child),
