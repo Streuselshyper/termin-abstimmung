@@ -2637,7 +2637,9 @@ body.poll-drawer-open {
   position: sticky;
   left: 0;
   z-index: 3;
-  min-width: 14rem;
+  max-width: 20rem;
+  width: max-content;
+  min-width: max-content;
   text-align: left;
   background: var(--surface-strong);
 }
