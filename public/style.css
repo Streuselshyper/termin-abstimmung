@@ -1613,16 +1613,11 @@ body.poll-drawer-open {
   font-weight: 700;
 }
 
-.results-table.free-choice-matrix {
-  width: max-content;
-}
-
-.results-table.fixed-choice-matrix {
-  width: max-content;
-}
-
+.results-table.free-choice-matrix,
+.results-table.fixed-choice-matrix,
 .results-table.slot-choice-matrix {
   width: max-content;
+  min-width: 100%;
 }
 
 .results-matrix-header {
