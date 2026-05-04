@@ -264,6 +264,14 @@ async function apiFetch(url, options = {}) {
   return data;
 }
 
+function syncAuthUserFromApiPayload(data) {
+  if (!data || !Object.prototype.hasOwnProperty.call(data, "user")) {
+    return;
+  }
+
+  state.auth.user = data.user;
+}
+
 function renderTopbarNav() {
   navElement.innerHTML = "";
   topbarPrimaryElement.innerHTML = "";
@@ -3198,6 +3206,7 @@ async function renderPollPage(pollId) {
 
   try {
     const data = await apiFetch(`/api/polls/${pollId}`);
+    syncAuthUserFromApiPayload(data);
     state.pollData = data;
     state.pollDrawerOpen = false;
     initializeResultsCalendarState(data.poll, data.responses, data.results);
@@ -3455,6 +3464,13 @@ function getCurrentUserAdminNames() {
 function isCurrentUserPollAdmin() {
   const admins = state.pollData?.poll?.admins;
   const currentUserNames = getCurrentUserAdminNames();
+
+  console.debug("[AdminVisibility]", {
+    pollId: state.pollData?.poll?.id,
+    admins,
+    currentUser: state.auth.user,
+    canManage: state.pollData?.permissions?.canManage,
+  });
 
   if (Array.isArray(admins) && admins.length > 0) {
     return admins.some((admin) => currentUserNames.some((currentUserName) => admin === currentUserName));
@@ -6672,6 +6688,7 @@ async function handleResponseSubmit(event) {
       body: JSON.stringify(payload),
     });
 
+    syncAuthUserFromApiPayload(data);
     state.pollData = data;
     refreshPollView();
     setFeedback(document.querySelector("#response-feedback"), "Antwort gespeichert.", "success");
@@ -7151,6 +7168,7 @@ async function handleAdminDeleteResponse(responseId) {
       throw new Error("Unerwartete Server-Antwort nach dem Löschen.");
     }
 
+    syncAuthUserFromApiPayload(data);
     state.pollData = data;
 
     console.log("[Delete] Success, re-rendering...");

@@ -1,9 +1,9 @@
-const CACHE_NAME = "termin-abstimmung-v1";
+const CACHE_NAME = "termin-abstimmung-v2-admin-visibility";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/style.css",
-  "/app.js",
+  "/app.js?v=2026-05-04-admin-visibility",
   "/manifest.json",
   "/icon.svg",
   "/apple-touch-icon.svg"

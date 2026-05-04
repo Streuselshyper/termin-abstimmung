@@ -1941,15 +1941,25 @@ function loadPollWithResponses(pollId, currentUser = null, req = null) {
     ? getPollParticipantRights(poll.id, currentUser.id)
     : getDefaultParticipantRights();
 
+  const permissions = {
+    canManage: Boolean(currentUser && poll.userId && currentUser.id === poll.userId),
+    canRespond: Boolean(currentUser) && participantRights.canVote && !participantRights.isBlocked,
+  };
+
+  console.log("[PollPermissions]", {
+    pollId: poll.id,
+    ownerId: poll.userId,
+    currentUserId: currentUser?.id || null,
+    admins: poll.admins,
+    canManage: permissions.canManage,
+  });
+
   return {
     poll,
     owner: owner
       ? { id: owner.id, email: owner.email, name: owner.name || "" }
       : null,
-    permissions: {
-      canManage: Boolean(currentUser && poll.userId && currentUser.id === poll.userId),
-      canRespond: Boolean(currentUser) && participantRights.canVote && !participantRights.isBlocked,
-    },
+    permissions,
     participant: participantRights,
     responses,
     results,
