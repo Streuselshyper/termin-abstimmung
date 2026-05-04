@@ -3457,11 +3457,13 @@ function getCurrentUserAdminNames() {
 function isCurrentUserPollAdmin() {
   const admins = state.pollData?.poll?.admins;
   const currentUserNames = getCurrentUserAdminNames();
-  return (
-    Boolean(state.pollData?.permissions?.canManage) &&
-    Array.isArray(admins) &&
-    admins.some((admin) => currentUserNames.some((currentUserName) => admin === currentUserName))
-  );
+  const hasExplicitAdmins = Array.isArray(admins) && admins.length > 0;
+
+  if (hasExplicitAdmins) {
+    return admins.some((admin) => currentUserNames.some((currentUserName) => admin === currentUserName));
+  }
+
+  return Boolean(state.pollData?.permissions?.canManage);
 }
 
 function syncPollResponsePanelState() {
