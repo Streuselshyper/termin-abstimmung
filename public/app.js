@@ -3447,9 +3447,7 @@ function getCurrentParticipantState() {
 
 function getCurrentUserAdminNames() {
   return [
-    state.pollData?.user?.name,
     state.auth.user?.name,
-    state.pollData?.user?.email,
     state.auth.user?.email,
   ].filter((value, index, values) => typeof value === "string" && value !== "" && values.indexOf(value) === index);
 }
