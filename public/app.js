@@ -3445,6 +3445,25 @@ function getCurrentParticipantState() {
   };
 }
 
+function getCurrentUserAdminNames() {
+  return [
+    state.pollData?.user?.name,
+    state.auth.user?.name,
+    state.pollData?.user?.email,
+    state.auth.user?.email,
+  ].filter((value, index, values) => typeof value === "string" && value !== "" && values.indexOf(value) === index);
+}
+
+function isCurrentUserPollAdmin() {
+  const admins = state.pollData?.poll?.admins;
+  const currentUserNames = getCurrentUserAdminNames();
+  return (
+    Boolean(state.pollData?.permissions?.canManage) &&
+    Array.isArray(admins) &&
+    admins.some((admin) => currentUserNames.some((currentUserName) => admin === currentUserName))
+  );
+}
+
 function syncPollResponsePanelState() {
   const panel = document.querySelector("#poll-response-panel");
   const overlay = document.querySelector("#poll-response-overlay");
@@ -3724,7 +3743,8 @@ function formatFavoriteSlotLabel(poll, slot) {
 function renderPollOwnerActions() {
   const container = document.querySelector("#poll-owner-actions");
   const shell = document.querySelector("#poll-settings-shell");
-  if (!container || !shell || !state.pollData?.permissions?.canManage) {
+  const isAdmin = isCurrentUserPollAdmin();
+  if (!container || !shell || !isAdmin) {
     if (container) {
       container.innerHTML = "";
     }
@@ -6508,7 +6528,7 @@ function refreshPollView() {
 
 function renderMatrixNameCell(name, response, editableResponse, showEditIcon) {
   const isOwnRow = Boolean(showEditIcon && editableResponse && response.id === editableResponse.id);
-  const canManage = Boolean(state.pollData?.permissions?.canManage);
+  const canManage = isCurrentUserPollAdmin();
   const roleIcon = response.hasVeto
     ? '<span class="participant-inline-icon" title="Veto-Recht"><i class="fa-solid fa-crown"></i></span>'
     : "";

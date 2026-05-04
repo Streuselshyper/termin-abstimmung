@@ -1935,6 +1935,7 @@ function loadPollWithResponses(pollId, currentUser = null, req = null) {
   const owner = poll.userId
     ? db.prepare("SELECT id, email, name FROM users WHERE id = ?").get(poll.userId)
     : null;
+  poll.admins = owner ? [owner.name || owner.email].filter(Boolean) : [];
 
   const participantRights = currentUser
     ? getPollParticipantRights(poll.id, currentUser.id)
