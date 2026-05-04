@@ -2846,6 +2846,11 @@ body.poll-drawer-open {
     grid-template-columns: 1fr;
   }
 
+  .poll-list,
+  .dashboard-section-content .poll-list {
+    gap: 1rem !important;
+  }
+
   .poll-response-overlay {
     display: none !important;
   }
