@@ -3373,24 +3373,38 @@ textarea {
     flex-shrink: 0 !important;
   }
 
+  .poll-detail-container,
+  #poll-detail-view,
+  .poll-view,
   .poll-summary-panel,
   .poll-summary-top,
   .poll-summary-main,
   .poll-summary-meta-row {
-    width: 100%;
-    max-width: none;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .poll-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 8px !important;
     justify-items: stretch;
   }
 
   .poll-summary-panel {
+    width: 100% !important;
+    max-width: 100% !important;
     grid-column: 1 / -1;
     justify-self: stretch;
-    margin-inline: 0;
+    margin: 0 !important;
     word-break: break-word;
     overflow-wrap: break-word;
+  }
+
+  .poll-card {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .hero-card h1,
