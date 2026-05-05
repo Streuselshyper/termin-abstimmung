@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Termin-Abstimmung">
+  <rect width="512" height="512" rx="112" fill="#07111f"/>
+  <rect x="104" y="128" width="304" height="272" rx="44" fill="#0f766e"/>
+  <path fill="#ecfeff" d="M152 192h208v40H152zM152 272h64v64h-64zM240 272h64v64h-64zM328 272h32v64h-32z"/>
+  <path fill="#5eead4" d="M164 88h44v96h-44zM304 88h44v96h-44z"/>
+  <path fill="none" stroke="#ecfeff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" d="m214 346 40 40 82-92"/>
+</svg>

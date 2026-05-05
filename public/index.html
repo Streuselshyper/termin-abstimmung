@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Termin-Abstimmung</title>
+    <meta
+      name="description"
+      content="Moderne Termin-Abstimmung mit Login, Dashboard, Einladungen, Kalenderexport und responsiver Auswertung."
+    />
+    <meta name="theme-color" content="#07111f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#edf4f7" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Termine" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      :root {
+        --accent-strong: #0f766e;
+        --accent-soft: rgba(15, 118, 110, 0.12);
+        --surface-strong: rgba(9, 14, 24, 0.82);
+        --surface-soft: rgba(255, 255, 255, 0.06);
+        --border-soft: rgba(255, 255, 255, 0.1);
+        --text-soft: rgba(233, 239, 244, 0.72);
+      }
+
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(14, 165, 233, 0.15), transparent 28%),
+          radial-gradient(circle at 85% 15%, rgba(16, 185, 129, 0.18), transparent 24%),
+          linear-gradient(180deg, #07111f 0%, #0b1325 48%, #111827 100%);
+      }
+
+      body[data-theme="light"] {
+        --surface-strong: rgba(255, 255, 255, 0.88);
+        --surface-soft: rgba(15, 23, 42, 0.04);
+        --border-soft: rgba(15, 23, 42, 0.08);
+        --text-soft: rgba(15, 23, 42, 0.72);
+        background:
+          radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 30%),
+          radial-gradient(circle at 85% 15%, rgba(45, 212, 191, 0.16), transparent 22%),
+          linear-gradient(180deg, #f5f7fb 0%, #edf4f7 48%, #e7eef4 100%);
+      }
+
+      .page-shell {
+        max-width: 1260px;
+      }
+
+      .topbar,
+      .panel,
+      .hero-card {
+        backdrop-filter: blur(18px);
+        border: 1px solid var(--border-soft);
+        box-shadow: 0 28px 60px rgba(15, 23, 42, 0.18);
+      }
+
+      .dashboard-shell,
+      .poll-shell {
+        gap: 1.5rem;
+      }
+
+      .dashboard-actions-grid,
+      .poll-list {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .topbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+      }
+
+      .topbar-actions {
+        justify-content: flex-end;
+      }
+
+      .topbar-primary {
+        display: flex;
+        justify-content: center;
+      }
+
+      .dashboard-actions-grid {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+      }
+
+      .poll-card,
+      .create-mode-card,
+      .poll-list-row {
+        border-radius: 0.25rem;
+        border: 1px solid var(--border-soft);
+        background: var(--surface-soft);
+      }
+
+      .muted-copy {
+        color: var(--text-soft);
+      }
+
+      .dashboard-section-head,
+      .poll-card-head,
+      .inline-action-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .create-mode-card {
+        display: grid;
+        gap: 1rem;
+        padding: 1.4rem;
+        transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+      }
+
+      .create-mode-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(15, 118, 110, 0.28);
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .create-mode-icon {
+        width: 3rem;
+        height: 3rem;
+        display: grid;
+        place-items: center;
+        border-radius: 1rem;
+        background: rgba(15, 118, 110, 0.12);
+        color: var(--accent-strong);
+        font-size: 1.1rem;
+      }
+
+      .create-mode-copy h3,
+      .poll-list-row h3 {
+        margin-bottom: 0;
+      }
+
+      .poll-list-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.4rem 0.65rem;
+      }
+
+      .poll-list-main,
+      .poll-list-meta {
+        min-width: 0;
+      }
+
+      .poll-list-main {
+        display: flex;
+        align-items: center;
+      }
+
+      .poll-list-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .poll-list-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        justify-content: flex-end;
+        white-space: nowrap;
+      }
+
+      .poll-list-date {
+        font-size: 0.78rem;
+      }
+
+      .dashboard-status-badge {
+        min-height: 1.45rem;
+        padding: 0.16rem 0.45rem;
+      }
+
+      .dashboard-summary-row {
+        margin-bottom: 0.9rem;
+        justify-content: flex-end;
+      }
+
+      .dashboard-section-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .dashboard-section-copy {
+        display: grid;
+        gap: 0.2rem;
+      }
+
+      .dashboard-section-badge {
+        flex-shrink: 0;
+        align-self: flex-start;
+      }
+
+      .poll-favorite-summary {
+        margin: 0;
+        color: #10b981;
+        font-weight: 700;
+      }
+
+      .score-footer {
+        background: rgba(255, 255, 255, 0.08);
+        border-top: 1px solid var(--border-soft);
+        font-weight: 700;
+      }
+
+      body[data-theme="light"] .score-footer {
+        background: rgba(15, 23, 42, 0.08);
+      }
+
+      .results-table tfoot .score-footer {
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+      }
+
+      .results-table tfoot .score-footer:first-child {
+        z-index: 2;
+      }
+
+      .winner-column {
+        color: #10b981;
+        font-weight: 700;
+      }
+
+      .winner-column .results-matrix-subline {
+        color: inherit;
+      }
+
+      .poll-card-actions,
+      .owner-action-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .poll-empty-state {
+        padding: 1.4rem;
+        text-align: center;
+      }
+
+      .weekly-editor,
+      .weekly-slot-list,
+      .weekly-response-grid {
+        display: grid;
+        gap: 0.9rem;
+      }
+
+      .weekly-slot-row {
+        display: grid;
+        gap: 0.75rem;
+        padding: 0.9rem;
+        border: 1px solid var(--border-soft);
+        border-radius: 0.85rem;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .weekly-weekday-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+      }
+
+      .weekly-weekday-button {
+        border: 1px solid var(--border-soft);
+        border-radius: 999px;
+        background: transparent;
+        color: inherit;
+        padding: 0.35rem 0.7rem;
+        transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+      }
+
+      .weekly-weekday-button.is-active {
+        background: rgba(15, 118, 110, 0.18);
+        border-color: rgba(15, 118, 110, 0.42);
+        color: var(--accent-strong);
+      }
+
+      .weekly-weekday-button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(15, 118, 110, 0.28);
+      }
+
+      .weekly-time-range-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        gap: 0.6rem;
+        align-items: center;
+      }
+
+      .weekly-heat-yes {
+        background: rgba(16, 185, 129, 0.14);
+      }
+
+      .weekly-heat-maybe {
+        background: rgba(245, 158, 11, 0.14);
+      }
+
+      .weekly-heat-no {
+        background: rgba(239, 68, 68, 0.08);
+      }
+
+      @media (max-width: 720px) {
+        .weekly-time-range-fields {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .owner-actions {
+        margin-top: 1.4rem;
+      }
+
+      .owner-action-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .owner-action-card {
+        padding: 1rem;
+        border-radius: 1rem;
+        border: 1px solid var(--border-soft);
+        background: var(--surface-soft);
+      }
+
+      .share-link-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.75rem;
+        margin-top: 0.8rem;
+      }
+
+      .share-link-output {
+        padding: 0.8rem 0.9rem;
+        border-radius: 0.85rem;
+        border: 1px solid var(--border-soft);
+        background: rgba(255, 255, 255, 0.04);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .export-row {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 0.8rem;
+      }
+
+      .export-row select {
+        min-width: 0;
+        flex: 1 1 12rem;
+      }
+
+      .participant-role-badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+
+      .participant-role-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        background: rgba(245, 158, 11, 0.14);
+        color: #f59e0b;
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+
+      .participant-role-badge.blocked {
+        background: rgba(239, 68, 68, 0.14);
+        color: #ef4444;
+      }
+
+      .matrix-name-cell {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        max-width: 100%;
+        min-width: 0;
+      }
+
+      .matrix-name-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .participant-inline-icon {
+        color: #f59e0b;
+      }
+
+      .matrix-action-group {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.45rem;
+        max-width: 100%;
+      }
+
+      .matrix-actions-row {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.45rem;
+        flex-wrap: nowrap;
+        max-width: 100%;
+      }
+
+      .veto-dropdown,
+      .veto-dropdown-inline {
+        min-width: auto;
+        height: 1.7rem;
+        padding: 0.2rem 1.55rem 0.2rem 0.5rem;
+        border-radius: 9999px;
+        border: 2px solid var(--border-soft);
+        background: color-mix(in srgb, var(--surface-soft) 92%, rgba(255, 255, 255, 0.08));
+        color: var(--text-soft);
+        font-family: inherit;
+        font-size: 0.8rem;
+        font-weight: 600;
+        line-height: 1.1;
+        appearance: none;
+        -webkit-appearance: none;
+        background-image:
+          linear-gradient(45deg, transparent 50%, currentColor 50%),
+          linear-gradient(135deg, currentColor 50%, transparent 50%);
+        background-position:
+          calc(100% - 0.85rem) calc(50% - 0.14rem),
+          calc(100% - 0.62rem) calc(50% - 0.14rem);
+        background-size: 0.42rem 0.42rem, 0.42rem 0.42rem;
+        background-repeat: no-repeat;
+        transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+      }
+
+      .veto-dropdown:has(option[value="veto"]:checked),
+      .veto-dropdown-inline:has(option[value="veto"]:checked) {
+        background: rgba(16, 185, 129, 0.15);
+        border-color: #10b981;
+        color: #10b981;
+      }
+
+      .veto-dropdown:not(:has(option[value="veto"]:checked)):hover,
+      .veto-dropdown-inline:not(:has(option[value="veto"]:checked)):hover {
+        border-color: rgba(45, 212, 191, 0.28);
+        color: inherit;
+      }
+
+      .veto-dropdown:focus,
+      .veto-dropdown-inline:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12);
+      }
+
+      .veto-dropdown:not(:has(option[value="veto"]:checked)):focus,
+      .veto-dropdown-inline:not(:has(option[value="veto"]:checked)):focus {
+        border-color: rgba(45, 212, 191, 0.45);
+        color: inherit;
+      }
+
+      .veto-dropdown:has(option[value="veto"]:checked):focus,
+      .veto-dropdown-inline:has(option[value="veto"]:checked):focus {
+        border-color: #10b981;
+        color: #10b981;
+      }
+
+      .matrix-delete-button,
+      .matrix-edit-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255, 255, 255, 0.04);
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .matrix-delete-button {
+        color: #f87171;
+      }
+
+      .is-disabled {
+        opacity: 0.6;
+        pointer-events: none;
+      }
+
+      @media (max-width: 920px) {
+        .topbar {
+          grid-template-columns: 1fr;
+          gap: 1rem;
+        }
+
+        .topbar-primary,
+        .topbar-actions {
+          justify-content: flex-start;
+        }
+
+      }
+
+      @media (max-width: 1024px) {
+        .dashboard-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .poll-list-row {
+          grid-template-columns: minmax(0, 1fr);
+          justify-items: start;
+        }
+
+        .poll-list-meta {
+          width: 100%;
+          justify-content: flex-start;
+        }
+
+        .share-link-row {
+          grid-template-columns: 1fr;
+        }
+
+        .matrix-name-cell {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .matrix-action-group {
+          width: 100%;
+          overflow-x: auto;
+          justify-content: flex-start;
+          padding-bottom: 0.1rem;
+        }
+
+        .matrix-actions-row {
+          min-width: max-content;
+        }
+
+      }
+
+      @media (max-width: 720px) {
+        .topbar {
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 0.55rem;
+        }
+
+        .topbar-primary {
+          grid-column: 1 / -1;
+          justify-content: stretch;
+        }
+
+        .topbar-actions {
+          justify-content: flex-end;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="/">
+          <span class="brand-mark"><i class="fa-regular fa-calendar-check"></i></span>
+          <span class="brand-copy">
+            <strong>Termin-Abstimmung</strong>
+            <small>Einladungen, Export, Dashboard</small>
+          </span>
+        </a>
+
+        <div id="topbar-primary" class="topbar-primary"></div>
+
+        <div class="topbar-actions">
+          <nav id="topbar-nav" class="topbar-nav"></nav>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Theme wechseln">
+            <i class="fa-regular fa-moon"></i>
+          </button>
+        </div>
+      </header>
+
+      <main id="app">
+        <div id="landing-view" class="app-view is-hidden">
+          <section class="hero-card landing-hero">
+            <div class="hero-copy">
+              <p class="eyebrow">Schneller abstimmen</p>
+              <h1>Umfragen erstellen, teilen und direkt auswerten</h1>
+              <p class="hero-text">
+                Wähle den Abstimmungsmodus, der zu deiner Planung passt: feste Optionen, freie Vorschläge,
+                Sternebewertungen, Zeitfenster oder mehrtägige Blöcke.
+              </p>
+              <div class="hero-cta-row">
+                <a class="primary-link" href="/register">Konto erstellen</a>
+                <a class="ghost-link" href="/login">Anmelden</a>
+              </div>
+            </div>
+
+            <div class="hero-stats">
+              <article class="hero-stat">
+                <strong>8 Modi</strong>
+                <span>Feste Termine, Bewertungen, Zeitslots, freie Wahl und Block-Modi</span>
+              </article>
+              <article class="hero-stat">
+                <strong>Share-Links</strong>
+                <span>Einladen ohne separates Konto</span>
+              </article>
+              <article class="hero-stat">
+                <strong>iCal Export</strong>
+                <span>Mit einem Klick in den Kalender</span>
+              </article>
+              <article class="hero-stat">
+                <strong>Dashboard</strong>
+                <span>Bearbeiten, duplizieren, löschen</span>
+              </article>
+            </div>
+          </section>
+        </div>
+
+        <div id="login-view" class="app-view is-hidden">
+          <section class="auth-layout">
+            <article class="auth-panel auth-panel-highlight">
+              <p class="eyebrow">Sicher anmelden</p>
+              <h1>Zurück ins Dashboard</h1>
+              <p class="description">
+                Verwalte deine Umfragen, verschicke Einladungen und exportiere passende Termine direkt als Kalenderdatei.
+              </p>
+            </article>
+
+            <article class="panel auth-panel">
+              <form id="login-form" class="stack-form">
+                <label>
+                  <span>E-Mail</span>
+                  <input id="login-email" type="email" name="email" autocomplete="email" required placeholder="du@firma.de" />
+                </label>
+
+                <label>
+                  <span>Passwort</span>
+                  <input
+                    id="login-password"
+                    type="password"
+                    name="password"
+                    autocomplete="current-password"
+                    required
+                    placeholder="Dein Passwort"
+                  />
+                </label>
+
+                <div id="login-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+                <button class="primary-button" type="submit">
+                  <i class="fa-solid fa-right-to-bracket"></i>
+                  Einloggen
+                </button>
+
+                <p class="description"><a class="inline-link" href="/forgot-password">Passwort vergessen?</a></p>
+                <p class="description">Noch kein Konto? <a class="inline-link" href="/register">Jetzt registrieren</a></p>
+              </form>
+            </article>
+          </section>
+        </div>
+
+        <div id="register-view" class="app-view is-hidden">
+          <section class="auth-layout">
+            <article class="auth-panel auth-panel-highlight">
+              <p class="eyebrow">Neues Konto</p>
+              <h1>In wenigen Sekunden startklar</h1>
+              <p class="description">
+                Nutze deine E-Mail-Adresse für Login, Einladungs-Management, Benachrichtigungen und Poll-Verwaltung.
+              </p>
+            </article>
+
+            <article class="panel auth-panel">
+              <form id="register-form" class="stack-form">
+                <label>
+                  <span>Name</span>
+                  <input id="register-name" name="name" maxlength="120" placeholder="Dein Name" />
+                </label>
+
+                <label>
+                  <span>E-Mail</span>
+                  <input id="register-email" type="email" name="email" autocomplete="email" required placeholder="du@firma.de" />
+                </label>
+
+                <label>
+                  <span>Passwort</span>
+                  <input
+                    id="register-password"
+                    type="password"
+                    name="password"
+                    autocomplete="new-password"
+                    required
+                    minlength="8"
+                    placeholder="Mindestens 8 Zeichen"
+                  />
+                </label>
+
+                <label>
+                  <span>Passwort wiederholen</span>
+                  <input
+                    id="register-password-confirm"
+                    type="password"
+                    name="password_confirm"
+                    autocomplete="new-password"
+                    required
+                    minlength="8"
+                    placeholder="Passwort bestätigen"
+                  />
+                </label>
+
+                <div id="register-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+                <button class="primary-button" type="submit">
+                  <i class="fa-regular fa-user"></i>
+                  Konto erstellen
+                </button>
+
+                <p class="description">Schon registriert? <a class="inline-link" href="/login">Zum Login</a></p>
+              </form>
+            </article>
+          </section>
+        </div>
+
+        <div id="forgot-password-view" class="app-view is-hidden">
+          <section class="auth-layout">
+            <article class="auth-panel auth-panel-highlight">
+              <p class="eyebrow">Reset</p>
+              <h1>Neuen Passwort-Link erzeugen</h1>
+              <p class="description">
+                In dieser Umgebung wird der erzeugte Link direkt angezeigt und parallel im Mail-Log protokolliert.
+              </p>
+            </article>
+
+            <article class="panel auth-panel">
+              <form id="forgot-password-form" class="stack-form">
+                <label>
+                  <span>E-Mail</span>
+                  <input
+                    id="forgot-password-email"
+                    type="email"
+                    name="email"
+                    autocomplete="email"
+                    required
+                    placeholder="du@firma.de"
+                  />
+                </label>
+
+                <div id="forgot-password-feedback" class="feedback" role="status" aria-live="polite"></div>
+                <div id="forgot-password-link"></div>
+
+                <button class="primary-button" type="submit">
+                  <i class="fa-solid fa-key"></i>
+                  Reset-Link erzeugen
+                </button>
+
+                <p class="description"><a class="inline-link" href="/login">Zurück zum Login</a></p>
+              </form>
+            </article>
+          </section>
+        </div>
+
+        <div id="dynamic-view" class="app-view is-hidden"></div>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <template id="reset-password-template">
+      <section class="auth-layout">
+        <article class="auth-panel auth-panel-highlight">
+          <p class="eyebrow">Passwort erneuern</p>
+          <h1>Neues Passwort setzen</h1>
+          <p class="description">Der Link ist begrenzt gültig. Nach dem Speichern wirst du direkt angemeldet.</p>
+        </article>
+
+        <article class="panel auth-panel">
+          <form id="reset-password-form" class="stack-form">
+            <input id="reset-password-token" type="hidden" name="token" />
+            <div id="reset-password-details"></div>
+
+            <label>
+              <span>Neues Passwort</span>
+              <input
+                id="reset-password-new"
+                type="password"
+                name="password"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Mindestens 8 Zeichen"
+              />
+            </label>
+
+            <label>
+              <span>Passwort bestätigen</span>
+              <input
+                id="reset-password-confirm"
+                type="password"
+                name="password_confirm"
+                autocomplete="new-password"
+                required
+                minlength="8"
+                placeholder="Passwort bestätigen"
+              />
+            </label>
+
+            <div id="reset-password-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+            <button class="primary-button" type="submit">
+              <i class="fa-solid fa-rotate-right"></i>
+              Passwort speichern
+            </button>
+          </form>
+        </article>
+      </section>
+    </template>
+
+    <template id="dashboard-template">
+      <section class="dashboard-shell">
+        <article class="panel" id="dashboard-create">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Umfrage erstellen</p>
+              <h1>Schnell starten</h1>
+            </div>
+          </div>
+          <p class="description">Starte mit dem Format, das deiner Planung am nächsten kommt. Jede Auswahl führt zu einer passenden Abstimmung und Auswertung.</p>
+          <div class="dashboard-actions-grid">
+            <a class="create-mode-card" href="/create?mode=fixed">
+              <div class="create-mode-icon"><i class="fa-regular fa-calendar"></i></div>
+              <div class="create-mode-copy">
+                <h3>Feste Termine</h3>
+                <p class="description">Für wenige konkrete Tage, bei denen eine einfache Ja-, Vielleicht- oder Nein-Antwort reicht.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=block_fixed">
+              <div class="create-mode-icon"><i class="fa-solid fa-calendar-week"></i></div>
+              <div class="create-mode-copy">
+                <h3>Mehrtägiger Block</h3>
+                <p class="description">Für Workshops, Reisen oder Einsätze, die mehrere Tage am Stück dauern müssen.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=timeslots">
+              <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
+              <div class="create-mode-copy">
+                <h3>Zeitfenster</h3>
+                <p class="description">Für Termine mit festen Uhrzeiten, bei denen jeder Slot einzeln bewertet wird.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=star_rating">
+              <div class="create-mode-icon"><i class="fa-regular fa-star"></i></div>
+              <div class="create-mode-copy">
+                <h3>Sterne</h3>
+                <p class="description">Für feste Termine, bei denen die beste Option über Durchschnittsbewertungen gefunden wird.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=free">
+              <div class="create-mode-icon"><i class="fa-regular fa-pen-to-square"></i></div>
+              <div class="create-mode-copy">
+                <h3>Freie Terminvorschläge</h3>
+                <p class="description">Für offene Planungen, bei denen Teilnehmende selbst passende Tage markieren.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=block_free">
+              <div class="create-mode-icon"><i class="fa-solid fa-calendar-days"></i></div>
+              <div class="create-mode-copy">
+                <h3>Freier Block</h3>
+                <p class="description">Für mehrtägige Vorhaben ohne vorgegebene Tage; die besten zusammenhängenden Tage entstehen aus den Antworten.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=timeslots_free">
+              <div class="create-mode-icon"><i class="fa-regular fa-calendar-plus"></i></div>
+              <div class="create-mode-copy">
+                <h3>Freie Zeitfenster</h3>
+                <p class="description">Für offene Terminfindung mit eigenen Tagen und Uhrzeiten pro Teilnehmer.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=weekly">
+              <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
+              <div class="create-mode-copy">
+                <h3>Wochenrhythmus</h3>
+                <p class="description">Für wiederkehrende Termine nach Wochentag und Uhrzeit, unabhängig vom Kalenderdatum.</p>
+              </div>
+            </a>
+          </div>
+        </article>
+
+        <section class="dashboard-grid">
+          <article class="panel dashboard-section-panel">
+            <div class="dashboard-section-header">
+              <div class="dashboard-section-copy">
+                <p class="eyebrow">Meine Umfragen</p>
+                <h2 id="dashboard-list-title">0 aktive Umfragen</h2>
+              </div>
+              <span id="dashboard-list-summary" class="pill dashboard-section-badge">0 Umfragen</span>
+            </div>
+            <div class="dashboard-section-content">
+              <div id="dashboard-feedback" class="feedback" role="status" aria-live="polite"></div>
+              <div id="dashboard-polls" class="poll-list"></div>
+              <div class="section-footer-action">
+                <a class="ghost-link dashboard-footer-link" href="/my-polls">
+                  <i class="fa-regular fa-rectangle-list"></i>
+                  Alle anzeigen
+                </a>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel dashboard-section-panel">
+            <div class="dashboard-section-header">
+              <div class="dashboard-section-copy">
+                <p class="eyebrow">Fremde Umfragen</p>
+                <h2>Fremde Umfragen</h2>
+              </div>
+              <span id="dashboard-participated-summary" class="pill dashboard-section-badge">0 Teilnahmen</span>
+            </div>
+            <div class="dashboard-section-content">
+              <div class="feedback" role="status" aria-live="polite"></div>
+              <div id="dashboard-participated-polls" class="poll-list"></div>
+              <div class="section-footer-action">
+                <a class="ghost-link dashboard-footer-link" href="/participated">
+                  <i class="fa-regular fa-handshake"></i>
+                  Alle anzeigen
+                </a>
+              </div>
+            </div>
+          </article>
+        </section>
+      </section>
+    </template>
+
+    <template id="my-polls-template">
+      <section class="dashboard-shell overview-stack">
+        <article class="hero-card dashboard-hero overview-hero">
+          <div class="hero-copy">
+            <div class="inline-action-row">
+              <a class="ghost-link" href="/dashboard">
+                <i class="fa-solid fa-arrow-left"></i>
+                Zurück zum Dashboard
+              </a>
+            </div>
+            <p class="eyebrow">Meine Umfragen</p>
+            <h1>Alle erstellten Umfragen</h1>
+            <p class="hero-text">Hier findest du deine komplette Liste mit denselben Karten wie im Dashboard.</p>
+          </div>
+        </article>
+
+        <article class="panel overview-list-panel">
+          <div class="overview-list-intro">
+            <div class="overview-list-copy">
+              <p class="eyebrow">Übersicht</p>
+              <h2>Erstellte Umfragen</h2>
+              <p class="description">Alle Einträge mit Status und letzter Aktivität in einer ruhigen, gut lesbaren Liste.</p>
+            </div>
+            <div class="overview-list-meta">
+              <span id="my-polls-page-pill" class="pill is-hidden"></span>
+            </div>
+          </div>
+          <div id="my-polls-list" class="poll-list"></div>
+          <div id="my-polls-pagination"></div>
+        </article>
+      </section>
+    </template>
+
+    <template id="create-template">
+      <section class="dashboard-shell">
+        <article class="hero-card create-hero">
+          <div class="hero-copy">
+            <div class="inline-action-row">
+              <a class="ghost-link" href="/dashboard">
+                <i class="fa-solid fa-arrow-left"></i>
+                Zurück zum Dashboard
+              </a>
+            </div>
+            <p class="eyebrow">Umfrage erstellen</p>
+            <h1 id="create-page-title">Neue Termin-Abstimmung</h1>
+            <p id="create-page-description" class="hero-text">
+              Starte mit dem passenden Abstimmungsformat. Danach führt dich der Editor nur durch die Felder, die dieser Modus wirklich braucht.
+            </p>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Modus</p>
+              <h2>Wie soll abgestimmt werden?</h2>
+            </div>
+          </div>
+
+          <div class="dashboard-actions-grid">
+            <a class="create-mode-card" href="/create?mode=fixed">
+              <div class="create-mode-icon"><i class="fa-regular fa-calendar"></i></div>
+              <div class="create-mode-copy">
+                <h3>Feste Termine</h3>
+                <p class="description">Für wenige konkrete Tage, bei denen eine einfache Ja-, Vielleicht- oder Nein-Antwort reicht.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=block_fixed">
+              <div class="create-mode-icon"><i class="fa-solid fa-calendar-week"></i></div>
+              <div class="create-mode-copy">
+                <h3>Mehrtägiger Block</h3>
+                <p class="description">Für Workshops, Reisen oder Einsätze, die mehrere Tage am Stück dauern müssen.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=timeslots">
+              <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
+              <div class="create-mode-copy">
+                <h3>Zeitfenster</h3>
+                <p class="description">Für Termine mit festen Uhrzeiten, bei denen jeder Slot einzeln bewertet wird.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=star_rating">
+              <div class="create-mode-icon"><i class="fa-regular fa-star"></i></div>
+              <div class="create-mode-copy">
+                <h3>Sterne</h3>
+                <p class="description">Für feste Termine, bei denen die beste Option über Durchschnittsbewertungen gefunden wird.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=free">
+              <div class="create-mode-icon"><i class="fa-regular fa-pen-to-square"></i></div>
+              <div class="create-mode-copy">
+                <h3>Freie Terminvorschläge</h3>
+                <p class="description">Für offene Planungen, bei denen Teilnehmende selbst passende Tage markieren.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=block_free">
+              <div class="create-mode-icon"><i class="fa-solid fa-calendar-days"></i></div>
+              <div class="create-mode-copy">
+                <h3>Freier Block</h3>
+                <p class="description">Für mehrtägige Vorhaben ohne vorgegebene Tage; die besten zusammenhängenden Tage entstehen aus den Antworten.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=timeslots_free">
+              <div class="create-mode-icon"><i class="fa-regular fa-calendar-plus"></i></div>
+              <div class="create-mode-copy">
+                <h3>Freie Zeitfenster</h3>
+                <p class="description">Für offene Terminfindung mit eigenen Tagen und Uhrzeiten pro Teilnehmer.</p>
+              </div>
+            </a>
+            <a class="create-mode-card" href="/create?mode=weekly">
+              <div class="create-mode-icon"><i class="fa-regular fa-clock"></i></div>
+              <div class="create-mode-copy">
+                <h3>Wochenrhythmus</h3>
+                <p class="description">Für wiederkehrende Termine nach Wochentag und Uhrzeit, unabhängig vom Kalenderdatum.</p>
+              </div>
+            </a>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Editor</p>
+              <h2 id="create-form-title">Details erfassen</h2>
+            </div>
+          </div>
+
+          <form id="create-form" class="stack-form">
+            <label>
+              <span>Titel</span>
+              <input id="create-title" name="title" maxlength="120" required placeholder="z. B. Sprint-Retrospektive Mai" />
+            </label>
+
+            <label>
+              <span>Beschreibung</span>
+              <textarea
+                id="create-description"
+                name="description"
+                maxlength="1200"
+                required
+                placeholder="Worum geht es bei der Termin-Abstimmung?"
+              ></textarea>
+            </label>
+
+            <div id="create-fixed-fields" class="stack-form">
+              <div class="calendar-section">
+                <div class="calendar-header">
+                  <div>
+                    <h3>Termine auswählen</h3>
+                    <p id="create-calendar-label" class="calendar-meta"></p>
+                  </div>
+                  <div class="calendar-actions">
+                    <button id="create-prev-month" class="ghost-button compact-button" type="button" aria-label="Vorheriger Monat">
+                      <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <button id="create-next-month" class="ghost-button compact-button" type="button" aria-label="Nächster Monat">
+                      <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                  </div>
+                </div>
+                <div id="create-calendar-grid" class="calendar-grid" aria-live="polite"></div>
+                <div class="selected-dates-box">
+                  <div class="selected-header">
+                    <span>Ausgewählte Termine</span>
+                    <button id="create-clear-dates" class="text-button" type="button">Leeren</button>
+                  </div>
+                  <div id="create-selected-dates" class="selected-dates"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="create-free-fields" class="selected-dates-box is-hidden">
+              <div class="selected-header">
+                <span id="create-free-mode-title">Freie Terminvorschläge</span>
+              </div>
+              <p id="create-free-mode-description" class="description">
+                Teilnehmende markieren passende Tage selbst im Kalender.
+              </p>
+            </div>
+
+            <div id="create-weekly-fields" class="selected-dates-box is-hidden">
+              <div class="selected-header">
+                <span>Wochenrhythmus</span>
+              </div>
+              <p class="description">Lege wiederkehrende Wochentage und Uhrzeiten fest, ohne konkrete Kalenderdaten.</p>
+              <div id="create-weekly-editor" class="weekly-editor"></div>
+            </div>
+
+            <div id="create-block-fields" class="selected-dates-box is-hidden">
+              <div class="selected-header">
+                <span id="create-block-title">Block</span>
+              </div>
+              <p id="create-block-description" class="description"></p>
+              <div class="block-editor">
+                <label>
+                  <span>Block-Länge in Tagen</span>
+                  <input id="create-block-length" type="number" min="2" max="31" inputmode="numeric" placeholder="5" />
+                </label>
+
+                <div id="create-block-window" class="block-range-inputs">
+                  <label>
+                    <span>Startdatum des Zeitraums</span>
+                    <input id="create-block-start" type="date" />
+                  </label>
+                  <label>
+                    <span>Enddatum des Zeitraums</span>
+                    <input id="create-block-end" type="date" />
+                  </label>
+                </div>
+
+                <div id="create-block-weekdays" class="block-weekday-editor">
+                  <div class="selected-header">
+                    <span>Erlaubte Starttage</span>
+                    <span id="create-block-weekday-summary" class="description"></span>
+                  </div>
+                  <div id="create-block-weekday-buttons" class="weekly-weekday-group"></div>
+                  <p class="description">Keine Auswahl bedeutet: Alle Starttage sind erlaubt.</p>
+                </div>
+
+                <div id="create-block-preview" class="block-preview-list"></div>
+              </div>
+            </div>
+
+            <div id="create-time-slot-settings"></div>
+
+            <div id="create-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+            <div class="action-strip">
+              <a class="ghost-link" href="/dashboard">Abbrechen</a>
+              <button id="create-submit-button" class="primary-button" type="submit">
+                <i class="fa-regular fa-floppy-disk"></i>
+                Umfrage speichern
+              </button>
+            </div>
+          </form>
+        </article>
+      </section>
+    </template>
+
+    <template id="poll-template">
+      <section class="poll-shell">
+        <article class="panel poll-summary poll-summary-panel">
+          <div class="poll-summary-top">
+            <div class="poll-summary-main">
+              <div class="poll-summary-title-row">
+                <h1 id="poll-title-view"></h1>
+              </div>
+              <p id="poll-description-view" class="description"></p>
+              <p id="poll-favorite-summary" class="poll-favorite-summary is-hidden"></p>
+              <div id="poll-context-meta" class="info-pills poll-summary-meta-row"></div>
+            </div>
+
+            <div class="poll-summary-toolbar">
+              <button id="poll-share-button" class="ghost-button compact-button" type="button" aria-label="Link kopieren" title="Link kopieren">
+                <i class="fa-solid fa-clipboard"></i>
+                <span>Link kopieren</span>
+              </button>
+
+              <button id="poll-settings-shell" class="ghost-button compact-button poll-settings-shell is-hidden" type="button" aria-label="Admin-Tools" aria-haspopup="dialog" aria-controls="adminModal">
+                <i class="fa-solid fa-gear"></i>
+                <span>Admin</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="poll-summary-empty" class="empty-state poll-summary-empty is-hidden"></div>
+        </article>
+
+        <div class="admin-modal" id="adminModal" aria-hidden="true">
+          <div class="admin-modal-backdrop"></div>
+          <div class="admin-modal-content" role="dialog" aria-modal="true" aria-label="Admin-Tools">
+            <button class="admin-modal-close" type="button" aria-label="Admin-Tools schliessen">×</button>
+            <div id="poll-owner-actions" class="owner-actions"></div>
+          </div>
+        </div>
+
+        <article id="poll-response-overlay" class="poll-response-overlay is-hidden"></article>
+
+        <article id="poll-response-panel" class="poll-response-panel">
+          <div class="panel poll-response-card" id="poll-response-card">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Antwort</p>
+                <h2 id="participant-form-title">Deine Verfügbarkeit</h2>
+              </div>
+              <button id="poll-close-response" class="ghost-button compact-button" type="button" aria-label="Abstimmung schliessen">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <form id="response-form" class="stack-form">
+              <div id="participant-identity"></div>
+              <div id="availability-grid" class="availability-grid"></div>
+              <div id="availability-legend" class="legend">
+                <span class="legend-item yes">Ja</span>
+                <span class="legend-item maybe">Vielleicht</span>
+                <span class="legend-item no">Nein</span>
+              </div>
+
+              <div id="response-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+              <button id="submit-response-button" class="primary-button" type="submit">
+                <i class="fa-regular fa-paper-plane"></i>
+                Antwort speichern
+              </button>
+            </form>
+          </div>
+        </article>
+
+        <article id="poll-results-panel" class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Übersicht</p>
+              <h2>Wer wann kann</h2>
+            </div>
+            <a id="poll-back-link" class="ghost-link" href="/dashboard">
+              <i class="fa-solid fa-arrow-left"></i>
+              Zurück
+            </a>
+          </div>
+          <div class="table-wrap">
+            <table class="results-table">
+              <thead id="results-head"></thead>
+              <tbody id="results-body"></tbody>
+              <tfoot id="results-foot"></tfoot>
+            </table>
+          </div>
+        </article>
+
+        <div class="poll-mobile-actions" aria-label="Schnellaktionen">
+          <button id="poll-mobile-results" class="ghost-button wide-button" type="button">
+            <i class="fa-solid fa-table-columns"></i>
+            Ergebnisse
+          </button>
+          <button id="poll-mobile-response" class="primary-button wide-button" type="button">
+            <i class="fa-regular fa-pen-to-square"></i>
+            <span id="poll-mobile-response-label">Jetzt abstimmen</span>
+          </button>
+        </div>
+      </section>
+    </template>
+
+    <script src="/app.js?v=2026-05-04-admin-fix-final" defer></script>
+  </body>
+</html>
