@@ -61,8 +61,7 @@ sessions_spawn({
 
 | Modell | Verwendung |
 |--------|------------|
-| `gpt-5.4` | Maximum Performance, komplexe Architektur-Entscheidungen |
-| `gpt-5.3-codex` | Standard für Coding-Tasks (optimiert für Code) |
+| `gpt-5.5` | Maximum Performance, komplexe Architektur-Entscheidungen, einfache coding Tasks |
 
 **NIE ohne Modell-Flag starten!** Immer explizit `-m` angeben.
 
@@ -70,7 +69,7 @@ sessions_spawn({
 ```bash
 # ~/.codex/config.json
 {
-  "model": "gpt-5.3-codex",
+  "model": "gpt-5.5",
   "model_provider": "openai"
 }
 ```
@@ -78,11 +77,7 @@ sessions_spawn({
 **CLI-Befehle (IMMER Modell angeben!):**
 
 ```bash
-# Standard für Coding (empfohlen)
-codex exec -m gpt-5.3-codex --full-auto "task"
-
-# Für komplexe Aufgaben
-ncodex exec -m gpt-5.4 --full-auto "task"
+ncodex exec -m gpt-5.5 --full-auto "task"
 ```
 
 **Slash-Commands im interaktiven Modus (immer als einzelne Nachricht senden):**
