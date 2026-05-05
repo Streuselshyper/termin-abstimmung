@@ -3381,7 +3381,14 @@ textarea {
     max-width: none;
   }
 
+  .poll-shell {
+    justify-items: stretch;
+  }
+
   .poll-summary-panel {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    margin-inline: 0;
     word-break: break-word;
     overflow-wrap: break-word;
   }
