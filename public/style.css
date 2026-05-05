@@ -1319,12 +1319,19 @@ body.poll-drawer-open {
   width: 100%;
 }
 
+#poll-context-meta.info-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
 .poll-summary-meta-row .pill {
-  width: 100%;
+  flex: 1 1 10rem;
   min-width: 0;
   max-width: 100%;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  width: auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .poll-summary-toolbar {
@@ -2912,11 +2919,18 @@ body.poll-drawer-open {
     justify-content: flex-start;
   }
 
+  #poll-context-meta.info-pills {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    align-items: stretch;
+  }
+
   .poll-summary-meta-row .pill {
     min-width: 0;
     max-width: 100%;
-    white-space: normal;
-    overflow-wrap: anywhere;
+    width: 100%;
+    white-space: nowrap;
+    overflow-wrap: normal;
   }
 
   #poll-open-response {
